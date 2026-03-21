@@ -19,8 +19,8 @@ import (
 
 // Server is the HTTP handler for the TiddlyWeb API.
 type Server struct {
-	store       *store.Store
-	indexHTML   string // path to pre-rendered index.html
+	store      *store.Store
+	indexHTML  string // path to pre-rendered index.html
 	editor     *editor.Editor
 	tiddlerDir string // directory for writing new .tid files
 	mux        *http.ServeMux
@@ -31,7 +31,7 @@ type Server struct {
 func New(s *store.Store, indexHTML string, ed *editor.Editor) *Server {
 	srv := &Server{
 		store:     s,
-		indexHTML:  indexHTML,
+		indexHTML: indexHTML,
 		editor:    ed,
 		mux:       http.NewServeMux(),
 	}
@@ -76,11 +76,11 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 // handleStatus returns server status as JSON.
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	status := map[string]interface{}{
-		"username":          "DG",
-		"anonymous":         false,
-		"read_only":         false,
+		"username":           "DG",
+		"anonymous":          false,
+		"read_only":          false,
 		"tiddlywiki_version": "5.3.1",
-		"space":             map[string]string{"recipe": "default"},
+		"space":              map[string]string{"recipe": "default"},
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status)

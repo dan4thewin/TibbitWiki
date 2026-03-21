@@ -120,6 +120,39 @@ func TestLoadSkipsSubdirectories(t *testing.T) {
 	}
 }
 
+// TestLoadSkipsUnreadableFile verifies that a .tid file with no read
+// permissions is skipped without error (covers the os.ReadFile error path).
+func TestLoadSkipsUnreadableFile(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("skipping: running as root")
+	}
+
+	dir := t.TempDir()
+	writeFile(t, dir, "Readable.tid", "title: Readable\n\nBody.")
+
+	// Create a .tid file with no permissions.
+	unreadable := filepath.Join(dir, "Unreadable.tid")
+	if err := os.WriteFile(unreadable, []byte("title: Unreadable\n\nBody."), 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(unreadable, 0644) })
+
+	s := store.New()
+	n, err := Load(dir, s)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("loaded %d, want 1 (only the readable file)", n)
+	}
+	if s.Get("Readable") == nil {
+		t.Error("expected Readable in store")
+	}
+	if s.Get("Unreadable") != nil {
+		t.Error("Unreadable should have been skipped")
+	}
+}
+
 func writeFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {

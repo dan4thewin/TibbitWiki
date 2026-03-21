@@ -128,7 +128,7 @@ The server serves a pre-rendered HTML file containing all TiddlyWiki
 core code, plugins, and themes. Generate it:
 
 ```bash
-# TODO: this will be a Makefile target once implemented
+# TODO: this could be an mk target
 tiddlywiki ~/notes --render \
   '$:/plugins/tiddlywiki/tiddlyweb/save/offline' \
   'index.html' 'text/plain'

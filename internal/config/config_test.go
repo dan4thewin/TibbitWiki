@@ -174,3 +174,21 @@ func TestLoadNoArgs(t *testing.T) {
 		t.Errorf("WikiPath = %q, want default %q", cfg.WikiPath, defaults.WikiPath)
 	}
 }
+
+// TestLoadTWCorePathAndIndexHTMLFlags verifies that the --tw-core-path
+// and --index-html flags override the config values.
+func TestLoadTWCorePathAndIndexHTMLFlags(t *testing.T) {
+	cfg, err := Load([]string{
+		"--tw-core-path", "/tw",
+		"--index-html", "/index.html",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.TWCorePath != "/tw" {
+		t.Errorf("TWCorePath = %q, want %q", cfg.TWCorePath, "/tw")
+	}
+	if cfg.IndexHTML != "/index.html" {
+		t.Errorf("IndexHTML = %q, want %q", cfg.IndexHTML, "/index.html")
+	}
+}

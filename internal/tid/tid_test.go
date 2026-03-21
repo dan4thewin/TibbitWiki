@@ -277,6 +277,15 @@ func TestFilenameToTitle(t *testing.T) {
 	}
 }
 
+// TestFilenameToTitleBadPercent verifies that a filename with invalid
+// percent-encoding falls through to return the raw name unchanged.
+func TestFilenameToTitleBadPercent(t *testing.T) {
+	got := FilenameToTitle("bad%zztitle.tid")
+	if got != "bad%zztitle" {
+		t.Errorf("FilenameToTitle(%q) = %q, want %q", "bad%zztitle.tid", got, "bad%zztitle")
+	}
+}
+
 // TestTitleFilenameRoundTrip verifies that converting a title to a
 // filename and back produces the original title.
 func TestTitleFilenameRoundTrip(t *testing.T) {

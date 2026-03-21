@@ -2,13 +2,16 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/dan4thewin/go-tiddle/internal/editor"
+	"github.com/dan4thewin/go-tiddle/internal/rcs"
 	"github.com/dan4thewin/go-tiddle/internal/store"
 	"github.com/dan4thewin/go-tiddle/internal/tid"
 )
@@ -463,5 +466,172 @@ func TestPutTiddlerWithNestedFields(t *testing.T) {
 	}
 	if got.Fields["custom_field"] != "value" {
 		t.Errorf("custom_field = %q, want %q", got.Fields["custom_field"], "value")
+	}
+}
+
+// TestPutTiddlerNoFilePathNoDir verifies that PUT on a server with no
+// tiddlerDir stores the tiddler via Put (no disk write) when the
+// tiddler has no existing file path.
+func TestPutTiddlerNoFilePathNoDir(t *testing.T) {
+	srv, s := newTestServer(t)
+	// newTestServer has no tiddlerDir set, so new tiddlers go through s.store.Put.
+	body := `{"title":"NoFile","tags":"Mem","text":"In-memory only."}`
+	req := httptest.NewRequest("PUT", "/recipes/default/tiddlers/NoFile",
+		strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+	got := s.Get("NoFile")
+	if got == nil {
+		t.Fatal("expected tiddler in store")
+	}
+	if got.Text() != "In-memory only." {
+		t.Errorf("text = %q, want %q", got.Text(), "In-memory only.")
+	}
+	// Should have no file path since there is no tiddlerDir.
+	if fp := s.FilePath("NoFile"); fp != "" {
+		t.Errorf("file path = %q, want empty", fp)
+	}
+}
+
+// TestDeleteTiddlerWithDiskFile verifies that DELETE removes the
+// backing .tid file from disk when the tiddler has a file path.
+func TestDeleteTiddlerWithDiskFile(t *testing.T) {
+	srv, s := newTestServer(t)
+
+	// Create a real temp file to act as the tiddler's backing file.
+	f, err := os.CreateTemp("", "tiddler-*.tid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString("title: DiskDel\n\nBody.")
+	f.Close()
+	t.Cleanup(func() { os.Remove(f.Name()) })
+
+	s.PutWithPath(&tid.Tiddler{Fields: map[string]string{
+		"title": "DiskDel",
+		"text":  "Body.",
+	}}, f.Name())
+
+	req := httptest.NewRequest("DELETE", "/bags/default/tiddlers/DiskDel", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+	// Verify the file was removed from disk.
+	if _, err := os.Stat(f.Name()); !os.IsNotExist(err) {
+		t.Errorf("expected file %q to be deleted, err = %v", f.Name(), err)
+	}
+	// Verify the tiddler is gone from the store.
+	if got := s.Get("DiskDel"); got != nil {
+		t.Error("tiddler should be deleted from store")
+	}
+}
+
+// TestHandleEditExternalEditorFails verifies that edit-external returns
+// 500 when the editor command fails to start.
+func TestHandleEditExternalEditorFails(t *testing.T) {
+	s := store.New()
+	s.PutWithPath(&tid.Tiddler{Fields: map[string]string{
+		"title": "FailEdit",
+		"text":  "Body.",
+	}}, "/tmp/FailEdit.tid")
+
+	// Use a nonexistent binary so exec.Command.Start returns an error.
+	ed := editor.New("/nonexistent/editor %s")
+	srv := New(s, "", ed)
+
+	req := httptest.NewRequest("POST", "/edit-external/FailEdit", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+// --- gomonkey-based tests for error-logging branches ---
+
+// TestPutTiddlerWriteFileError verifies that an os.WriteFile error is
+// logged but does not prevent the tiddler from being stored (204).
+func TestPutTiddlerWriteFileError(t *testing.T) {
+	patches := gomonkey.ApplyFunc(os.WriteFile, func(name string, data []byte, perm os.FileMode) error {
+		return fmt.Errorf("disk full")
+	})
+	defer patches.Reset()
+
+	srv, s := newTestServer(t)
+	dir := t.TempDir()
+	srv.SetTiddlerDir(dir)
+
+	body := `{"title":"WriteErr","text":"Body."}`
+	req := httptest.NewRequest("PUT", "/recipes/default/tiddlers/WriteErr",
+		strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+	// Tiddler should still be stored (PutWithPath is called after the error log).
+	if got := s.Get("WriteErr"); got == nil {
+		t.Fatal("expected tiddler in store despite WriteFile error")
+	}
+}
+
+// TestPutTiddlerRCSCheckinError verifies that an rcs.Checkin error
+// is logged but does not prevent a 204 response.
+func TestPutTiddlerRCSCheckinError(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(path string) error {
+		return fmt.Errorf("rcs failed")
+	})
+	defer patches.Reset()
+
+	srv, s := newTestServer(t)
+	dir := t.TempDir()
+	srv.SetTiddlerDir(dir)
+
+	body := `{"title":"RCSErr","text":"Body."}`
+	req := httptest.NewRequest("PUT", "/recipes/default/tiddlers/RCSErr",
+		strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+	if got := s.Get("RCSErr"); got == nil {
+		t.Fatal("expected tiddler in store despite rcs.Checkin error")
+	}
+}
+
+// TestDeleteTiddlerRemoveError verifies that a non-NotExist os.Remove
+// error is logged but the tiddler is still deleted from the store (204).
+func TestDeleteTiddlerRemoveError(t *testing.T) {
+	patches := gomonkey.ApplyFunc(os.Remove, func(name string) error {
+		return fmt.Errorf("permission denied")
+	})
+	defer patches.Reset()
+
+	srv, s := newTestServer(t)
+	s.PutWithPath(&tid.Tiddler{Fields: map[string]string{
+		"title": "RemErr",
+		"text":  "Body.",
+	}}, "/fake/RemErr.tid")
+
+	req := httptest.NewRequest("DELETE", "/bags/default/tiddlers/RemErr", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+	if got := s.Get("RemErr"); got != nil {
+		t.Error("tiddler should be deleted from store")
 	}
 }
