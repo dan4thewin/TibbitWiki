@@ -210,3 +210,20 @@ go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
 go install github.com/zimmski/gobco@latest
 ```
 
+## Visual smoke test
+
+A Safari screenshot script from `~/src/dpa/scripts/render-url.sh`
+can do final visual verification:
+
+```bash
+# Capture baseline from current Node.js server
+~/src/dpa/scripts/render-url.sh http://127.0.0.1:8080 /tmp/baseline.png
+
+# Kill node server, start go-tiddle, capture
+~/src/dpa/scripts/render-url.sh http://127.0.0.1:8080 /tmp/go-tiddle.png
+```
+
+The script opens/reloads Safari, waits for load, captures the
+window via `screencapture -l`, and restores focus to the previous
+app. Compare the two screenshots to verify visual parity.
+

@@ -206,6 +206,10 @@ Carried from dan4thewin/hunted-go:
       tiddlyweb plugin, highlight plugin, snowwhite theme
 - [ ] Integration test: start server, load tiddlers from a test
       fixture directory, verify all endpoints return correct data
+- [ ] Visual smoke test: use render-url.sh (from ~/src/dpa/scripts/)
+      to open go-tiddle in Safari and screenshot. Compare against
+      baseline screenshot from the Node.js server. Script handles
+      open/reload/capture via AppleScript + screencapture.
 - [ ] CI setup: GitHub Actions workflow for build, test, vet, gofmt,
       gocyclo, coverage reporting
 - [ ] README.md with installation, configuration, and usage docs
