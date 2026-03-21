@@ -8,9 +8,9 @@ and RCS version control.
 
 - **Minimal browser client** — single HTML+JS file, dark theme, no
   TiddlyWiki browser code. Server-side markdown rendering with CamelCase
-  WikiWord auto-linking, syntax highlighting, full-text search, and
-  tag pills. View-only in browser; all editing via neovim.
-- **TiddlyWeb-compatible REST API** — 7 endpoints plus edit-external
+  WikiWord auto-linking, syntax highlighting, full-text search, tag
+  pills, tabbed sidebar, and line-level quick edit.
+- **REST API** — `/notes` CRUD plus line-edit, search, edit-external
 - **Filesystem watching** — edit `.tid` files in any editor (Neovide,
   vim, etc.) and changes appear in the browser within 3 seconds
 - **External editor launch** — click "edit" in the browser to open
@@ -29,7 +29,7 @@ go build -o tibbitwiki .
 ./tibbitwiki \
   --wiki-path ~/notes \
   --listen 127.0.0.1:8080 \
-  --index-html exp/017-tag-pills/index.html \
+  --index-html exp/025-v3-integration/index.html \
   --editor-cmd "neovide -- %s"
 ```
 
@@ -37,7 +37,7 @@ Then open http://127.0.0.1:8080 in your browser.
 
 ## Browser client
 
-The browser client (`exp/017-tag-pills/index.html`) is a single
+The browser client (`exp/025-v3-integration/index.html`) is a single
 self-contained HTML file with inline JS. No build step, no external
 dependencies — markdown rendering and syntax highlighting are handled
 server-side.
@@ -51,14 +51,18 @@ server-side.
 - Full-text search — `/` opens vi-style search bar; results appear as
   a pseudo-note with clickable titles and matched lines
 - Tag pills — colored pills on notes, click to search by tag
-- Recent notes sidebar (top 20 by modified date)
+- Tabbed sidebar — Recent (non-journals), Journals, Tags with
+  per-tag groups; ellipsis to expand; limits via CSS custom properties
+- Line-level quick edit — hover ✏️/➕ icons on list items for
+  inline edit and insert-below without leaving the browser
 - 3-second polling for external changes
 - Edit button per note (launches neovim via server)
 - New note and Journal buttons
 - Dark theme
 
 **Non-features (by design):**
-- No browser-based editing — all editing via neovim
+- No full browser-based editing — line edits for list items only;
+  everything else via neovim
 - No TiddlyWiki wikitext rendering — markdown only
 - No plugin system, no syncer, no complex widget tree
 
@@ -81,7 +85,7 @@ server-side.
 wiki_path: ~/notes
 listen: 127.0.0.1:8080
 editor_cmd: "neovide -- %s"
-index_html: exp/017-tag-pills/index.html
+index_html: exp/025-v3-integration/index.html
 ```
 
 CLI flags override YAML values.
@@ -93,9 +97,10 @@ CLI flags override YAML values.
 | GET | `/` | Serve browser client HTML |
 | GET | `/status` | Server status JSON |
 | GET | `/notes` | Skinny note list |
-| GET | `/notes/:title` | Full note JSON |
+| GET | `/notes/:title` | Full note JSON (with rendered HTML) |
 | PUT | `/notes/:title` | Create/save note |
 | DELETE | `/notes/:title` | Delete note |
+| POST | `/line-edit/:title` | Replace or insert a body line |
 | GET | `/search?q=...` | Full-text search (JSON) |
 | GET | `/theme.css` | Syntax highlighting CSS |
 | GET | `/favicon.ico` | Favicon |

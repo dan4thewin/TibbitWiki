@@ -122,3 +122,36 @@ func TestNonListNoAnnotation(t *testing.T) {
 		t.Errorf("paragraphs/headings should not have data-line, got:\n%s", got)
 	}
 }
+
+// TestListItemTightList verifies tight lists (items without blank
+// lines between them) still get data-line annotations via child walk.
+func TestListItemTightList(t *testing.T) {
+	// Tight list with paragraphs inside (goldmark wraps in <p>).
+	src := "- one\n\n- two\n\n- three"
+	got := ToHTML(src)
+	// Loose list items: goldmark wraps content in <p>, so the <li>
+	// may not have direct lines — the child <p> does.
+	if !strings.Contains(got, "data-line=") {
+		t.Errorf("loose list items should have data-line, got:\n%s", got)
+	}
+	// All three items should be annotated.
+	count := strings.Count(got, "data-line=")
+	if count != 3 {
+		t.Errorf("expected 3 data-line attrs, got %d in:\n%s", count, got)
+	}
+}
+
+// TestListItemMixedContent verifies annotated list items alongside
+// other content types.
+func TestListItemMixedContent(t *testing.T) {
+	src := "Paragraph.\n\n- item\n\n> quote"
+	got := ToHTML(src)
+	if !strings.Contains(got, `data-line="3"`) {
+		t.Errorf("expected data-line on list item, got:\n%s", got)
+	}
+	// Only one data-line (for the single li).
+	count := strings.Count(got, "data-line=")
+	if count != 1 {
+		t.Errorf("expected 1 data-line attr, got %d", count)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -728,5 +729,132 @@ func TestLineEditNoFile(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", w.Code)
+	}
+}
+
+// TestHandleThemeCSS verifies GET /theme.css returns CSS containing
+// chroma syntax-highlighting styles.
+func TestHandleThemeCSS(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("GET", "/theme.css", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "text/css" {
+		t.Errorf("Content-Type = %q, want %q", ct, "text/css")
+	}
+	if !strings.Contains(w.Body.String(), "chroma") {
+		t.Error("theme.css should contain 'chroma'")
+	}
+}
+
+// TestHandleSearchEmptyQuery verifies GET /search with no query
+// parameter returns an empty JSON array.
+func TestHandleSearchEmptyQuery(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("GET", "/search", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if body := strings.TrimSpace(w.Body.String()); body != "[]" {
+		t.Errorf("body = %q, want %q", body, "[]")
+	}
+}
+
+// TestHandleSearchNoNoteDir verifies search returns 500 when
+// noteDir is not configured.
+func TestHandleSearchNoNoteDir(t *testing.T) {
+	srv, _ := newTestServer(t)
+	// noteDir is empty by default in newTestServer.
+	req := httptest.NewRequest("GET", "/search?q=hello", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+// TestHandleSearchWithResults verifies search returns matching notes
+// when noteDir is set and files match the query.
+func TestHandleSearchWithResults(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("rg (ripgrep) not on PATH, skipping search test")
+	}
+
+	srv, s := newTestServer(t)
+	dir := t.TempDir()
+	srv.SetNoteDir(dir)
+
+	// Create a .tid file with searchable content.
+	content := "title: SearchMe\ntags: Test\n\nUnique searchable content here.\n"
+	path := dir + "/SearchMe.tid"
+	os.WriteFile(path, []byte(content), 0644)
+	td, _ := tid.Parse([]byte(content))
+	s.PutWithPath(td, path)
+
+	req := httptest.NewRequest("GET", "/search?q=searchable", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+	var results []map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &results); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("expected at least one search result")
+	}
+	if results[0]["title"] != "SearchMe" {
+		t.Errorf("title = %v, want %q", results[0]["title"], "SearchMe")
+	}
+}
+
+// TestLineEditInvalidJSON verifies that a malformed JSON body
+// returns 400.
+func TestLineEditInvalidJSON(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("POST", "/line-edit/Hello", strings.NewReader("not json"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+// TestLineEditMethodNotAllowed verifies that GET on /line-edit/
+// returns 405.
+func TestLineEditMethodNotAllowed(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("GET", "/line-edit/Hello", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+// TestLineEditLineLessThanOne verifies that line=0 returns 400.
+func TestLineEditLineLessThanOne(t *testing.T) {
+	srv, _ := newTestServer(t)
+	body := `{"line":0,"text":"bad"}`
+	req := httptest.NewRequest("POST", "/line-edit/Hello", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
 	}
 }

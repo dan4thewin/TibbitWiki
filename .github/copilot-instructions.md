@@ -81,9 +81,9 @@ large rewrites.
   - `internal/store` — in-memory note store with revision tracking
   - `internal/config` — YAML config + CLI flag parsing
   - `internal/watcher` — fsnotify file watcher with debounce
-  - `internal/server` — HTTP server implementing TiddlyWeb API
+  - `internal/server` — HTTP server implementing TibbitWiki API
   - `internal/editor` — external editor launcher
-  - `internal/render` — goldmark + chroma markdown→HTML rendering, ThemeCSS()
+  - `internal/render` — goldmark + chroma markdown→HTML rendering, ThemeCSS(), data-line annotation on list items
   - `internal/search` — query parser + rg wrapper, returns file matches with matched lines
   - `main.go` — wiring
 
@@ -98,8 +98,14 @@ large rewrites.
   file with CLI flag overrides.
 
 - **Rendering:** Server-side markdown→HTML via goldmark with syntax
-  highlighting via chroma (OneDark theme). The browser receives
-  pre-rendered HTML; no CDN dependencies.
+  highlighting via chroma (OneDark theme). List items (`<li>`) are
+  annotated with `data-line="N"` for line-level editing. The browser
+  receives pre-rendered HTML; no CDN dependencies.
+
+- **Line editing:** `POST /line-edit/:title` replaces or inserts
+  body lines by number. Accounts for .tid header offset. The
+  browser shows hover ✏️/➕ icons on list items; edit/insert
+  submits to this endpoint and re-renders the note.
 
 - **Search:** Full-text search delegates to ripgrep (`rg`), which
   must be on PATH. Query syntax supports literal words, `!` NOT,
