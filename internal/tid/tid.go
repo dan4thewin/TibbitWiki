@@ -1,11 +1,11 @@
-// Package tid parses and serializes TiddlyWiki .tid files.
+// Package tid parses and serializes .tid files.
 //
 // The .tid format uses RFC822-style headers (key: value), a blank
 // line separator, then the body text. Example:
 //
 //	created: 20230710174528965
 //	tags: Journal
-//	title: My Tiddler
+//	title: My Note
 //
 //	Body text here.
 package tid
@@ -18,24 +18,24 @@ import (
 	"strings"
 )
 
-// Tiddler represents a single tiddler with its fields and body text.
-type Tiddler struct {
+// Note represents a single note with its fields and body text.
+type Note struct {
 	Fields map[string]string
 }
 
-// Title returns the tiddler's title field.
-func (t *Tiddler) Title() string {
+// Title returns the note's title field.
+func (t *Note) Title() string {
 	return t.Fields["title"]
 }
 
-// Text returns the tiddler's body text.
-func (t *Tiddler) Text() string {
+// Text returns the note's body text.
+func (t *Note) Text() string {
 	return t.Fields["text"]
 }
 
 // SkinnyFields returns all fields except "text", suitable for the
-// skinny tiddler list endpoint.
-func (t *Tiddler) SkinnyFields() map[string]string {
+// skinny note list endpoint.
+func (t *Note) SkinnyFields() map[string]string {
 	out := make(map[string]string, len(t.Fields))
 	for k, v := range t.Fields {
 		if k != "text" {
@@ -45,9 +45,9 @@ func (t *Tiddler) SkinnyFields() map[string]string {
 	return out
 }
 
-// Parse reads a .tid file's content and returns a Tiddler.
+// Parse reads a .tid file's content and returns a Note.
 // The format is: header lines (key: value), blank line, body text.
-func Parse(data []byte) (*Tiddler, error) {
+func Parse(data []byte) (*Note, error) {
 	content := string(data)
 	fields := make(map[string]string)
 
@@ -75,11 +75,11 @@ func Parse(data []byte) (*Tiddler, error) {
 		fields["text"] = body
 	}
 
-	return &Tiddler{Fields: fields}, nil
+	return &Note{Fields: fields}, nil
 }
 
-// Serialize writes a Tiddler back to .tid format bytes.
-func Serialize(t *Tiddler) []byte {
+// Serialize writes a Note back to .tid format bytes.
+func Serialize(t *Note) []byte {
 	var b strings.Builder
 
 	// Collect header keys (everything except "text"), sorted for
@@ -104,28 +104,28 @@ func Serialize(t *Tiddler) []byte {
 	return []byte(b.String())
 }
 
-// TitleToFilename converts a tiddler title to its .tid filename.
+// TitleToFilename converts a note title to its .tid filename.
 // $:/foo/bar becomes $__foo_bar.tid. Titles containing path
 // separators get URL-encoded.
 func TitleToFilename(title string) string {
-	// System tiddlers: $:/ prefix → $__ prefix, / → _
+	// System notes: $:/ prefix → $__ prefix, / → _
 	if strings.HasPrefix(title, "$:/") {
 		name := "$__" + strings.ReplaceAll(title[3:], "/", "_")
 		return name + ".tid"
 	}
-	// Non-system tiddlers with slashes get URL-encoded.
+	// Non-system notes with slashes get URL-encoded.
 	if strings.Contains(title, "/") {
 		return url.PathEscape(title) + ".tid"
 	}
 	return title + ".tid"
 }
 
-// FilenameToTitle converts a .tid filename back to a tiddler title.
+// FilenameToTitle converts a .tid filename back to a note title.
 // $__foo_bar.tid becomes $:/foo/bar. URL-encoded names are decoded.
 func FilenameToTitle(filename string) string {
 	name := strings.TrimSuffix(filepath.Base(filename), ".tid")
 
-	// System tiddlers: $__ prefix → $:/ prefix, _ → /
+	// System notes: $__ prefix → $:/ prefix, _ → /
 	if strings.HasPrefix(name, "$__") {
 		return "$:/" + strings.ReplaceAll(name[3:], "_", "/")
 	}

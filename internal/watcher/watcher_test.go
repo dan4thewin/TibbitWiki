@@ -32,7 +32,7 @@ func TestReloadFileAddsToStore(t *testing.T) {
 
 	got := s.Get("TestReload")
 	if got == nil {
-		t.Fatal("expected tiddler in store, got nil")
+		t.Fatal("expected note in store, got nil")
 	}
 	if got.Text() != "Body here." {
 		t.Errorf("text = %q, want %q", got.Text(), "Body here.")
@@ -43,14 +43,14 @@ func TestReloadFileAddsToStore(t *testing.T) {
 }
 
 // TestReloadFileDeletedRemovesFromStore verifies that reloading a
-// nonexistent file removes the tiddler from the store.
+// nonexistent file removes the note from the store.
 func TestReloadFileDeletedRemovesFromStore(t *testing.T) {
 	dir := t.TempDir()
 	s := store.New()
 	w := &Watcher{dir: dir, store: s}
 
 	// Pre-populate the store.
-	td := &tid.Tiddler{Fields: map[string]string{"title": "Gone"}}
+	td := &tid.Note{Fields: map[string]string{"title": "Gone"}}
 	s.PutWithPath(td, filepath.Join(dir, "Gone.tid"))
 
 	// Reload a path that doesn't exist on disk.
@@ -108,7 +108,7 @@ func TestHandleEventFiltersTid(t *testing.T) {
 	}
 
 	// Valid .tid file — should be queued.
-	w.handleEvent(fakeEvent("/path/to/My Tiddler.tid"))
+	w.handleEvent(fakeEvent("/path/to/My Note.tid"))
 	if len(w.pending) != 1 {
 		t.Errorf("pending count = %d, want 1", len(w.pending))
 	}
@@ -273,12 +273,12 @@ func TestFullLifecycleWriteFile(t *testing.T) {
 		t.Fatalf("WriteFile error: %v", err)
 	}
 
-	// Poll until the tiddler appears in the store.
+	// Poll until the note appears in the store.
 	found := pollStore(t, func() bool {
 		return s.Get("LiveTest") != nil
 	}, 3*time.Second)
 	if !found {
-		t.Fatal("tiddler 'LiveTest' never appeared in store")
+		t.Fatal("note 'LiveTest' never appeared in store")
 	}
 
 	got := s.Get("LiveTest")
@@ -291,7 +291,7 @@ func TestFullLifecycleWriteFile(t *testing.T) {
 }
 
 // TestFullLifecycleDeleteFile is an integration test that verifies
-// deleting a watched .tid file removes the tiddler from the store.
+// deleting a watched .tid file removes the note from the store.
 func TestFullLifecycleDeleteFile(t *testing.T) {
 	dir := t.TempDir()
 	s := store.New()
@@ -330,12 +330,12 @@ func TestFullLifecycleDeleteFile(t *testing.T) {
 		t.Fatalf("Remove error: %v", err)
 	}
 
-	// Poll until the tiddler is removed from the store.
+	// Poll until the note is removed from the store.
 	gone := pollStore(t, func() bool {
 		return s.Get("DeleteMe") == nil
 	}, 3*time.Second)
 	if !gone {
-		t.Fatal("tiddler 'DeleteMe' was not removed from store after file deletion")
+		t.Fatal("note 'DeleteMe' was not removed from store after file deletion")
 	}
 }
 
@@ -404,7 +404,7 @@ func TestReloadFileWithRCSSuccess(t *testing.T) {
 	w.reloadFile(path)
 
 	if s.Get("RCSTest") == nil {
-		t.Fatal("expected tiddler in store")
+		t.Fatal("expected note in store")
 	}
 	if checkedIn != path {
 		t.Errorf("rcs.Checkin called with %q, want %q", checkedIn, path)

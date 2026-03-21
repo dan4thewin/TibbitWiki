@@ -24,16 +24,16 @@ func main() {
 
 	s := store.New()
 
-	// Load tiddlers from disk.
-	tiddlersDir := cfg.TiddlersPath()
-	n, err := loader.Load(tiddlersDir, s)
+	// Load notes from disk.
+	notesDir := cfg.NotesPath()
+	n, err := loader.Load(notesDir, s)
 	if err != nil {
-		log.Fatalf("loading tiddlers: %v", err)
+		log.Fatalf("loading notes: %v", err)
 	}
-	log.Printf("loaded %d tiddlers from %s", n, tiddlersDir)
+	log.Printf("loaded %d notes from %s", n, notesDir)
 
 	// Start file watcher.
-	w, err := watcher.New(tiddlersDir, s)
+	w, err := watcher.New(notesDir, s)
 	if err != nil {
 		log.Fatalf("creating watcher: %v", err)
 	}
@@ -41,7 +41,7 @@ func main() {
 		log.Fatalf("starting watcher: %v", err)
 	}
 	defer w.Stop()
-	log.Printf("watching %s for changes", tiddlersDir)
+	log.Printf("watching %s for changes", notesDir)
 
 	// Set up editor.
 	var ed *editor.Editor
@@ -52,7 +52,7 @@ func main() {
 
 	// Start HTTP server.
 	srv := server.New(s, cfg.IndexHTML, ed)
-	srv.SetTiddlerDir(tiddlersDir)
+	srv.SetNoteDir(notesDir)
 	log.Printf("listening on http://%s", cfg.Listen)
 	if err := http.ListenAndServe(cfg.Listen, srv); err != nil {
 		log.Fatalf("server: %v", err)

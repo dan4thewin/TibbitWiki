@@ -31,7 +31,7 @@ browser is view-only, polling every 3 seconds.
                                │               │               │
                           fsnotify        .tid files      editor launch
                           watcher      ~/notes/   (neovide)
-                                        tiddlers/
+                                        notes/
 ```
 
 ### Package layout
@@ -40,7 +40,7 @@ browser is view-only, polling every 3 seconds.
 internal/
   config/   — YAML config + CLI flag parsing
   tid/      — .tid file parser/serializer
-  store/    — in-memory tiddler store with revision tracking
+  store/    — in-memory note store with revision tracking
   watcher/  — fsnotify file watcher with debounce
   server/   — HTTP server implementing TiddlyWeb API
   editor/   — external editor launcher
@@ -58,10 +58,10 @@ exp/        — browser client experiments (001–018)
 |----------|-------------------------------------|----------------------------|
 | `GET`    | `/`                                 | Serve browser client HTML  |
 | `GET`    | `/status`                           | Server status + user info  |
-| `GET`    | `/recipes/default/tiddlers.json`    | Skinny tiddler list (poll) |
-| `GET`    | `/recipes/default/tiddlers/:title`  | Full tiddler as JSON       |
-| `PUT`    | `/recipes/default/tiddlers/:title`  | Create/save tiddler        |
-| `DELETE` | `/bags/default/tiddlers/:title`     | Delete tiddler             |
+| `GET`    | `/notes`    | Skinny note list (poll) |
+| `GET`    | `/notes/:title`  | Full note as JSON       |
+| `PUT`    | `/notes/:title`  | Create/save note        |
+| `DELETE` | `/notes/:title`     | Delete note             |
 | `GET`    | `/search?q=...`                     | Full-text search (JSON)    |
 | `GET`    | `/theme.css`                        | Syntax highlighting CSS    |
 | `GET`    | `/favicon.ico`                      | Favicon                    |
@@ -78,18 +78,18 @@ No build step, no TiddlyWiki code.
 - **Navigation:** story river (new content appended at bottom), recent
   sidebar (top 20 by modified date), WikiWord click-to-open
 - **Search:** `/` opens vi-style search bar; results appear as a
-  pseudo-tiddler in the story river with clickable titles and matched
+  pseudo-note in the story river with clickable titles and matched
   lines. Rich query syntax (literal, NOT, tag, title, regex, OR, AND).
-- **Tag pills:** colored pills on tiddlers, click to search by tag
-- **Polling:** GET tiddlers.json every 3s, compare revisions, re-fetch
-  changed tiddlers
+- **Tag pills:** colored pills on notes, click to search by tag
+- **Polling:** GET notes.json every 3s, compare revisions, re-fetch
+  changed notes
 - **Actions:** edit (POST /edit-external), close, + New (prompt for
   title, PUT), + Journal (auto date title, PUT + edit)
 - **Theme:** dark (navy background, styled cards/sidebar/code blocks)
 
 ### File watching
 
-- fsnotify on the tiddlers directory
+- fsnotify on the notes directory
 - Debounce for cloud drive quirks (OneDrive temp files, atomic
   renames, rapid successive events)
 - On change: re-read `.tid` file, update in-memory store, bump
@@ -99,8 +99,8 @@ No build step, no TiddlyWiki code.
 ### RCS versioning
 
 Every write creates/updates an RCS archive in `RCS/` subdirectory
-(not inside `tiddlers/` — avoids watcher treating archives as
-tiddlers). Requires `rcs` command.
+(not inside `notes/` — avoids watcher treating archives as
+notes). Requires `rcs` command.
 
 ### Editor integration
 
@@ -192,7 +192,7 @@ new window for every edit.
 JS reads via `getComputedStyle`. Change one line, no recompile.
 
 #### Naming
-Rename "tiddlers" → "tibbits" throughout: UI text, Go types/vars,
+Rename "notes" → "tibbits" throughout: UI text, Go types/vars,
 API endpoint paths, docs. This is a breaking rename of the REST API.
 
 #### Implementation
@@ -200,9 +200,9 @@ API endpoint paths, docs. This is a breaking rename of the REST API.
   panel visible at a time
 - Journal detection: function in client JS that checks tag OR date
   regex (`/^\d{1,2}(?:st|nd|rd|th) \w+ \d{4}$/`)
-- Server changes: tiddlers.json already returns tags — no new
+- Server changes: notes.json already returns tags — no new
   endpoint needed, client filters/groups locally
-- Rename: `tiddlers` → `tibbits` across Go packages, API routes,
+- Rename: `notes` → `tibbits` across Go packages, API routes,
   client JS, docs (big but mechanical)
 
 ---
@@ -240,7 +240,7 @@ insert below.
 
 #### Re-render
 - After PATCH/POST succeeds, client re-fetches the full tibbit
-  (same as existing `refreshTiddler`) — the whole tibbit body
+  (same as existing `refreshNote`) — the whole tibbit body
   re-renders with correct markdown context (list numbering, etc.)
 
 #### Scope limits
@@ -256,7 +256,7 @@ insert below.
 |---|---------|-------------|
 | 019 | Sidebar tabs | Recent (non-journal) + Journal tabs |
 | 020 | Tags tab | Tag groups with expand |
-| 021 | Rename | tiddlers → tibbits everywhere |
+| 021 | Rename | notes → tibbits everywhere |
 | 022 | Line annotation | data-line on `<li>` in rendered HTML |
 | 023 | Line edit | Hover icons + inline edit input |
 | 024 | Insert below | Add new list item inline |

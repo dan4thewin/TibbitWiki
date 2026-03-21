@@ -1,4 +1,4 @@
-// Package render converts tiddler markdown text to HTML.
+// Package render converts note markdown text to HTML.
 package render
 
 import (

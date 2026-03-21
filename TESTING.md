@@ -30,7 +30,7 @@ This is the key technique for automated integration testing.
 # Get text content of an element
 osascript -e '
 tell application "Safari"
-    do JavaScript "document.querySelector(\".tiddler h2\")?.textContent" in front document
+    do JavaScript "document.querySelector(\".note h2\")?.textContent" in front document
 end tell'
 
 # Count elements
@@ -48,7 +48,7 @@ end tell'
 # Check if text is present
 osascript -e '
 tell application "Safari"
-    do JavaScript "document.querySelector(\".tiddler-body\")?.textContent?.includes(\"search term\") ? \"YES\" : \"NO\"" in front document
+    do JavaScript "document.querySelector(\".note-body\")?.textContent?.includes(\"search term\") ? \"YES\" : \"NO\"" in front document
 end tell'
 ```
 
@@ -70,7 +70,7 @@ end tell'
 # Call a JS function directly
 osascript -e '
 tell application "Safari"
-    do JavaScript "createTiddler(\"TestTitle\", true)" in front document
+    do JavaScript "createNote(\"TestTitle\", true)" in front document
 end tell'
 ```
 
@@ -124,7 +124,7 @@ The marker lets you verify the full chain:
 1. Browser click → POST /edit-external
 2. Server runs mock editor → appends marker to .tid file
 3. Watcher detects change → bumps revision
-4. Poll picks up new revision → browser re-fetches tiddler
+4. Poll picks up new revision → browser re-fetches note
 5. DOM updated → osascript confirms marker text visible
 
 ## Integration test pattern
@@ -162,9 +162,9 @@ sleep 3
 # Verify initial state
 osascript -e '
 tell application "Safari"
-    set t to do JavaScript "document.querySelector(\".tiddler h2\")?.textContent" in front document
+    set t to do JavaScript "document.querySelector(\".note h2\")?.textContent" in front document
     set s to do JavaScript "document.querySelectorAll(\"#recent-list li\").length" in front document
-    return "Tiddler: " & t & " | Sidebar: " & s & " items"
+    return "Note: " & t & " | Sidebar: " & s & " items"
 end tell'
 ```
 
@@ -183,20 +183,20 @@ sleep 6
 # 3. Verify mock edit marker appears in DOM
 osascript -e '
 tell application "Safari"
-    do JavaScript "document.querySelector(\".tiddler-body\")?.textContent?.includes(\"MOCK_EDIT\") ? \"PASS\" : \"FAIL\"" in front document
+    do JavaScript "document.querySelector(\".note-body\")?.textContent?.includes(\"MOCK_EDIT\") ? \"PASS\" : \"FAIL\"" in front document
 end tell'
 
-# 4. Clean up test tiddler
-rm ~/notes/tiddlers/21st\ March\ 2026.tid
+# 4. Clean up test note
+rm ~/notes/notes/21st\ March\ 2026.tid
 ```
 
-### Edit existing tiddler
+### Edit existing note
 
 ```bash
-# Click edit on the first tiddler
+# Click edit on the first note
 osascript -e '
 tell application "Safari"
-    do JavaScript "document.querySelector(\".tiddler-toolbar button\").click()" in front document
+    do JavaScript "document.querySelector(\".note-toolbar button\").click()" in front document
 end tell'
 
 # Wait for mock + watcher + poll
@@ -205,7 +205,7 @@ sleep 6
 # Verify
 osascript -e '
 tell application "Safari"
-    do JavaScript "document.querySelector(\".tiddler-body\")?.textContent?.includes(\"MOCK_EDIT\") ? \"PASS\" : \"FAIL\"" in front document
+    do JavaScript "document.querySelector(\".note-body\")?.textContent?.includes(\"MOCK_EDIT\") ? \"PASS\" : \"FAIL\"" in front document
 end tell'
 ```
 
@@ -228,7 +228,7 @@ experiment's index.html, and takes a screenshot via render-url.sh.
   "Can't Connect", restarting the server isn't enough — you need to
   navigate Safari to the URL again.
 
-- **Spaces in tiddler titles.** The editor command template is split
+- **Spaces in note titles.** The editor command template is split
   by `strings.Fields` before `%s` substitution, so file paths with
   spaces are handled correctly. But if you ever change this logic,
   test with a title like "21st March 2026".

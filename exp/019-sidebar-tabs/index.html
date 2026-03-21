@@ -34,13 +34,13 @@ h1 { margin-top: 0; color: #e0e0e0; }
 .tag-group-header:first-child { margin-top: 0; }
 .tag-group-header:hover { color: #aaa; }
 
-.tiddler { border: 1px solid #333; border-radius: 6px; padding: 16px; margin-bottom: 16px; background: #16213e; }
-.tiddler-header { display: flex; align-items: center; justify-content: space-between; }
-.tiddler-header h2 { margin: 0; color: #e0e0e0; }
-.tiddler-toolbar { display: flex; gap: 4px; }
-.tiddler-toolbar button { background: none; border: 1px solid #444; border-radius: 4px; cursor: pointer; padding: 2px 8px; font-size: 16px; color: #aaa; }
-.tiddler-toolbar button:hover { background: #2a2a4a; color: #e0e0e0; }
-.tiddler-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.note { border: 1px solid #333; border-radius: 6px; padding: 16px; margin-bottom: 16px; background: #16213e; }
+.note-header { display: flex; align-items: center; justify-content: space-between; }
+.note-header h2 { margin: 0; color: #e0e0e0; }
+.note-toolbar { display: flex; gap: 4px; }
+.note-toolbar button { background: none; border: 1px solid #444; border-radius: 4px; cursor: pointer; padding: 2px 8px; font-size: 16px; color: #aaa; }
+.note-toolbar button:hover { background: #2a2a4a; color: #e0e0e0; }
+.note-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .tag-pill { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; cursor: pointer; font-weight: 500; }
 .tag-pill:hover { filter: brightness(1.2); }
 a.wikiword { color: #6cacee; text-decoration: none; }
@@ -49,11 +49,11 @@ a.wikiword.missing { color: #e06060; font-style: italic; }
 #top-bar { margin-bottom: 16px; display: flex; gap: 8px; }
 #top-bar button { padding: 6px 14px; font-size: 14px; border: 1px solid #444; border-radius: 4px; cursor: pointer; background: #16213e; color: #e0e0e0; }
 #top-bar button:hover { background: #2a2a4a; }
-.tiddler-body { line-height: 1.6; }
-.tiddler-body code { background: #0d1117; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
-.tiddler-body pre { background: #0d1117; padding: 12px; border-radius: 6px; overflow-x: auto; }
-.tiddler-body pre code { background: none; padding: 0; }
-.tiddler-body blockquote { border-left: 3px solid #444; margin-left: 0; padding-left: 16px; color: #aaa; }
+.note-body { line-height: 1.6; }
+.note-body code { background: #0d1117; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+.note-body pre { background: #0d1117; padding: 12px; border-radius: 6px; overflow-x: auto; }
+.note-body pre code { background: none; padding: 0; }
+.note-body blockquote { border-left: 3px solid #444; margin-left: 0; padding-left: 16px; color: #aaa; }
 #search-bar { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: #0d1117; border-top: 1px solid #444; padding: 8px 16px; z-index: 100; }
 #search-bar.active { display: flex; align-items: center; gap: 8px; }
 #search-bar label { color: #6cacee; font-size: 16px; font-family: monospace; }
@@ -70,7 +70,7 @@ a.wikiword.missing { color: #e06060; font-style: italic; }
 <div id="main">
   <h1>TibbitWiki</h1>
   <div id="top-bar">
-    <button onclick="newTiddler()">+ New</button>
+    <button onclick="newNote()">+ New</button>
     <button onclick="newJournal()">+ Journal</button>
   </div>
   <div id="river"></div>
@@ -103,7 +103,7 @@ const CAMEL = /\b([A-Z][a-z]+(?:[A-Z][a-z0-9]*)+)\b/g;
 const DATE_RE = /^\d{1,2}(?:st|nd|rd|th) \w+ \d{4}$/;
 let knownTitles = new Set();
 let knownRevisions = {};
-let allTiddlers = [];
+let allNotes = [];
 
 function cssVar(name, fallback) {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name);
@@ -150,28 +150,25 @@ function linkifyWikiWords(html) {
   }).join('');
 }
 
-function renderTiddler(t) {
+function renderNote(t) {
   const card = document.createElement('div');
-  card.className = 'tiddler';
+  card.className = 'note';
   card.dataset.title = t.title;
   card.dataset.revision = t.revision || '0';
 
   const header = document.createElement('div');
-  header.className = 'tiddler-header';
+  header.className = 'note-header';
   const h2 = document.createElement('h2');
   h2.textContent = t.title;
   header.appendChild(h2);
 
   const toolbar = document.createElement('div');
-  toolbar.className = 'tiddler-toolbar';
+  toolbar.className = 'note-toolbar';
   const editBtn = document.createElement('button');
   editBtn.textContent = 'edit';
   editBtn.title = 'Edit in Neovim';
   editBtn.onclick = () => {
-    fetch('/edit-external/' + encodeURIComponent(t.title), {
-      method: 'POST',
-      headers: { 'X-Requested-With': 'TiddlyWiki' }
-    });
+    fetch('/edit-external/' + encodeURIComponent(t.title), { method: 'POST' });
   };
   toolbar.appendChild(editBtn);
   const closeBtn = document.createElement('button');
@@ -185,7 +182,7 @@ function renderTiddler(t) {
   const tags = parseTags(t.tags);
   if (tags.length > 0) {
     const tagDiv = document.createElement('div');
-    tagDiv.className = 'tiddler-tags';
+    tagDiv.className = 'note-tags';
     tags.forEach(tag => {
       const pill = document.createElement('span');
       pill.className = 'tag-pill';
@@ -201,32 +198,32 @@ function renderTiddler(t) {
   }
 
   const body = document.createElement('div');
-  body.className = 'tiddler-body';
+  body.className = 'note-body';
   body.innerHTML = linkifyWikiWords(t.html || t.text || '');
   card.appendChild(body);
   return card;
 }
 
-function openTiddler(title) {
-  const existing = document.querySelector(`.tiddler[data-title="${CSS.escape(title)}"]`);
+function openNote(title) {
+  const existing = document.querySelector(`.note[data-title="${CSS.escape(title)}"]`);
   if (existing) { existing.scrollIntoView({ behavior: 'smooth' }); return; }
-  fetch('/recipes/default/tiddlers/' + encodeURIComponent(title))
+  fetch('/notes/' + encodeURIComponent(title))
     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(t => {
       knownRevisions[t.title] = t.revision;
-      document.getElementById('river').appendChild(renderTiddler(t));
+      document.getElementById('river').appendChild(renderNote(t));
     })
-    .catch(() => alert('Tiddler not found: ' + title));
+    .catch(() => alert('Note not found: ' + title));
 }
 
-function refreshTiddler(title) {
-  fetch('/recipes/default/tiddlers/' + encodeURIComponent(title))
+function refreshNote(title) {
+  fetch('/notes/' + encodeURIComponent(title))
     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(t => {
       knownRevisions[t.title] = t.revision;
-      const existing = document.querySelector(`.tiddler[data-title="${CSS.escape(title)}"]`);
+      const existing = document.querySelector(`.note[data-title="${CSS.escape(title)}"]`);
       if (existing) {
-        const body = existing.querySelector('.tiddler-body');
+        const body = existing.querySelector('.note-body');
         body.innerHTML = linkifyWikiWords(t.html || t.text || '');
         existing.dataset.revision = t.revision;
       }
@@ -234,16 +231,16 @@ function refreshTiddler(title) {
 }
 
 function poll() {
-  fetch('/recipes/default/tiddlers.json')
+  fetch('/notes')
     .then(r => r.json())
-    .then(tiddlers => {
-      allTiddlers = tiddlers;
-      knownTitles = new Set(tiddlers.map(t => t.title));
-      updateSidebar(tiddlers);
-      tiddlers.forEach(t => {
+    .then(notes => {
+      allNotes = notes;
+      knownTitles = new Set(notes.map(t => t.title));
+      updateSidebar(notes);
+      notes.forEach(t => {
         const prev = knownRevisions[t.title];
         if (prev !== undefined && String(t.revision) !== String(prev)) {
-          refreshTiddler(t.title);
+          refreshNote(t.title);
         }
       });
     })
@@ -264,7 +261,7 @@ function buildList(ul, items, limit) {
     const li = document.createElement('li');
     li.textContent = t.title;
     li.title = t.title;
-    li.onclick = () => openTiddler(t.title);
+    li.onclick = () => openNote(t.title);
     ul.appendChild(li);
   });
 
@@ -278,7 +275,7 @@ function buildList(ul, items, limit) {
         const li = document.createElement('li');
         li.textContent = t.title;
         li.title = t.title;
-        li.onclick = () => openTiddler(t.title);
+        li.onclick = () => openNote(t.title);
         ul.appendChild(li);
       });
       btn.remove();
@@ -287,8 +284,8 @@ function buildList(ul, items, limit) {
   }
 }
 
-function updateSidebar(tiddlers) {
-  const sorted = tiddlers
+function updateSidebar(notes) {
+  const sorted = notes
     .filter(t => t.modified)
     .sort((a, b) => (b.modified || '').localeCompare(a.modified || ''));
 
@@ -303,7 +300,7 @@ function updateSidebar(tiddlers) {
   buildList(document.getElementById('journal-list'), journals, limit);
 
   // Tags tab: group by tag, sorted by most recent in each group.
-  const tagMap = {};  // tag -> [tiddlers]
+  const tagMap = {};  // tag -> [notes]
   sorted.forEach(t => {
     parseTags(t.tags).forEach(tag => {
       if (tag.startsWith('$:/')) return;
@@ -312,7 +309,7 @@ function updateSidebar(tiddlers) {
     });
   });
 
-  // Sort tags by the modified time of their most recent tiddler.
+  // Sort tags by the modified time of their most recent note.
   const tagOrder = Object.keys(tagMap).sort((a, b) => {
     return (tagMap[b][0].modified || '').localeCompare(tagMap[a][0].modified || '');
   });
@@ -345,29 +342,26 @@ document.getElementById('tab-headers').addEventListener('click', e => {
   document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
 });
 
-function createTiddler(title, openEditor) {
-  const body = JSON.stringify({ title: title, text: '', type: 'text/vnd.tiddlywiki' });
-  fetch('/recipes/default/tiddlers/' + encodeURIComponent(title), {
+function createNote(title, openEditor) {
+  const body = JSON.stringify({ title: title, text: '', type: 'text/markdown' });
+  fetch('/notes/' + encodeURIComponent(title), {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'TiddlyWiki' },
+    headers: { 'Content-Type': 'application/json' },
     body: body
   }).then(r => {
     if (!r.ok) throw new Error(r.status);
     knownTitles.add(title);
-    openTiddler(title);
+    openNote(title);
     if (openEditor) {
-      fetch('/edit-external/' + encodeURIComponent(title), {
-        method: 'POST',
-        headers: { 'X-Requested-With': 'TiddlyWiki' }
-      });
+      fetch('/edit-external/' + encodeURIComponent(title), { method: 'POST' });
     }
   }).catch(e => alert('Create failed: ' + e.message));
 }
 
-function newTiddler() {
-  const title = prompt('New tiddler title:');
+function newNote() {
+  const title = prompt('New note title:');
   if (!title) return;
-  createTiddler(title, true);
+  createNote(title, true);
 }
 
 function newJournal() {
@@ -378,19 +372,19 @@ function newJournal() {
   const months = ['January','February','March','April','May','June',
     'July','August','September','October','November','December'];
   const title = day + suffix + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
-  createTiddler(title, true);
+  createNote(title, true);
 }
 
-fetch('/recipes/default/tiddlers.json')
+fetch('/notes')
   .then(r => r.json())
-  .then(tiddlers => {
-    allTiddlers = tiddlers;
-    tiddlers.forEach(t => {
+  .then(notes => {
+    allNotes = notes;
+    notes.forEach(t => {
       knownTitles.add(t.title);
       knownRevisions[t.title] = t.revision;
     });
-    updateSidebar(tiddlers);
-    openTiddler('ToDo');
+    updateSidebar(notes);
+    openNote('ToDo');
     setTimeout(poll, 3000);
   });
 
@@ -398,11 +392,11 @@ document.addEventListener('click', e => {
   const link = e.target.closest('a.wikiword');
   if (link) {
     e.preventDefault();
-    openTiddler(link.dataset.title);
+    openNote(link.dataset.title);
   }
   const sr = e.target.closest('.search-result-title');
   if (sr) {
-    openTiddler(sr.dataset.title);
+    openNote(sr.dataset.title);
   }
 });
 
@@ -438,21 +432,21 @@ function doSearch(q) {
   fetch('/search?q=' + encodeURIComponent(q))
     .then(r => r.json())
     .then(results => {
-      const prev = document.querySelector('.tiddler[data-title="__search__"]');
+      const prev = document.querySelector('.note[data-title="__search__"]');
       if (prev) prev.remove();
 
       const card = document.createElement('div');
-      card.className = 'tiddler';
+      card.className = 'note';
       card.dataset.title = '__search__';
 
       const header = document.createElement('div');
-      header.className = 'tiddler-header';
+      header.className = 'note-header';
       const h2 = document.createElement('h2');
       h2.textContent = 'Search: ' + q;
       header.appendChild(h2);
 
       const toolbar = document.createElement('div');
-      toolbar.className = 'tiddler-toolbar';
+      toolbar.className = 'note-toolbar';
       const closeBtn = document.createElement('button');
       closeBtn.textContent = '✕';
       closeBtn.title = 'Close';
@@ -462,12 +456,12 @@ function doSearch(q) {
       card.appendChild(header);
 
       const body = document.createElement('div');
-      body.className = 'tiddler-body';
+      body.className = 'note-body';
 
       if (results.length === 0) {
         body.innerHTML = '<p style="color:#888">No results.</p>';
       } else {
-        body.innerHTML = '<p style="color:#888;margin-top:0">' + results.length + ' tiddlers</p>';
+        body.innerHTML = '<p style="color:#888;margin-top:0">' + results.length + ' notes</p>';
         results.forEach(r => {
           const div = document.createElement('div');
           div.className = 'search-result';

@@ -11,23 +11,23 @@ The server (TibbitWiki) is the single source of truth.
 
 - Static HTML + JS that the Go server serves for GET /
 - Polls server every 3s for changes
-- Story river: multiple tiddlers open in a scrollable column
-- Recent tiddlers list in sidebar
+- Story river: multiple notes open in a scrollable column
+- Recent notes list in sidebar
 - External edit button (opens neovim via server endpoint)
-- New tiddler + Journal buttons
+- New note + Journal buttons
 - Simple dark theme
 - No TW syncer, no TW plugin system, no TW wikitext parser
 
 ## What we reuse from TibbitWiki
 
-- All REST endpoints (GET/PUT tiddlers, tiddler list, edit-external)
+- All REST endpoints (GET/PUT notes, note list, edit-external)
 - File watcher + RCS versioning
 - .tid file format on disk (server already parses it)
 
 ## File format
 
-.tid on disk (existing parser). Tiddler body is markdown.
-Existing wikitext tiddlers render as-is (raw text) until
+.tid on disk (existing parser). Note body is markdown.
+Existing wikitext notes render as-is (raw text) until
 manually converted — no auto-conversion.
 
 ## Experiments
@@ -48,81 +48,81 @@ static file serving path works.
 - Server serves it for GET /
 - **Pass:** page renders in Safari
 
-### 002 — Fetch tiddler list
-**Goal:** Fetch the skinny tiddler list from the existing
-`GET /recipes/default/tiddlers.json` endpoint.
-- On load, fetch tiddler list, dump titles to the page
-- **Pass:** all tiddler titles visible in browser
+### 002 — Fetch note list
+**Goal:** Fetch the skinny note list from the existing
+`GET /notes` endpoint.
+- On load, fetch note list, dump titles to the page
+- **Pass:** all note titles visible in browser
 
-### 003 — Fetch and display one tiddler
-**Goal:** Fetch a single tiddler (ToDo) by title and display
+### 003 — Fetch and display one note
+**Goal:** Fetch a single note (ToDo) by title and display
 its raw text.
-- Fetch `GET /recipes/default/tiddlers/:title`
+- Fetch `GET /notes/:title`
 - Display title as `<h2>`, body as `<pre>`
-- **Pass:** ToDo tiddler content visible
+- **Pass:** ToDo note content visible
 
 ### 004 — Markdown rendering
-**Goal:** Render tiddler body as markdown instead of raw text.
+**Goal:** Render note body as markdown instead of raw text.
 - Include a small markdown library (marked.js or similar, via CDN
   or inline)
-- Render tiddler body through it
+- Render note body through it
 - **Pass:** markdown formatting visible (bold, lists, headings)
 
 ### 005 — CamelCase WikiWord links
 **Goal:** Auto-detect CamelCase words in rendered markdown and
 make them clickable links.
 - Post-process rendered HTML: regex for CamelCase
-- Clicking a WikiWord fetches and opens that tiddler
-- **Pass:** click a CamelCase word, see that tiddler
+- Clicking a WikiWord fetches and opens that note
+- **Pass:** click a CamelCase word, see that note
 
 ### 006 — Story river
-**Goal:** Multiple tiddlers open in a scrollable column.
-- Clicking a WikiWord opens that tiddler below/above the current one
+**Goal:** Multiple notes open in a scrollable column.
+- Clicking a WikiWord opens that note below/above the current one
   (don't replace it)
-- Each tiddler has a close (×) button
+- Each note has a close (×) button
 - Boot opens ToDo by default
-- **Pass:** open 3 tiddlers, close one, remaining two stay
+- **Pass:** open 3 notes, close one, remaining two stay
 
 ### 007 — Poll loop
 **Goal:** Browser polls server every 3s and updates displayed
-tiddlers when content changes on disk.
-- GET /recipes/default/tiddlers.json every 3s
+notes when content changes on disk.
+- GET /notes every 3s
 - Compare revisions with last known
-- Re-fetch any tiddler whose revision changed
+- Re-fetch any note whose revision changed
 - **Pass:** edit a .tid file on disk, browser shows new content
   within ~3s
 
 ### 008 — External edit button
-**Goal:** Each tiddler has an "edit in neovim" button that
+**Goal:** Each note has an "edit in neovim" button that
 hits the server's edit-external endpoint.
-- Button per tiddler in the toolbar
+- Button per note in the toolbar
 - POST /edit-external/:title on click
 - **Pass:** click button, neovide opens with that file
 
-### 009 — New tiddler + Journal buttons
-**Goal:** Create new tiddlers from the browser.
-- "New" button: prompts for title, PUTs empty tiddler to server
+### 009 — New note + Journal buttons
+**Goal:** Create new notes from the browser.
+- "New" button: prompts for title, PUTs empty note to server
   (server creates .tid file on disk)
 - "Journal" button: auto-generates date-based title
   (e.g., "21st March 2026"), PUTs to server, opens in neovim
 - **Pass:** click Journal, neovide opens new date-titled file
 
 ### 010 — Recent sidebar
-**Goal:** Sidebar showing recently modified tiddlers.
-- Sorted by `modified` field from tiddler list
+**Goal:** Sidebar showing recently modified notes.
+- Sorted by `modified` field from note list
 - Click to open in story river
 - Updates on each poll
-- **Pass:** sidebar shows recent tiddlers, clicking opens them
+- **Pass:** sidebar shows recent notes, clicking opens them
 
 ### 011 — Dark theme
 **Goal:** Clean, simple dark theme.
-- Dark background, light text, styled tiddler cards
-- Tiddler toolbar (close, edit-external) styled
+- Dark background, light text, styled note cards
+- Note toolbar (close, edit-external) styled
 - Sidebar styled
 - **Pass:** looks good, readable, not ugly
 
 ### 012 — Integration test
-**Goal:** Full round-trip: create tiddler, edit in neovim,
+**Goal:** Full round-trip: create note, edit in neovim,
 see changes in browser, navigate via WikiWords.
 - Combines all experiments into the final index.html
 - Test the complete workflow
@@ -145,11 +145,11 @@ Final client: `017-tag-pills/index.html`.
 ### 013 — Server-side markdown rendering
 **Goal:** Move markdown rendering from browser (marked.js) to
 server (goldmark). Browser receives pre-rendered HTML.
-- Add goldmark to GET /recipes/default/tiddlers/:title
+- Add goldmark to GET /notes/:title
 - Return `html` field alongside `text` in JSON response
 - Client uses `t.html` instead of `marked.parse(t.text)`
 - Remove marked.js CDN dependency from index.html
-- **Pass:** tiddler renders identically, no CDN request in network tab
+- **Pass:** note renders identically, no CDN request in network tab
 
 ### 014 — Syntax highlighting
 **Goal:** Fenced code blocks get syntax highlighting via chroma.
@@ -164,8 +164,8 @@ server (goldmark). Browser receives pre-rendered HTML.
 
 Query syntax:
 - `word` — literal substring, case-insensitive (body + title)
-- `!word` — NOT: exclude tiddlers matching this term
-- `#tag` — tiddlers with this tag (`rg '^tags:.*\btag\b'`)
+- `!word` — NOT: exclude notes matching this term
+- `#tag` — notes with this tag (`rg '^tags:.*\btag\b'`)
 - `@title` — title substring (`rg '^title:.*title'`)
 - `/regex/` — raw regex passed to rg
 - `mXregexX` — raw regex, X is any non-alnum delimiter
@@ -194,24 +194,24 @@ Examples:
 - Escape clears search and dismisses the input
 - Debounced fetch to `/search?q=...` as you type
 - Results appear in the sidebar, replacing the recent list
-- Click result opens tiddler in river
+- Click result opens note in river
 - Titles only (snippets are v3)
 - **Pass:** press `/`, type query, see results, click to open
 
 ### 017 — Tag pills
-**Goal:** Display tags on tiddlers, click to filter.
-- Show tag pills below tiddler title in the header
-- Click a tag → searches for all tiddlers with that tag
+**Goal:** Display tags on notes, click to filter.
+- Show tag pills below note title in the header
+- Click a tag → searches for all notes with that tag
   (reuses search endpoint: `GET /search?tag=tagname`)
 - Add `tag` query param to search endpoint (rg for `^tags:.*tagname`)
 - Colored pills (hash tag name to hue)
-- **Pass:** tags visible, click tag shows related tiddlers
+- **Pass:** tags visible, click tag shows related notes
 
 ### 018 — v2 integration test
 **Goal:** Full round-trip with all v2 features.
 - Server-side rendering + syntax highlighting + search + tags
 - Same osascript automation pattern as exp-012
-- **Pass:** create tiddler with code block, see highlighting;
+- **Pass:** create note with code block, see highlighting;
   search for it; navigate via tag
 
 ## Open decisions
@@ -245,10 +245,10 @@ Examples:
 - Skip system tags ($:/ prefix)
 - **Pass:** tags tab shows grouped tibbits, expand works
 
-### 021 — Rename tiddlers → tibbits
+### 021 — Rename notes → tibbits
 **Goal:** Rename throughout codebase — Go types/vars, API routes,
 client JS, docs.
-- API: `/recipes/default/tiddlers/` → `/tibbits/` (etc.)
+- API: `/notes/` → `/tibbits/` (etc.)
 - Go: type names, variable names, comments
 - Client JS: all fetch URLs, display text
 - Keep backward compat? TBD — single user, probably not needed

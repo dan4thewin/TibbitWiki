@@ -18,7 +18,7 @@ func TestLoadValidDirectory(t *testing.T) {
 	writeFile(t, dir, "Bravo.tid", "title: Bravo\n\nBravo body.")
 
 	// Write a non-.tid file that should be ignored.
-	writeFile(t, dir, "notes.txt", "not a tiddler")
+	writeFile(t, dir, "notes.txt", "not a note")
 
 	s := store.New()
 	n, err := Load(dir, s)
@@ -60,9 +60,9 @@ func TestLoadSkipsMalformed(t *testing.T) {
 	}
 }
 
-// TestLoadSystemTiddler verifies that system tiddlers ($__ prefix)
+// TestLoadSystemNote verifies that system notes ($__ prefix)
 // are loaded correctly.
-func TestLoadSystemTiddler(t *testing.T) {
+func TestLoadSystemNote(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "$__config_Test.tid", "title: $:/config/Test\n\nvalue")
 
@@ -80,7 +80,7 @@ func TestLoadSystemTiddler(t *testing.T) {
 }
 
 // TestLoadEmptyDirectory verifies that an empty directory loads
-// zero tiddlers without error.
+// zero notes without error.
 func TestLoadEmptyDirectory(t *testing.T) {
 	dir := t.TempDir()
 	s := store.New()
@@ -104,7 +104,7 @@ func TestLoadBadDirectory(t *testing.T) {
 }
 
 // TestLoadSkipsSubdirectories verifies that subdirectories are not
-// treated as tiddler files.
+// treated as note files.
 func TestLoadSkipsSubdirectories(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "Valid.tid", "title: Valid\n\nBody.")

@@ -1,4 +1,4 @@
-// Package server implements the TiddlyWeb-compatible HTTP API.
+// Package server implements the TibbitWiki HTTP API.
 package server
 
 import (
@@ -19,13 +19,13 @@ import (
 	"github.com/dan4thewin/tibbitwiki/internal/tid"
 )
 
-// Server is the HTTP handler for the TiddlyWeb API.
+// Server is the HTTP handler for the TibbitWiki API.
 type Server struct {
-	store      *store.Store
-	indexHTML  string // path to pre-rendered index.html
-	editor     *editor.Editor
-	tiddlerDir string // directory for writing new .tid files
-	mux        *http.ServeMux
+	store     *store.Store
+	indexHTML string // path to pre-rendered index.html
+	editor    *editor.Editor
+	noteDir   string // directory for writing new .tid files
+	mux       *http.ServeMux
 }
 
 // New creates a Server with the given store, index HTML path, and
@@ -41,19 +41,17 @@ func New(s *store.Store, indexHTML string, ed *editor.Editor) *Server {
 	return srv
 }
 
-// SetTiddlerDir sets the directory for writing new tiddler files.
-func (s *Server) SetTiddlerDir(dir string) {
-	s.tiddlerDir = dir
+// SetNoteDir sets the directory for writing new note files.
+func (s *Server) SetNoteDir(dir string) {
+	s.noteDir = dir
 }
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("/", s.handleIndex)
 	s.mux.HandleFunc("/status", s.handleStatus)
 	s.mux.HandleFunc("/favicon.ico", s.handleFavicon)
-	s.mux.HandleFunc("/recipes/default/tiddlers.json", s.handleSkinnyTiddlers)
-	// These use prefix matching + manual method dispatch.
-	s.mux.HandleFunc("/recipes/default/tiddlers/", s.handleTiddler)
-	s.mux.HandleFunc("/bags/default/tiddlers/", s.handleDeleteTiddler)
+	s.mux.HandleFunc("/notes", s.handleListNotes)
+	s.mux.HandleFunc("/notes/", s.handleNote)
 	s.mux.HandleFunc("/edit-external/", s.handleEditExternal)
 	s.mux.HandleFunc("/theme.css", s.handleThemeCSS)
 	s.mux.HandleFunc("/search", s.handleSearch)
@@ -77,11 +75,11 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("[]"))
 		return
 	}
-	if s.tiddlerDir == "" {
+	if s.noteDir == "" {
 		http.Error(w, "search not available", http.StatusInternalServerError)
 		return
 	}
-	hits, err := search.Search(s.tiddlerDir, q)
+	hits, err := search.Search(s.noteDir, q)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("search error: %v", err), http.StatusInternalServerError)
 		return
@@ -112,7 +110,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(results)
 }
 
-// handleIndex serves the pre-rendered TiddlyWiki HTML.
+// handleIndex serves the index HTML page.
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
@@ -128,17 +126,16 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 // handleStatus returns server status as JSON.
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	status := map[string]interface{}{
-		"username":           "DG",
-		"anonymous":          false,
-		"read_only":          false,
-		"tiddlywiki_version": "5.3.1",
-		"space":              map[string]string{"recipe": "default"},
+		"username":  "DG",
+		"anonymous": false,
+		"read_only": false,
+		"space":     map[string]string{"recipe": "default"},
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status)
 }
 
-// handleFavicon serves the favicon from the $:/favicon.ico tiddler.
+// handleFavicon serves the favicon from the $:/favicon.ico note.
 func (s *Server) handleFavicon(w http.ResponseWriter, r *http.Request) {
 	td := s.store.Get("$:/favicon.ico")
 	if td == nil {
@@ -149,9 +146,9 @@ func (s *Server) handleFavicon(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(td.Text()))
 }
 
-// handleSkinnyTiddlers returns all tiddlers without their text
+// handleListNotes returns all notes without their text
 // field, used by the browser's polling sync.
-func (s *Server) handleSkinnyTiddlers(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
 	all := s.store.All()
 	skinny := make([]map[string]string, 0, len(all))
 	for _, td := range all {
@@ -163,26 +160,28 @@ func (s *Server) handleSkinnyTiddlers(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(skinny)
 }
 
-// handleTiddler dispatches GET and PUT for a single tiddler.
-func (s *Server) handleTiddler(w http.ResponseWriter, r *http.Request) {
-	title := extractTitle(r.URL.Path, "/recipes/default/tiddlers/")
+// handleNote dispatches GET, PUT and DELETE for a single note.
+func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
+	title := extractTitle(r.URL.Path, "/notes/")
 	if title == "" {
-		http.Error(w, "missing tiddler title", http.StatusBadRequest)
+		http.Error(w, "missing note title", http.StatusBadRequest)
 		return
 	}
 
 	switch r.Method {
 	case http.MethodGet:
-		s.getTiddler(w, title)
+		s.getNote(w, title)
 	case http.MethodPut:
-		s.putTiddler(w, r, title)
+		s.putNote(w, r, title)
+	case http.MethodDelete:
+		s.deleteNote(w, title)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-// getTiddler returns a single tiddler as JSON with all fields.
-func (s *Server) getTiddler(w http.ResponseWriter, title string) {
+// getNote returns a single note as JSON with all fields.
+func (s *Server) getNote(w http.ResponseWriter, title string) {
 	td := s.store.Get(title)
 	if td == nil {
 		http.NotFound(w, nil)
@@ -202,8 +201,8 @@ func (s *Server) getTiddler(w http.ResponseWriter, title string) {
 	json.NewEncoder(w).Encode(fields)
 }
 
-// putTiddler saves a tiddler from the request body.
-func (s *Server) putTiddler(w http.ResponseWriter, r *http.Request, title string) {
+// putNote saves a note from the request body.
+func (s *Server) putNote(w http.ResponseWriter, r *http.Request, title string) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "failed to read body", http.StatusBadRequest)
@@ -237,7 +236,7 @@ func (s *Server) putTiddler(w http.ResponseWriter, r *http.Request, title string
 		}
 	}
 
-	// Build tiddler fields as strings.
+	// Build note fields as strings.
 	tFields := make(map[string]string)
 	for k, v := range fields {
 		if k == "revision" {
@@ -247,8 +246,8 @@ func (s *Server) putTiddler(w http.ResponseWriter, r *http.Request, title string
 	}
 	tFields["title"] = title
 
-	// Handle skinny tiddlers — preserve existing text if the
-	// incoming tiddler is marked as skinny.
+	// Handle skinny notes — preserve existing text if the
+	// incoming note is marked as skinny.
 	if tFields["_is_skinny"] != "" {
 		delete(tFields, "_is_skinny")
 		if existing := s.store.Get(title); existing != nil {
@@ -258,17 +257,17 @@ func (s *Server) putTiddler(w http.ResponseWriter, r *http.Request, title string
 		}
 	}
 
-	td := &tid.Tiddler{Fields: tFields}
+	td := &tid.Note{Fields: tFields}
 
 	// Write to disk.
 	filePath := s.store.FilePath(title)
-	if filePath == "" && s.tiddlerDir != "" {
-		// New tiddler — derive filename from title.
-		filePath = filepath.Join(s.tiddlerDir, tid.TitleToFilename(title))
+	if filePath == "" && s.noteDir != "" {
+		// New note — derive filename from title.
+		filePath = filepath.Join(s.noteDir, tid.TitleToFilename(title))
 	}
 	if filePath != "" {
 		if err := os.WriteFile(filePath, tid.Serialize(td), 0644); err != nil {
-			log.Printf("error writing tiddler %q: %v", title, err)
+			log.Printf("error writing note %q: %v", title, err)
 		} else {
 			if err := rcs.Checkin(filePath); err != nil {
 				log.Printf("rcs checkin %q: %v", title, err)
@@ -285,19 +284,8 @@ func (s *Server) putTiddler(w http.ResponseWriter, r *http.Request, title string
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleDeleteTiddler handles DELETE for /bags/default/tiddlers/:title.
-func (s *Server) handleDeleteTiddler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	title := extractTitle(r.URL.Path, "/bags/default/tiddlers/")
-	if title == "" {
-		http.Error(w, "missing tiddler title", http.StatusBadRequest)
-		return
-	}
-
-	// Delete the file on disk.
+// deleteNote removes a note and its file on disk.
+func (s *Server) deleteNote(w http.ResponseWriter, title string) {
 	if filePath := s.store.FilePath(title); filePath != "" {
 		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
 			log.Printf("error deleting file for %q: %v", title, err)
@@ -308,7 +296,7 @@ func (s *Server) handleDeleteTiddler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleEditExternal launches the configured editor for a tiddler.
+// handleEditExternal launches the configured editor for a note.
 func (s *Server) handleEditExternal(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -316,13 +304,13 @@ func (s *Server) handleEditExternal(w http.ResponseWriter, r *http.Request) {
 	}
 	title := extractTitle(r.URL.Path, "/edit-external/")
 	if title == "" {
-		http.Error(w, "missing tiddler title", http.StatusBadRequest)
+		http.Error(w, "missing note title", http.StatusBadRequest)
 		return
 	}
 
 	filePath := s.store.FilePath(title)
 	if filePath == "" {
-		http.Error(w, "no file path for tiddler", http.StatusNotFound)
+		http.Error(w, "no file path for note", http.StatusNotFound)
 		return
 	}
 
@@ -339,7 +327,7 @@ func (s *Server) handleEditExternal(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// extractTitle pulls the tiddler title from a URL path by removing
+// extractTitle pulls the note title from a URL path by removing
 // the given prefix and URL-decoding the remainder.
 func extractTitle(path, prefix string) string {
 	raw := strings.TrimPrefix(path, prefix)
@@ -347,6 +335,5 @@ func extractTitle(path, prefix string) string {
 		return ""
 	}
 	// The title may be URL-encoded in the request path.
-	// Use the raw value — TiddlyWiki titles can contain any chars.
 	return raw
 }

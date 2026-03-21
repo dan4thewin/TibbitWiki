@@ -6,23 +6,23 @@ import (
 	"github.com/dan4thewin/tibbitwiki/internal/tid"
 )
 
-func makeTiddler(title, text string) *tid.Tiddler {
+func makeNote(title, text string) *tid.Note {
 	fields := map[string]string{"title": title}
 	if text != "" {
 		fields["text"] = text
 	}
-	return &tid.Tiddler{Fields: fields}
+	return &tid.Note{Fields: fields}
 }
 
-// TestPutAndGet verifies that a tiddler can be stored and retrieved.
+// TestPutAndGet verifies that a note can be stored and retrieved.
 func TestPutAndGet(t *testing.T) {
 	s := New()
-	td := makeTiddler("Hello", "World")
+	td := makeNote("Hello", "World")
 	s.Put(td)
 
 	got := s.Get("Hello")
 	if got == nil {
-		t.Fatal("expected tiddler, got nil")
+		t.Fatal("expected note, got nil")
 	}
 	if got.Title() != "Hello" {
 		t.Errorf("title = %q, want %q", got.Title(), "Hello")
@@ -44,13 +44,13 @@ func TestGetMissing(t *testing.T) {
 // revision counter.
 func TestPutBumpsRevision(t *testing.T) {
 	s := New()
-	td := makeTiddler("Rev", "v1")
+	td := makeNote("Rev", "v1")
 	s.Put(td)
 	if r := s.Revision("Rev"); r != 1 {
 		t.Errorf("revision = %d, want 1", r)
 	}
-	// Update the same tiddler.
-	td2 := makeTiddler("Rev", "v2")
+	// Update the same note.
+	td2 := makeNote("Rev", "v2")
 	s.Put(td2)
 	if r := s.Revision("Rev"); r != 2 {
 		t.Errorf("revision = %d, want 2", r)
@@ -66,11 +66,11 @@ func TestRevisionMissing(t *testing.T) {
 	}
 }
 
-// TestDelete verifies that a tiddler can be deleted and is no
+// TestDelete verifies that a note can be deleted and is no
 // longer retrievable.
 func TestDelete(t *testing.T) {
 	s := New()
-	s.Put(makeTiddler("Gone", "bye"))
+	s.Put(makeNote("Gone", "bye"))
 	if !s.Delete("Gone") {
 		t.Error("Delete returned false, expected true")
 	}
@@ -82,25 +82,25 @@ func TestDelete(t *testing.T) {
 	}
 }
 
-// TestDeleteMissing verifies that deleting a nonexistent tiddler
+// TestDeleteMissing verifies that deleting a nonexistent note
 // returns false.
 func TestDeleteMissing(t *testing.T) {
 	s := New()
 	if s.Delete("Nope") {
-		t.Error("Delete returned true for nonexistent tiddler")
+		t.Error("Delete returned true for nonexistent note")
 	}
 }
 
-// TestPutWithPath verifies that PutWithPath stores both the tiddler
+// TestPutWithPath verifies that PutWithPath stores both the note
 // and its file path.
 func TestPutWithPath(t *testing.T) {
 	s := New()
-	td := makeTiddler("Pathed", "text")
+	td := makeNote("Pathed", "text")
 	s.PutWithPath(td, "/some/path/Pathed.tid")
 
 	got := s.Get("Pathed")
 	if got == nil {
-		t.Fatal("expected tiddler, got nil")
+		t.Fatal("expected note, got nil")
 	}
 	if p := s.FilePath("Pathed"); p != "/some/path/Pathed.tid" {
 		t.Errorf("path = %q, want %q", p, "/some/path/Pathed.tid")
@@ -114,7 +114,7 @@ func TestPutWithPath(t *testing.T) {
 // bumping the revision.
 func TestSetFilePath(t *testing.T) {
 	s := New()
-	s.Put(makeTiddler("FP", "text"))
+	s.Put(makeNote("FP", "text"))
 	r1 := s.Revision("FP")
 	s.SetFilePath("FP", "/new/path.tid")
 	r2 := s.Revision("FP")
@@ -127,7 +127,7 @@ func TestSetFilePath(t *testing.T) {
 }
 
 // TestFilePathMissing verifies that FilePath returns empty string
-// for a tiddler with no recorded path.
+// for a note with no recorded path.
 func TestFilePathMissing(t *testing.T) {
 	s := New()
 	if p := s.FilePath("Nope"); p != "" {
@@ -139,19 +139,19 @@ func TestFilePathMissing(t *testing.T) {
 // file path mapping.
 func TestDeleteClearsFilePath(t *testing.T) {
 	s := New()
-	s.PutWithPath(makeTiddler("DP", "x"), "/dp.tid")
+	s.PutWithPath(makeNote("DP", "x"), "/dp.tid")
 	s.Delete("DP")
 	if p := s.FilePath("DP"); p != "" {
 		t.Errorf("path after delete = %q, want empty", p)
 	}
 }
 
-// TestAll verifies that All returns all tiddlers sorted by title.
+// TestAll verifies that All returns all notes sorted by title.
 func TestAll(t *testing.T) {
 	s := New()
-	s.Put(makeTiddler("Charlie", ""))
-	s.Put(makeTiddler("Alpha", ""))
-	s.Put(makeTiddler("Bravo", ""))
+	s.Put(makeNote("Charlie", ""))
+	s.Put(makeNote("Alpha", ""))
+	s.Put(makeNote("Bravo", ""))
 
 	all := s.All()
 	if len(all) != 3 {
@@ -176,14 +176,14 @@ func TestAllEmpty(t *testing.T) {
 }
 
 // TestCount verifies that Count returns the correct number of
-// tiddlers.
+// notes.
 func TestCount(t *testing.T) {
 	s := New()
 	if s.Count() != 0 {
 		t.Errorf("empty count = %d, want 0", s.Count())
 	}
-	s.Put(makeTiddler("A", ""))
-	s.Put(makeTiddler("B", ""))
+	s.Put(makeNote("A", ""))
+	s.Put(makeNote("B", ""))
 	if s.Count() != 2 {
 		t.Errorf("count = %d, want 2", s.Count())
 	}

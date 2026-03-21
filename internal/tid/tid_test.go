@@ -5,16 +5,16 @@ import (
 	"testing"
 )
 
-// TestParseValidTiddler verifies that a standard .tid file with
+// TestParseValidNote verifies that a standard .tid file with
 // headers and body is parsed correctly into fields.
-func TestParseValidTiddler(t *testing.T) {
-	input := "created: 20230710174528965\ntags: Journal\ntitle: My Tiddler\n\nBody text here.\nSecond line."
+func TestParseValidNote(t *testing.T) {
+	input := "created: 20230710174528965\ntags: Journal\ntitle: My Note\n\nBody text here.\nSecond line."
 	got, err := Parse([]byte(input))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.Title() != "My Tiddler" {
-		t.Errorf("title = %q, want %q", got.Title(), "My Tiddler")
+	if got.Title() != "My Note" {
+		t.Errorf("title = %q, want %q", got.Title(), "My Note")
 	}
 	if got.Fields["created"] != "20230710174528965" {
 		t.Errorf("created = %q, want %q", got.Fields["created"], "20230710174528965")
@@ -30,13 +30,13 @@ func TestParseValidTiddler(t *testing.T) {
 // TestParseWindowsLineEndings verifies that \r\n line endings are
 // handled correctly in both headers and body.
 func TestParseWindowsLineEndings(t *testing.T) {
-	input := "title: WinTiddler\r\ntags: Test\r\n\r\nBody with CRLF."
+	input := "title: WinNote\r\ntags: Test\r\n\r\nBody with CRLF."
 	got, err := Parse([]byte(input))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.Title() != "WinTiddler" {
-		t.Errorf("title = %q, want %q", got.Title(), "WinTiddler")
+	if got.Title() != "WinNote" {
+		t.Errorf("title = %q, want %q", got.Title(), "WinNote")
 	}
 	if got.Fields["tags"] != "Test" {
 		t.Errorf("tags = %q, want %q", got.Fields["tags"], "Test")
@@ -46,7 +46,7 @@ func TestParseWindowsLineEndings(t *testing.T) {
 	}
 }
 
-// TestParseHeadersOnly verifies that a tiddler with no body text
+// TestParseHeadersOnly verifies that a note with no body text
 // (no blank line separator) parses correctly with no text field.
 func TestParseHeadersOnly(t *testing.T) {
 	input := "title: NoBody\ntags: Empty"
@@ -78,7 +78,7 @@ func TestParseEmptyBody(t *testing.T) {
 	}
 }
 
-// TestParseMissingTitle verifies that a tiddler without a title
+// TestParseMissingTitle verifies that a note without a title
 // field returns an error.
 func TestParseMissingTitle(t *testing.T) {
 	input := "tags: Oops\n\nNo title here."
@@ -107,13 +107,13 @@ func TestParseInvalidHeader(t *testing.T) {
 // TestParseColonInValue verifies that colons within the header value
 // are preserved (only the first ": " splits key from value).
 func TestParseColonInValue(t *testing.T) {
-	input := "title: My: Tiddler: Title\n\nBody."
+	input := "title: My: Note: Title\n\nBody."
 	got, err := Parse([]byte(input))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.Title() != "My: Tiddler: Title" {
-		t.Errorf("title = %q, want %q", got.Title(), "My: Tiddler: Title")
+	if got.Title() != "My: Note: Title" {
+		t.Errorf("title = %q, want %q", got.Title(), "My: Note: Title")
 	}
 }
 
@@ -141,7 +141,7 @@ func TestSerializeRoundTrip(t *testing.T) {
 // TestSerializeHeaderOrder verifies that headers are sorted
 // alphabetically for deterministic output.
 func TestSerializeHeaderOrder(t *testing.T) {
-	td := &Tiddler{Fields: map[string]string{
+	td := &Note{Fields: map[string]string{
 		"title":   "Sorted",
 		"created": "20230101",
 		"tags":    "Test",
@@ -158,10 +158,10 @@ func TestSerializeHeaderOrder(t *testing.T) {
 	}
 }
 
-// TestSerializeNoText verifies serialization of a tiddler with no
+// TestSerializeNoText verifies serialization of a note with no
 // text field — should have headers, blank line, and nothing after.
 func TestSerializeNoText(t *testing.T) {
-	td := &Tiddler{Fields: map[string]string{
+	td := &Note{Fields: map[string]string{
 		"title": "NoText",
 		"tags":  "Empty",
 	}}
@@ -177,7 +177,7 @@ func TestSerializeNoText(t *testing.T) {
 // TestSkinnyFields verifies that SkinnyFields returns all fields
 // except "text".
 func TestSkinnyFields(t *testing.T) {
-	td := &Tiddler{Fields: map[string]string{
+	td := &Note{Fields: map[string]string{
 		"title": "Skinny",
 		"tags":  "Test",
 		"text":  "Should be excluded",
@@ -195,7 +195,7 @@ func TestSkinnyFields(t *testing.T) {
 }
 
 // TestTitleToFilename verifies title-to-filename conversion for
-// regular, system, and path-containing tiddlers.
+// regular, system, and path-containing notes.
 func TestTitleToFilename(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -204,16 +204,16 @@ func TestTitleToFilename(t *testing.T) {
 	}{
 		{
 			name:  "RegularTitle",
-			title: "My Tiddler",
-			want:  "My Tiddler.tid",
+			title: "My Note",
+			want:  "My Note.tid",
 		},
 		{
-			name:  "SystemTiddler",
+			name:  "SystemNote",
 			title: "$:/config/SyncPollingInterval",
 			want:  "$__config_SyncPollingInterval.tid",
 		},
 		{
-			name:  "NestedSystemTiddler",
+			name:  "NestedSystemNote",
 			title: "$:/themes/tiddlywiki/vanilla/options/sidebarlayout",
 			want:  "$__themes_tiddlywiki_vanilla_options_sidebarlayout.tid",
 		},
@@ -248,11 +248,11 @@ func TestFilenameToTitle(t *testing.T) {
 	}{
 		{
 			name:     "RegularFilename",
-			filename: "My Tiddler.tid",
-			want:     "My Tiddler",
+			filename: "My Note.tid",
+			want:     "My Note",
 		},
 		{
-			name:     "SystemTiddler",
+			name:     "SystemNote",
 			filename: "$__config_SyncPollingInterval.tid",
 			want:     "$:/config/SyncPollingInterval",
 		},

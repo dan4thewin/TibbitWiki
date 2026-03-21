@@ -24,13 +24,13 @@ tests. See [TESTING.md](TESTING.md) for details.
 
 ## Wiki directory setup
 
-Create or use an existing tiddlers directory:
+Create or use an existing notes directory:
 
 ```bash
 mkdir -p ~/notes/tiddlers
 ```
 
-Tiddlers are `.tid` files — RFC822-style headers, blank line, body:
+Notes are `.tid` files — RFC822-style headers, blank line, body:
 
 ```
 created: 20230710174528965
@@ -43,9 +43,9 @@ Body text goes here. Uses **markdown** formatting.
 
 ### Filename conventions
 
-| Tiddler title             | Filename                              |
+| Note title             | Filename                              |
 |---------------------------|---------------------------------------|
-| `My Tiddler`              | `My Tiddler.tid`                      |
+| `My Note`              | `My Note.tid`                      |
 | `$:/config/Something`     | `$__config_Something.tid`             |
 | Titles with `/`           | URL-encoded: `%2Fpath%2Fto%2F.tid`    |
 
@@ -84,7 +84,7 @@ poll_interval: 3s
 ```
 
 Open http://127.0.0.1:8080/ in Safari. You'll see the dark-themed
-viewer with your tiddlers in the recent sidebar. Click any tiddler
+viewer with your notes in the recent sidebar. Click any note
 to open it, click "edit" to launch neovide.
 
 ### Neovide wrapper (single-instance editing)
@@ -100,26 +100,26 @@ Use `scripts/neovide-wrapper.sh %s` instead to reuse one window:
 
 ### Editing workflow
 
-1. Click "edit" on a tiddler → neovide opens the `.tid` file
+1. Click "edit" on a note → neovide opens the `.tid` file
    (or reuses the existing window)
 2. Edit in neovide, save
 3. Browser updates within 3 seconds (poll-based)
 4. Click "+ Journal" for a date-titled entry
-5. Click "+ New" for a custom-titled tiddler
+5. Click "+ New" for a custom-titled note
 
 ## RCS version control
 
-Every tiddler write (browser PUT or external file save) creates
+Every note write (browser PUT or external file save) creates
 an RCS archive in an `RCS/` subdirectory:
 
 ```bash
-rlog tiddlers/MyTiddler.tid
-rcsdiff tiddlers/MyTiddler.tid
-co -r1.2 -p tiddlers/MyTiddler.tid
+rlog notes/MyTiddler.tid
+rcsdiff notes/MyTiddler.tid
+co -r1.2 -p notes/MyTiddler.tid
 ```
 
-Archives live in `RCS/` alongside the tiddlers directory, not inside
-it (avoids the file watcher treating them as tiddlers).
+Archives live in `RCS/` alongside the notes directory, not inside
+it (avoids the file watcher treating them as notes).
 
 ## Development tools
 

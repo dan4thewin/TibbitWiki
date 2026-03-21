@@ -1,4 +1,4 @@
-// Package watcher monitors the tiddlers directory for file changes
+// Package watcher monitors the notes directory for file changes
 // and updates the in-memory store.
 package watcher
 
@@ -137,7 +137,7 @@ func (w *Watcher) processPending() {
 }
 
 // reloadFile reads a .tid file from disk and updates the store.
-// If the file no longer exists, the tiddler is removed. Skips the
+// If the file no longer exists, the note is removed. Skips the
 // update if content hasn't changed, preventing feedback loops from
 // browser PUT-backs and server disk writes.
 func (w *Watcher) reloadFile(path string) {

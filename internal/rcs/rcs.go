@@ -1,4 +1,4 @@
-// Package rcs provides automatic RCS version control for tiddler files.
+// Package rcs provides automatic RCS version control for note files.
 // Archives are stored in an RCS/ subdirectory alongside the working
 // files. Keyword expansion is suppressed (rcs -ko) so checkins never
 // modify the working file.

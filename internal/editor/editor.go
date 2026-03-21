@@ -1,4 +1,4 @@
-// Package editor launches external editors for tiddler files.
+// Package editor launches external editors for note files.
 package editor
 
 import (

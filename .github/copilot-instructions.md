@@ -66,7 +66,7 @@ large rewrites.
   matter (especially with mocks).
 
 - **Test naming.** Subtests use descriptive CamelCase names that
-  describe the scenario (e.g. `ParseValidTiddler`,
+  describe the scenario (e.g. `ParseValidNote`,
   `MissingTitleReturnsError`, `WatcherIgnoresTempFiles`).
 
 ## Architecture notes
@@ -78,7 +78,7 @@ large rewrites.
 
 - **Package layout:**
   - `internal/tid` — .tid file parser/serializer
-  - `internal/store` — in-memory tiddler store with revision tracking
+  - `internal/store` — in-memory note store with revision tracking
   - `internal/config` — YAML config + CLI flag parsing
   - `internal/watcher` — fsnotify file watcher with debounce
   - `internal/server` — HTTP server implementing TiddlyWeb API
@@ -87,7 +87,7 @@ large rewrites.
   - `internal/search` — query parser + rg wrapper, returns file matches with matched lines
   - `main.go` — wiring
 
-- **Tiddler files** live on disk as `.tid` files (RFC822-ish headers
+- **Note files** live on disk as `.tid` files (RFC822-ish headers
   + blank line + body). The store is the in-memory source of truth;
   files are read at startup and kept in sync via watcher + API writes.
 

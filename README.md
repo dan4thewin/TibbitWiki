@@ -14,8 +14,8 @@ and RCS version control.
 - **Filesystem watching** — edit `.tid` files in any editor (Neovide,
   vim, etc.) and changes appear in the browser within 3 seconds
 - **External editor launch** — click "edit" in the browser to open
-  a tiddler in your configured editor
-- **RCS version control** — every tiddler save is automatically
+  a note in your configured editor
+- **RCS version control** — every note save is automatically
   checked into RCS; full revision history per file
 - **Simple configuration** — YAML config file with CLI flag overrides
 
@@ -43,18 +43,18 @@ dependencies — markdown rendering and syntax highlighting are handled
 server-side.
 
 **Features:**
-- Story river — multiple tiddlers open in a scrollable column (new
+- Story river — multiple notes open in a scrollable column (new
   content appended at bottom)
 - Server-side markdown rendering via goldmark
 - Syntax highlighting via chroma (OneDark theme, served as `/theme.css`)
 - CamelCase WikiWord auto-linking (blue for existing, red for missing)
 - Full-text search — `/` opens vi-style search bar; results appear as
-  a pseudo-tiddler with clickable titles and matched lines
-- Tag pills — colored pills on tiddlers, click to search by tag
-- Recent tiddlers sidebar (top 20 by modified date)
+  a pseudo-note with clickable titles and matched lines
+- Tag pills — colored pills on notes, click to search by tag
+- Recent notes sidebar (top 20 by modified date)
 - 3-second polling for external changes
-- Edit button per tiddler (launches neovim via server)
-- New tiddler and Journal buttons
+- Edit button per note (launches neovim via server)
+- New note and Journal buttons
 - Dark theme
 
 **Non-features (by design):**
@@ -69,7 +69,7 @@ server-side.
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--config` | | Path to YAML config file |
-| `--wiki-path` | `.` | Path to wiki folder containing `tiddlers/` |
+| `--wiki-path` | `.` | Path to wiki folder containing `notes/` |
 | `--listen` | `127.0.0.1:8080` | Host:port to listen on |
 | `--editor-cmd` | `neovide -- %s` | Editor command (`%s` = file path) |
 | `--index-html` | | Path to HTML file served for GET / |
@@ -92,33 +92,33 @@ CLI flags override YAML values.
 |--------|------|---------|
 | GET | `/` | Serve browser client HTML |
 | GET | `/status` | Server status JSON |
-| GET | `/recipes/default/tiddlers.json` | Skinny tiddler list |
-| GET | `/recipes/default/tiddlers/:title` | Full tiddler JSON |
-| PUT | `/recipes/default/tiddlers/:title` | Create/save tiddler |
-| DELETE | `/bags/default/tiddlers/:title` | Delete tiddler |
+| GET | `/notes` | Skinny note list |
+| GET | `/notes/:title` | Full note JSON |
+| PUT | `/notes/:title` | Create/save note |
+| DELETE | `/notes/:title` | Delete note |
 | GET | `/search?q=...` | Full-text search (JSON) |
 | GET | `/theme.css` | Syntax highlighting CSS |
 | GET | `/favicon.ico` | Favicon |
 | POST | `/edit-external/:title` | Launch external editor |
 
-## Editing tiddlers
+## Editing notes
 
 Two ways:
 
 1. **Direct file edit** — open any `.tid` file in your editor, save,
    the server picks up changes via fsnotify within 3 seconds.
-2. **Browser button** — click "edit" in a tiddler's toolbar to launch
+2. **Browser button** — click "edit" in a note's toolbar to launch
    neovim via the server's edit-external endpoint.
 
 ## RCS version control
 
-Every tiddler write creates/updates an RCS archive in an `RCS/`
-subdirectory alongside the tiddlers. View history with:
+Every note write creates/updates an RCS archive in an `RCS/`
+subdirectory alongside the notes. View history with:
 
 ```bash
-rlog tiddlers/MyTiddler.tid
-rcsdiff tiddlers/MyTiddler.tid
-co -r1.2 -p tiddlers/MyTiddler.tid
+rlog notes/MyTiddler.tid
+rcsdiff notes/MyTiddler.tid
+co -r1.2 -p notes/MyTiddler.tid
 ```
 
 Requires `rcs` (`brew install rcs` on macOS).
@@ -126,7 +126,7 @@ Requires `rcs` (`brew install rcs` on macOS).
 ## Search
 
 Full-text search uses ripgrep (`rg`) as the backend, searching `.tid`
-files in the tiddlers directory. Requires `rg` on PATH (`brew install
+files in the notes directory. Requires `rg` on PATH (`brew install
 ripgrep` on macOS).
 
 **Query syntax:**
@@ -148,7 +148,7 @@ ripgrep` on macOS).
 internal/
   config/   — YAML config + CLI flag parsing
   tid/      — .tid file parser/serializer
-  store/    — in-memory tiddler store with revision tracking
+  store/    — in-memory note store with revision tracking
   watcher/  — fsnotify file watcher with debounce
   server/   — HTTP server implementing TiddlyWeb API
   editor/   — external editor launcher

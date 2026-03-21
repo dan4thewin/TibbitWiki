@@ -40,11 +40,11 @@ func Load(args []string) (Config, error) {
 
 	fs := flag.NewFlagSet("tibbitwiki", flag.ContinueOnError)
 	configFile := fs.String("config", "", "path to YAML config file")
-	wikiPath := fs.String("wiki-path", "", "path to TiddlyWiki folder")
+	wikiPath := fs.String("wiki-path", "", "path to wiki folder")
 	listen := fs.String("listen", "", "host:port to listen on")
 	editorCmd := fs.String("editor-cmd", "", "editor command (%s = file path)")
 	pollInterval := fs.Duration("poll-interval", 0, "browser poll interval")
-	twCorePath := fs.String("tw-core-path", "", "path to TiddlyWiki node module")
+	twCorePath := fs.String("tw-core-path", "", "path to TiddlyWiki core (legacy)")
 	indexHTML := fs.String("index-html", "", "path to pre-rendered index.html")
 
 	if err := fs.Parse(args); err != nil {
@@ -85,7 +85,7 @@ func Load(args []string) (Config, error) {
 	return cfg, nil
 }
 
-// TiddlersPath returns the full path to the tiddlers subdirectory.
-func (c Config) TiddlersPath() string {
+// NotesPath returns the full path to the tiddlers subdirectory.
+func (c Config) NotesPath() string {
 	return c.WikiPath + "/tiddlers"
 }

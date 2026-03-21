@@ -187,9 +187,9 @@ func TestParseQueryOrLiteral(t *testing.T) {
 
 // TestFileToTitle verifies .tid extension is stripped.
 func TestFileToTitle(t *testing.T) {
-	got := FileToTitle("/some/path/MyTiddler.tid")
-	if got != "MyTiddler" {
-		t.Errorf("expected MyTiddler, got %q", got)
+	got := FileToTitle("/some/path/MyNote.tid")
+	if got != "MyNote" {
+		t.Errorf("expected MyNote, got %q", got)
 	}
 }
 

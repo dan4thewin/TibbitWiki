@@ -1,4 +1,4 @@
-// Package loader scans a tiddlers directory and loads all .tid files
+// Package loader scans a notes directory and loads all .tid files
 // into the store at startup.
 package loader
 
@@ -14,11 +14,11 @@ import (
 )
 
 // Load reads all .tid files from dir and populates the store.
-// Returns the number of tiddlers loaded.
+// Returns the number of notes loaded.
 func Load(dir string, s *store.Store) (int, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return 0, fmt.Errorf("reading tiddlers directory: %w", err)
+		return 0, fmt.Errorf("reading notes directory: %w", err)
 	}
 
 	count := 0

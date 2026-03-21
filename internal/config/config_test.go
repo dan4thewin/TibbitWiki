@@ -152,11 +152,11 @@ func TestLoadBadYAML(t *testing.T) {
 	}
 }
 
-// TestTiddlersPath verifies the tiddlers subdirectory path.
-func TestTiddlersPath(t *testing.T) {
+// TestNotesPath verifies the tiddlers subdirectory path.
+func TestNotesPath(t *testing.T) {
 	cfg := Config{WikiPath: "/my/wiki"}
-	if got := cfg.TiddlersPath(); got != "/my/wiki/tiddlers" {
-		t.Errorf("TiddlersPath() = %q, want %q", got, "/my/wiki/tiddlers")
+	if got := cfg.NotesPath(); got != "/my/wiki/tiddlers" {
+		t.Errorf("NotesPath() = %q, want %q", got, "/my/wiki/tiddlers")
 	}
 }
 

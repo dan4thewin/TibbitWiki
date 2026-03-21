@@ -308,7 +308,7 @@ func toSet(files []string) map[string]bool {
 	return s
 }
 
-// FileToTitle extracts a tiddler title from a .tid filename by reading
+// FileToTitle extracts a note title from a .tid filename by reading
 // the title header. This is a fallback — prefer store lookup.
 func FileToTitle(path string) string {
 	base := filepath.Base(path)
