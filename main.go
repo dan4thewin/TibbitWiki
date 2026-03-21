@@ -52,6 +52,7 @@ func main() {
 
 	// Start HTTP server.
 	srv := server.New(s, cfg.IndexHTML, ed)
+	srv.SetTiddlerDir(tiddlersDir)
 	log.Printf("listening on http://%s", cfg.Listen)
 	if err := http.ListenAndServe(cfg.Listen, srv); err != nil {
 		log.Fatalf("server: %v", err)

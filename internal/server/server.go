@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/dan4thewin/go-tiddle/internal/editor"
@@ -17,10 +18,11 @@ import (
 
 // Server is the HTTP handler for the TiddlyWeb API.
 type Server struct {
-	store     *store.Store
-	indexHTML string // path to pre-rendered index.html
-	editor    *editor.Editor
-	mux       *http.ServeMux
+	store       *store.Store
+	indexHTML   string // path to pre-rendered index.html
+	editor     *editor.Editor
+	tiddlerDir string // directory for writing new .tid files
+	mux        *http.ServeMux
 }
 
 // New creates a Server with the given store, index HTML path, and
@@ -34,6 +36,11 @@ func New(s *store.Store, indexHTML string, ed *editor.Editor) *Server {
 	}
 	srv.routes()
 	return srv
+}
+
+// SetTiddlerDir sets the directory for writing new tiddler files.
+func (s *Server) SetTiddlerDir(dir string) {
+	s.tiddlerDir = dir
 }
 
 func (s *Server) routes() {
@@ -186,17 +193,17 @@ func (s *Server) putTiddler(w http.ResponseWriter, r *http.Request, title string
 
 	// Write to disk.
 	filePath := s.store.FilePath(title)
-	if filePath == "" {
-		// New tiddler — need to determine file path.
-		// For now, store without path; the caller should provide
-		// the tiddlers directory via config.
-		s.store.Put(td)
-	} else {
+	if filePath == "" && s.tiddlerDir != "" {
+		// New tiddler — derive filename from title.
+		filePath = filepath.Join(s.tiddlerDir, tid.TitleToFilename(title))
+	}
+	if filePath != "" {
 		if err := os.WriteFile(filePath, tid.Serialize(td), 0644); err != nil {
 			log.Printf("error writing tiddler %q: %v", title, err)
 		}
+		s.store.PutWithPath(td, filePath)
+	} else {
 		s.store.Put(td)
-		s.store.SetFilePath(title, filePath)
 	}
 
 	rev := s.store.Revision(title)

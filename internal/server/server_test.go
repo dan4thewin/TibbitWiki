@@ -204,6 +204,43 @@ func TestPutTiddler(t *testing.T) {
 	}
 }
 
+// TestPutNewTiddlerWritesToDisk verifies that PUT for a new tiddler
+// creates a .tid file on disk when tiddlerDir is configured.
+func TestPutNewTiddlerWritesToDisk(t *testing.T) {
+	srv, s := newTestServer(t)
+	dir := t.TempDir()
+	srv.SetTiddlerDir(dir)
+
+	body := `{"title":"DiskWrite","tags":"Test","text":"Written to disk."}`
+	req := httptest.NewRequest("PUT", "/recipes/default/tiddlers/DiskWrite",
+		strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+
+	// Verify it's in the store with a file path.
+	got := s.Get("DiskWrite")
+	if got == nil {
+		t.Fatal("expected tiddler in store")
+	}
+	fp := s.FilePath("DiskWrite")
+	if fp == "" {
+		t.Fatal("expected file path to be set")
+	}
+
+	// Verify the file exists on disk.
+	data, err := os.ReadFile(fp)
+	if err != nil {
+		t.Fatalf("reading file: %v", err)
+	}
+	if !strings.Contains(string(data), "Written to disk.") {
+		t.Errorf("file content = %q, should contain 'Written to disk.'", string(data))
+	}
+}
+
 // TestPutTiddlerSkinny verifies that a skinny PUT preserves the
 // existing text.
 func TestPutTiddlerSkinny(t *testing.T) {
