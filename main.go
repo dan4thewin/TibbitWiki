@@ -11,8 +11,8 @@ import (
 	"github.com/dan4thewin/tibbitwiki/internal/editor"
 	"github.com/dan4thewin/tibbitwiki/internal/loader"
 	"github.com/dan4thewin/tibbitwiki/internal/server"
-	"github.com/dan4thewin/tibbitwiki/internal/store"
 	"github.com/dan4thewin/tibbitwiki/internal/watcher"
+	"github.com/dan4thewin/tibbitwiki/internal/wiki"
 )
 
 func main() {
@@ -22,18 +22,28 @@ func main() {
 		os.Exit(1)
 	}
 
-	s := store.New()
+	// Set up editor.
+	var ed *editor.Editor
+	if cfg.EditorCmd != "" {
+		ed = editor.New(cfg.EditorCmd)
+		log.Printf("editor: %s", cfg.EditorCmd)
+	}
 
-	// Load notes from disk.
+	// Create wiki with event loop.
 	notesDir := cfg.NotesPath()
-	n, err := loader.Load(notesDir, s)
+	wk := wiki.New("default", notesDir, ed)
+
+	n, err := loader.Load(notesDir, wk.Store())
 	if err != nil {
 		log.Fatalf("loading notes: %v", err)
 	}
 	log.Printf("loaded %d notes from %s", n, notesDir)
 
+	wk.Start()
+	defer wk.Stop()
+
 	// Start file watcher.
-	w, err := watcher.New(notesDir, s)
+	w, err := watcher.New(notesDir, wk.Reload)
 	if err != nil {
 		log.Fatalf("creating watcher: %v", err)
 	}
@@ -43,16 +53,9 @@ func main() {
 	defer w.Stop()
 	log.Printf("watching %s for changes", notesDir)
 
-	// Set up editor.
-	var ed *editor.Editor
-	if cfg.EditorCmd != "" {
-		ed = editor.New(cfg.EditorCmd)
-		log.Printf("editor: %s", cfg.EditorCmd)
-	}
-
 	// Start HTTP server.
-	srv := server.New(s, cfg.IndexHTML, ed)
-	srv.SetNoteDir(notesDir)
+	hub := wiki.NewSingleHub(wk)
+	srv := server.New(hub, cfg.IndexHTML)
 	log.Printf("listening on http://%s", cfg.Listen)
 	if err := http.ListenAndServe(cfg.Listen, srv); err != nil {
 		log.Fatalf("server: %v", err)

@@ -1,28 +1,24 @@
 // Package watcher monitors the notes directory for file changes
-// and updates the in-memory store.
+// and notifies a callback.
 package watcher
 
 import (
 	"log"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/dan4thewin/tibbitwiki/internal/rcs"
-	"github.com/dan4thewin/tibbitwiki/internal/store"
-	"github.com/dan4thewin/tibbitwiki/internal/tid"
 	"github.com/fsnotify/fsnotify"
 )
 
-// Watcher monitors a directory for .md file changes and updates
-// the store accordingly.
+// Watcher monitors a directory for .md file changes and calls
+// onChange with the path of each changed file.
 type Watcher struct {
-	dir     string
-	store   *store.Store
-	watcher *fsnotify.Watcher
-	done    chan struct{}
+	dir      string
+	onChange func(string)
+	watcher  *fsnotify.Watcher
+	done     chan struct{}
 
 	// debounce tracks pending file events to coalesce rapid
 	// successive writes (common with cloud drives).
@@ -36,15 +32,16 @@ type Watcher struct {
 // crashes under -coverprofile on darwin/arm64).
 var newFsWatcher = fsnotify.NewWatcher
 
-// New creates a Watcher for the given directory.
-func New(dir string, s *store.Store) (*Watcher, error) {
+// New creates a Watcher for the given directory. onChange is called
+// with the absolute path of each changed .md file after debouncing.
+func New(dir string, onChange func(string)) (*Watcher, error) {
 	fw, err := newFsWatcher()
 	if err != nil {
 		return nil, err
 	}
 	return &Watcher{
 		dir:      dir,
-		store:    s,
+		onChange: onChange,
 		watcher:  fw,
 		done:     make(chan struct{}),
 		pending:  make(map[string]time.Time),
@@ -137,58 +134,6 @@ func (w *Watcher) processPending() {
 	w.mu.Unlock()
 
 	for path := range ready {
-		w.reloadFile(path)
+		w.onChange(path)
 	}
-}
-
-// reloadFile reads a .md file from disk and updates the store.
-// If the file no longer exists, the note is removed. Skips the
-// update if content hasn't changed, preventing feedback loops from
-// browser PUT-backs and server disk writes.
-func (w *Watcher) reloadFile(path string) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// File was deleted — remove from store.
-			title := tid.FilenameToTitle(filepath.Base(path))
-			w.store.Delete(title)
-			log.Printf("watcher: removed %q", title)
-			return
-		}
-		log.Printf("watcher: error reading %s: %v", path, err)
-		return
-	}
-
-	td, err := tid.Parse(data)
-	if err != nil {
-		log.Printf("watcher: error parsing %s: %v", path, err)
-		return
-	}
-
-	// Skip if content matches what's already in the store.
-	if existing := w.store.Get(td.Title()); existing != nil {
-		if fieldsEqual(existing.Fields, td.Fields) {
-			return
-		}
-	}
-
-	w.store.PutWithPath(td, path)
-	log.Printf("watcher: reloaded %q", td.Title())
-
-	// RCS checkin after external edit.
-	if err := rcs.Checkin(path); err != nil {
-		log.Printf("watcher: rcs checkin %s: %v", path, err)
-	}
-}
-
-func fieldsEqual(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		if b[k] != v {
-			return false
-		}
-	}
-	return true
 }
