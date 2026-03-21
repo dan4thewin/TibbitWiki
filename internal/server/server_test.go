@@ -10,10 +10,10 @@ import (
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
-	"github.com/dan4thewin/go-tiddle/internal/editor"
-	"github.com/dan4thewin/go-tiddle/internal/rcs"
-	"github.com/dan4thewin/go-tiddle/internal/store"
-	"github.com/dan4thewin/go-tiddle/internal/tid"
+	"github.com/dan4thewin/tibbitwiki/internal/editor"
+	"github.com/dan4thewin/tibbitwiki/internal/rcs"
+	"github.com/dan4thewin/tibbitwiki/internal/store"
+	"github.com/dan4thewin/tibbitwiki/internal/tid"
 )
 
 // newTestServer creates a Server with a pre-populated store and a

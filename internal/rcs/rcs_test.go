@@ -17,8 +17,9 @@ func TestCheckinCreatesArchive(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Archive should exist.
-	if !fileExists(path + ",v") {
+	// Archive should exist in the RCS/ subdirectory.
+	archive := filepath.Join(dir, "RCS", "test.tid,v")
+	if !fileExists(archive) {
 		t.Fatal("archive not created")
 	}
 	// Working file should still exist (ci -l keeps it).

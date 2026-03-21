@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	"github.com/dan4thewin/go-tiddle/internal/tid"
+	"github.com/dan4thewin/tibbitwiki/internal/tid"
 )
 
 func makeTiddler(title, text string) *tid.Tiddler {

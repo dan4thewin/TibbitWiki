@@ -7,7 +7,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/dan4thewin/go-tiddle/internal/tid"
+	"github.com/dan4thewin/tibbitwiki/internal/tid"
 )
 
 // Store holds tiddlers in memory with per-tiddler revision counters.

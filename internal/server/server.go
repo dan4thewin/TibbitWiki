@@ -11,10 +11,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dan4thewin/go-tiddle/internal/editor"
-	"github.com/dan4thewin/go-tiddle/internal/rcs"
-	"github.com/dan4thewin/go-tiddle/internal/store"
-	"github.com/dan4thewin/go-tiddle/internal/tid"
+	"github.com/dan4thewin/tibbitwiki/internal/editor"
+	"github.com/dan4thewin/tibbitwiki/internal/rcs"
+	"github.com/dan4thewin/tibbitwiki/internal/render"
+	"github.com/dan4thewin/tibbitwiki/internal/search"
+	"github.com/dan4thewin/tibbitwiki/internal/store"
+	"github.com/dan4thewin/tibbitwiki/internal/tid"
 )
 
 // Server is the HTTP handler for the TiddlyWeb API.
@@ -53,12 +55,61 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/recipes/default/tiddlers/", s.handleTiddler)
 	s.mux.HandleFunc("/bags/default/tiddlers/", s.handleDeleteTiddler)
 	s.mux.HandleFunc("/edit-external/", s.handleEditExternal)
+	s.mux.HandleFunc("/theme.css", s.handleThemeCSS)
+	s.mux.HandleFunc("/search", s.handleSearch)
 }
 
 // ServeHTTP delegates to the internal mux.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	s.mux.ServeHTTP(w, r)
+}
+
+func (s *Server) handleThemeCSS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/css")
+	w.Write([]byte(render.ThemeCSS()))
+}
+
+func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+		return
+	}
+	if s.tiddlerDir == "" {
+		http.Error(w, "search not available", http.StatusInternalServerError)
+		return
+	}
+	hits, err := search.Search(s.tiddlerDir, q)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("search error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	type result struct {
+		Title   string   `json:"title"`
+		Matches []string `json:"matches"`
+	}
+	var results []result
+	for _, h := range hits {
+		name := search.FileToTitle(h.File)
+		td := s.store.Get(name)
+		if td != nil {
+			matches := h.Lines
+			if matches == nil {
+				matches = []string{}
+			}
+			results = append(results, result{
+				Title:   td.Fields["title"],
+				Matches: matches,
+			})
+		}
+	}
+	if results == nil {
+		results = []result{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
 }
 
 // handleIndex serves the pre-rendered TiddlyWiki HTML.
@@ -142,6 +193,9 @@ func (s *Server) getTiddler(w http.ResponseWriter, title string) {
 		fields[k] = v
 	}
 	fields["revision"] = fmt.Sprintf("%d", s.store.Revision(title))
+	if text := fields["text"]; text != "" {
+		fields["html"] = render.ToHTML(text)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	etag := fmt.Sprintf("\"default/%s/%d:\"", title, s.store.Revision(title))
 	w.Header().Set("ETag", etag)

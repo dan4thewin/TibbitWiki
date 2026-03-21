@@ -38,7 +38,7 @@ func Defaults() Config {
 func Load(args []string) (Config, error) {
 	cfg := Defaults()
 
-	fs := flag.NewFlagSet("go-tiddle", flag.ContinueOnError)
+	fs := flag.NewFlagSet("tibbitwiki", flag.ContinueOnError)
 	configFile := fs.String("config", "", "path to YAML config file")
 	wikiPath := fs.String("wiki-path", "", "path to TiddlyWiki folder")
 	listen := fs.String("listen", "", "host:port to listen on")

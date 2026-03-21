@@ -1,4 +1,4 @@
-# Testing go-tiddle
+# Testing TibbitWiki
 
 Tactics for testing the browser client and server integration
 without manual interaction.
@@ -7,7 +7,7 @@ without manual interaction.
 
 - Safari with **Developer → Allow JavaScript from Apple Events**
   enabled (see [SETUP.md](SETUP.md))
-- go-tiddle built: `go build -o /tmp/go-tiddle .`
+- TibbitWiki built: `go build -o /tmp/TibbitWiki .`
 
 ## Unit tests
 
@@ -117,7 +117,7 @@ echo "MOCK_EDIT_$(date +%s)" >> "$1"
 Use it with `--editor-cmd` to test the edit round-trip:
 
 ```bash
-./go-tiddle --editor-cmd "$PWD/exp/mock-editor.sh %s" ...
+./TibbitWiki --editor-cmd "$PWD/exp/mock-editor.sh %s" ...
 ```
 
 The marker lets you verify the full chain:
@@ -133,10 +133,10 @@ The marker lets you verify the full chain:
 
 ```bash
 # Build
-go build -o /tmp/go-tiddle .
+go build -o /tmp/TibbitWiki .
 
 # Start server (use a persistent shell — not background &)
-/tmp/go-tiddle \
+/tmp/TibbitWiki \
   --wiki-path ~/notes \
   --index-html exp/012-integration/index.html \
   --editor-cmd "$PWD/exp/mock-editor.sh %s" \
@@ -215,7 +215,7 @@ end tell'
 testing an experiment's index.html:
 
 ```bash
-cd ~/src/go-tiddle/exp
+cd ~/src/TibbitWiki/exp
 ./test.sh 012-integration
 ```
 

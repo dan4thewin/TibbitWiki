@@ -1,11 +1,11 @@
-# go-tiddle Browser Client — Experiment Plan
+# TibbitWiki Browser Client — Experiment Plan
 
 ## Goal
 
 Replace TiddlyWiki's complex browser client with a minimal,
 server-authoritative viewer. Markdown rendering with CamelCase
 WikiWord auto-linking. View-only in browser; editing via neovim.
-The server (go-tiddle) is the single source of truth.
+The server (TibbitWiki) is the single source of truth.
 
 ## What we're building
 
@@ -18,7 +18,7 @@ The server (go-tiddle) is the single source of truth.
 - Simple dark theme
 - No TW syncer, no TW plugin system, no TW wikitext parser
 
-## What we reuse from go-tiddle
+## What we reuse from TibbitWiki
 
 - All REST endpoints (GET/PUT tiddlers, tiddler list, edit-external)
 - File watcher + RCS versioning
@@ -33,18 +33,18 @@ manually converted — no auto-conversion.
 ## Experiments
 
 Each experiment is a self-contained directory under
-`~/src/go-tiddle/exp/` with:
+`~/src/TibbitWiki/exp/` with:
 - `index.html` — the experiment's HTML file
 - `README.md` — what it proves, how to test
 - A test procedure (manual or scripted via render-url.sh)
 
-The go-tiddle server serves `exp/NNN/index.html` for testing.
+The TibbitWiki server serves `exp/NNN/index.html` for testing.
 Each experiment builds on the last by copying and extending.
 
 ### 001 — Bare boot
-**Goal:** Serve a minimal HTML page from go-tiddle. Prove the
+**Goal:** Serve a minimal HTML page from TibbitWiki. Prove the
 static file serving path works.
-- Hardcoded HTML: `<h1>go-tiddle</h1>`
+- Hardcoded HTML: `<h1>TibbitWiki</h1>`
 - Server serves it for GET /
 - **Pass:** page renders in Safari
 
@@ -140,15 +140,84 @@ see changes in browser, navigate via WikiWords.
 
 ## Status
 
-All 12 experiments complete. Final client is `012-integration/index.html`.
+v1 complete (experiments 001–012). Final client: `012-integration/index.html`.
 
-**Bug fix discovered during experiments:** `editor.go` split command
-on spaces, breaking file paths with spaces in the title. Fixed by
-splitting the template first, then substituting `%s` in the matching
-part.
+## v2 Experiments
+
+### 013 — Server-side markdown rendering
+**Goal:** Move markdown rendering from browser (marked.js) to
+server (goldmark). Browser receives pre-rendered HTML.
+- Add goldmark to GET /recipes/default/tiddlers/:title
+- Return `html` field alongside `text` in JSON response
+- Client uses `t.html` instead of `marked.parse(t.text)`
+- Remove marked.js CDN dependency from index.html
+- **Pass:** tiddler renders identically, no CDN request in network tab
+
+### 014 — Syntax highlighting
+**Goal:** Fenced code blocks get syntax highlighting via chroma.
+- Add chroma as goldmark extension (goldmark-highlighting)
+- Use OneDark theme (or nearest chroma equivalent)
+- Generate theme CSS, serve as `/theme.css`
+- Test with bash and go code blocks
+- **Pass:** code blocks have colored syntax in browser
+
+### 015 — Search endpoint
+**Goal:** `GET /search?q=...` wraps ripgrep to search .tid files.
+
+Query syntax:
+- `word` — literal substring, case-insensitive (body + title)
+- `!word` — NOT: exclude tiddlers matching this term
+- `#tag` — tiddlers with this tag (`rg '^tags:.*\btag\b'`)
+- `@title` — title substring (`rg '^title:.*title'`)
+- `/regex/` — raw regex passed to rg
+- `mXregexX` — raw regex, X is any non-alnum delimiter
+  (perl-style, e.g. `m;exit|status;` or `m|foo/bar|`)
+- `word1 word2` — implicit AND (intersect result sets)
+- `word1|word2` — OR (single rg call with `-e`)
+
+Implementation: parse tokens, classify (literal/regex/tag/title/not),
+run rg calls, do set intersection/difference in Go, map filenames
+back to titles. ~40 lines.
+
+Examples:
+```
+/search?q=systemd debugging      → AND two literals
+/search?q=#linux @journal        → tagged "linux" AND title has "journal"
+/search?q=!#old systemd          → has "systemd", NOT tagged "old"
+/search?q=/^created: 20260321/   → regex: created today
+```
+
+- **Pass:** `curl /search?q=#linux` returns matching titles
+
+### 016 — Search UI
+**Goal:** Keyboard-driven search in the browser.
+- `/` focuses a search input at the bottom of the viewport
+  (vi-style command line)
+- Escape clears search and dismisses the input
+- Debounced fetch to `/search?q=...` as you type
+- Results appear in the sidebar, replacing the recent list
+- Click result opens tiddler in river
+- Titles only (snippets are v3)
+- **Pass:** press `/`, type query, see results, click to open
+
+### 017 — Tag pills
+**Goal:** Display tags on tiddlers, click to filter.
+- Show tag pills below tiddler title in the header
+- Click a tag → searches for all tiddlers with that tag
+  (reuses search endpoint: `GET /search?tag=tagname`)
+- Add `tag` query param to search endpoint (rg for `^tags:.*tagname`)
+- Colored pills (hash tag name to hue)
+- **Pass:** tags visible, click tag shows related tiddlers
+
+### 018 — v2 integration test
+**Goal:** Full round-trip with all v2 features.
+- Server-side rendering + syntax highlighting + search + tags
+- Same osascript automation pattern as exp-012
+- **Pass:** create tiddler with code block, see highlighting;
+  search for it; navigate via tag
 
 ## Open decisions
 
-- Markdown library: marked.js via CDN (picked during exp 004).
 - Where to put the final index.html: embed in Go binary as
   `embed.FS`, or keep as separate static file?
+- chroma theme: OneDark if available, else monokai/dracula

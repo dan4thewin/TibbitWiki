@@ -1,4 +1,4 @@
-# go-tiddle: Start From Scratch Guide
+# TibbitWiki: Start From Scratch Guide
 
 Everything needed to recreate this setup from zero.
 
@@ -51,15 +51,15 @@ Body text goes here. Uses **markdown** formatting.
 
 Spaces in titles are literal spaces in filenames.
 
-## go-tiddle setup
+## TibbitWiki setup
 
 ### Clone and build
 
 ```bash
 cd ~/src
-git clone git@github.com:dan4thewin/go-tiddle.git
-cd go-tiddle
-go build -o go-tiddle .
+git clone git@github.com:dan4thewin/tibbitwiki.git
+cd tibbitwiki
+go build -o tibbitwiki .
 ```
 
 ### Configuration
@@ -76,7 +76,7 @@ poll_interval: 3s
 ### Run the server
 
 ```bash
-./go-tiddle \
+./tibbitwiki \
   --wiki-path ~/notes \
   --listen 127.0.0.1:8080 \
   --index-html exp/012-integration/index.html \

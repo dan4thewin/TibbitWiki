@@ -1,5 +1,5 @@
 # Binaries
-go-tiddle
+tibbitwiki
 *.exe
 
 # Test/coverage

@@ -35,7 +35,7 @@ complexity:V:
 check:V: lint test complexity
 
 clean:V:
-	rm -f go-tiddle cover.out coverage.html
+	rm -f tibbitwiki cover.out coverage.html
 
 install-hooks:V:
 	ln -sf ../../scripts/pre-commit .git/hooks/pre-commit

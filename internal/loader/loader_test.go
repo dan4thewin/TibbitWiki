@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dan4thewin/go-tiddle/internal/store"
+	"github.com/dan4thewin/tibbitwiki/internal/store"
 )
 
 // TestLoadValidDirectory verifies that Load reads all .tid files

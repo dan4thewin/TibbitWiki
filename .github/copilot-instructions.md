@@ -71,10 +71,10 @@ large rewrites.
 
 ## Architecture notes
 
-- **go-tiddle** is a Go replacement for TiddlyWiki's Node.js server.
-  It reimplements the TiddlyWeb REST API (7 endpoints), adds
-  fsnotify-based file watching, and can launch an external editor
-  (Neovide) from browser or terminal.
+- **TibbitWiki** is a Go replacement for TiddlyWiki's Node.js server.
+  It reimplements the TiddlyWeb REST API (7 endpoints plus search
+  and theme.css), adds fsnotify-based file watching, and can launch
+  an external editor (Neovide) from browser or terminal.
 
 - **Package layout:**
   - `internal/tid` — .tid file parser/serializer
@@ -83,6 +83,8 @@ large rewrites.
   - `internal/watcher` — fsnotify file watcher with debounce
   - `internal/server` — HTTP server implementing TiddlyWeb API
   - `internal/editor` — external editor launcher
+  - `internal/render` — goldmark + chroma markdown→HTML rendering, ThemeCSS()
+  - `internal/search` — query parser + rg wrapper, returns file matches with matched lines
   - `main.go` — wiring
 
 - **Tiddler files** live on disk as `.tid` files (RFC822-ish headers
@@ -94,3 +96,12 @@ large rewrites.
 - **Config over constants.** Configurable values (listen address,
   wiki path, editor command, poll interval) live in a YAML config
   file with CLI flag overrides.
+
+- **Rendering:** Server-side markdown→HTML via goldmark with syntax
+  highlighting via chroma (OneDark theme). The browser receives
+  pre-rendered HTML; no CDN dependencies.
+
+- **Search:** Full-text search delegates to ripgrep (`rg`), which
+  must be on PATH. Query syntax supports literal words, `!` NOT,
+  `#tag`, `@title`, `/regex/`, `m/regex/` custom-delimited regex,
+  `a|b` OR, and space for AND (set intersection).

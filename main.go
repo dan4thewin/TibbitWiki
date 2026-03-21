@@ -1,4 +1,4 @@
-// go-tiddle: a Go replacement for TiddlyWiki's Node.js server.
+// TibbitWiki: a Go replacement for TiddlyWiki's Node.js server.
 package main
 
 import (
@@ -7,12 +7,12 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/dan4thewin/go-tiddle/internal/config"
-	"github.com/dan4thewin/go-tiddle/internal/editor"
-	"github.com/dan4thewin/go-tiddle/internal/loader"
-	"github.com/dan4thewin/go-tiddle/internal/server"
-	"github.com/dan4thewin/go-tiddle/internal/store"
-	"github.com/dan4thewin/go-tiddle/internal/watcher"
+	"github.com/dan4thewin/tibbitwiki/internal/config"
+	"github.com/dan4thewin/tibbitwiki/internal/editor"
+	"github.com/dan4thewin/tibbitwiki/internal/loader"
+	"github.com/dan4thewin/tibbitwiki/internal/server"
+	"github.com/dan4thewin/tibbitwiki/internal/store"
+	"github.com/dan4thewin/tibbitwiki/internal/watcher"
 )
 
 func main() {

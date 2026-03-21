@@ -1,4 +1,4 @@
-# go-tiddle
+# TibbitWiki
 
 A Go replacement for TiddlyWiki's Node.js server, with a minimal
 browser client, filesystem watching, and Neovide integration.
@@ -23,7 +23,7 @@ browser is view-only, polling every 3 seconds.
 
 ```
 ┌──────────────┐     HTTP (3s poll)     ┌──────────────┐
-│   Browser    │ ◄──────────────────► │  go-tiddle   │
+│   Browser    │ ◄──────────────────► │  TibbitWiki   │
 │  (view-only) │                        │   server     │
 └──────────────┘                        └──────┬───────┘
                                                │
@@ -46,8 +46,10 @@ internal/
   editor/   — external editor launcher
   rcs/      — RCS version control integration
   loader/   — startup file loader
+  render/   — goldmark + chroma markdown→HTML rendering, ThemeCSS()
+  search/   — query parser + rg wrapper, returns file matches with matched lines
 main.go     — wiring
-exp/        — browser client experiments (001–012)
+exp/        — browser client experiments (001–018)
 ```
 
 ### REST API (TiddlyWeb compatible)
@@ -60,18 +62,25 @@ exp/        — browser client experiments (001–012)
 | `GET`    | `/recipes/default/tiddlers/:title`  | Full tiddler as JSON       |
 | `PUT`    | `/recipes/default/tiddlers/:title`  | Create/save tiddler        |
 | `DELETE` | `/bags/default/tiddlers/:title`     | Delete tiddler             |
+| `GET`    | `/search?q=...`                     | Full-text search (JSON)    |
+| `GET`    | `/theme.css`                        | Syntax highlighting CSS    |
 | `GET`    | `/favicon.ico`                      | Favicon                    |
 | `POST`   | `/edit-external/:title`             | Launch external editor     |
 
 ### Browser client
 
-Single HTML file (`exp/012-integration/index.html`, ~6KB).
+Single HTML file (`exp/017-tag-pills/index.html`).
 No build step, no TiddlyWiki code.
 
-- **Rendering:** marked.js (CDN) for markdown, regex for CamelCase
+- **Rendering:** server-side markdown via goldmark, syntax highlighting
+  via chroma (OneDark theme served as `/theme.css`), regex for CamelCase
   WikiWord auto-linking
-- **Navigation:** story river (multiple open tiddlers), recent
+- **Navigation:** story river (new content appended at bottom), recent
   sidebar (top 20 by modified date), WikiWord click-to-open
+- **Search:** `/` opens vi-style search bar; results appear as a
+  pseudo-tiddler in the story river with clickable titles and matched
+  lines. Rich query syntax (literal, NOT, tag, title, regex, OR, AND).
+- **Tag pills:** colored pills on tiddlers, click to search by tag
 - **Polling:** GET tiddlers.json every 3s, compare revisions, re-fetch
   changed tiddlers
 - **Actions:** edit (POST /edit-external), close, + New (prompt for
@@ -106,7 +115,10 @@ keeps file paths with spaces as a single argument.
   authoritative" assumption is fundamentally incompatible with
   server-as-truth external editing
 - **Markdown over wikitext** — simpler, widely known, no lock-in
-  (could use Hugo later)
+- **Server-side rendering** — goldmark + chroma on the server avoids
+  CDN dependencies and keeps the browser client minimal
+- **rg for search** — ripgrep searches .tid files directly on disk;
+  no in-memory index to build or maintain, handles large wikis easily
 - **Polling over push** — 3s interval is trivial load for single
   user; no WebSocket complexity
 - **View-only browser** — all editing via neovim; no textarea,
@@ -117,8 +129,6 @@ keeps file paths with spaces as a single argument.
 ## Out of scope (v2)
 
 - Browser-based editing (textarea)
-- Search
-- Tag navigation / tag pills
 - Hugo integration
 - Auto-conversion of wikitext to markdown
 - Multiple simultaneous browser clients

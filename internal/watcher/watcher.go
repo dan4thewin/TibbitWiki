@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dan4thewin/go-tiddle/internal/rcs"
-	"github.com/dan4thewin/go-tiddle/internal/store"
-	"github.com/dan4thewin/go-tiddle/internal/tid"
+	"github.com/dan4thewin/tibbitwiki/internal/rcs"
+	"github.com/dan4thewin/tibbitwiki/internal/store"
+	"github.com/dan4thewin/tibbitwiki/internal/tid"
 	"github.com/fsnotify/fsnotify"
 )
 

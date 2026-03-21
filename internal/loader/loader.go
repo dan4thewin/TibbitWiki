@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dan4thewin/go-tiddle/internal/store"
-	"github.com/dan4thewin/go-tiddle/internal/tid"
+	"github.com/dan4thewin/tibbitwiki/internal/store"
+	"github.com/dan4thewin/tibbitwiki/internal/tid"
 )
 
 // Load reads all .tid files from dir and populates the store.

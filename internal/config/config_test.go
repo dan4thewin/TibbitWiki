@@ -56,7 +56,7 @@ listen: "127.0.0.1:3000"
 editor_cmd: "code %s"
 poll_interval: 2s
 `
-	f, err := os.CreateTemp("", "go-tiddle-*.yaml")
+	f, err := os.CreateTemp("", "tibbitwiki-*.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestLoadFlagsOverrideYAML(t *testing.T) {
 	content := `wiki_path: /yaml/path
 listen: "127.0.0.1:3000"
 `
-	f, err := os.CreateTemp("", "go-tiddle-*.yaml")
+	f, err := os.CreateTemp("", "tibbitwiki-*.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestLoadMissingConfigFile(t *testing.T) {
 
 // TestLoadBadYAML verifies that malformed YAML returns an error.
 func TestLoadBadYAML(t *testing.T) {
-	f, err := os.CreateTemp("", "go-tiddle-*.yaml")
+	f, err := os.CreateTemp("", "tibbitwiki-*.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
