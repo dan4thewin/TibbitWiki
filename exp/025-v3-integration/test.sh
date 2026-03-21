@@ -53,7 +53,7 @@ mkdir -p "$TIDDLER_DIR"
 # --- Create test notes ---
 
 # A regular note with a list (for line-edit testing).
-cat > "$TIDDLER_DIR/TestList.tid" <<'EOF'
+cat > "$TIDDLER_DIR/TestList.md" <<'EOF'
 title: TestList
 tags: IntTest
 modified: 20260321000010000
@@ -66,7 +66,7 @@ Shopping list:
 EOF
 
 # A journal note (date title + Journal tag).
-cat > "$TIDDLER_DIR/21st_March_2026.tid" <<'EOF'
+cat > "$TIDDLER_DIR/21st_March_2026.md" <<'EOF'
 title: 21st March 2026
 tags: Journal
 modified: 20260321000020000
@@ -75,7 +75,7 @@ Today's journal entry.
 EOF
 
 # Another journal (date-format title, no tag).
-cat > "$TIDDLER_DIR/20th_March_2026.tid" <<'EOF'
+cat > "$TIDDLER_DIR/20th_March_2026.md" <<'EOF'
 title: 20th March 2026
 modified: 20260320000000000
 
@@ -83,7 +83,7 @@ Yesterday's entry.
 EOF
 
 # Note with tags for tag-tab testing.
-cat > "$TIDDLER_DIR/TaggedNote.tid" <<'EOF'
+cat > "$TIDDLER_DIR/TaggedNote.md" <<'EOF'
 title: TaggedNote
 tags: IntTest Docs
 modified: 20260321000005000
@@ -92,7 +92,7 @@ A note with two tags.
 EOF
 
 # A second Docs-tagged note.
-cat > "$TIDDLER_DIR/DocTwo.tid" <<'EOF'
+cat > "$TIDDLER_DIR/DocTwo.md" <<'EOF'
 title: DocTwo
 tags: Docs
 modified: 20260321000003000
@@ -101,7 +101,7 @@ Another docs note.
 EOF
 
 # Default landing page.
-cat > "$TIDDLER_DIR/ToDo.tid" <<'EOF'
+cat > "$TIDDLER_DIR/ToDo.md" <<'EOF'
 title: ToDo
 modified: 20260321000030000
 
@@ -182,7 +182,7 @@ sleep 1
 LI_COUNT=$(js 'document.querySelectorAll("[data-title=TestList] li[data-line]").length')
 assert "3 annotated list items" "3" "$LI_COUNT"
 FIRST_LINE=$(js 'document.querySelector("[data-title=TestList] li[data-line]").dataset.line')
-# "- apples" is line 7 of the .tid body (line 3 of markdown body)
+# "- apples" is line 7 of the .md body (line 3 of markdown body)
 # Actually: body starts after headers, goldmark sees "Shopping list:\n\n- apples\n..."
 # "Shopping list:" is body line 1, blank is line 2, "- apples" is line 3
 assert "first li data-line" "3" "$FIRST_LINE"
@@ -200,7 +200,7 @@ EDIT_RESP=$(curl -s -X POST http://127.0.0.1:8090/line-edit/TestList \
   -d '{"line":3,"text":"- APPLES"}')
 assert_contains "edit response has APPLES" "APPLES" "$EDIT_RESP"
 # Verify file on disk changed.
-FILE_CONTENT=$(cat "$TIDDLER_DIR/TestList.tid")
+FILE_CONTENT=$(cat "$TIDDLER_DIR/TestList.md")
 assert_contains "file has APPLES" "APPLES" "$FILE_CONTENT"
 
 echo ""
@@ -209,10 +209,10 @@ INSERT_RESP=$(curl -s -X POST http://127.0.0.1:8090/line-edit/TestList \
   -H 'Content-Type: application/json' \
   -d '{"line":3,"text":"- avocados","insert":true}')
 assert_contains "insert response has avocados" "avocados" "$INSERT_RESP"
-FILE_CONTENT2=$(cat "$TIDDLER_DIR/TestList.tid")
+FILE_CONTENT2=$(cat "$TIDDLER_DIR/TestList.md")
 assert_contains "file has avocados" "avocados" "$FILE_CONTENT2"
 # Verify order: APPLES then avocados then bananas.
-ORDER=$(grep -n 'APPLES\|avocados\|bananas' "$TIDDLER_DIR/TestList.tid" | sort -t: -k1 -n | cut -d: -f2 | tr '\n' '|')
+ORDER=$(grep -n 'APPLES\|avocados\|bananas' "$TIDDLER_DIR/TestList.md" | sort -t: -k1 -n | cut -d: -f2 | tr '\n' '|')
 assert "correct order" "- APPLES|- avocados|- bananas|" "$ORDER"
 
 echo ""

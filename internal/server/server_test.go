@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/dan4thewin/tibbitwiki/internal/editor"
@@ -33,7 +34,7 @@ func newTestServer(t *testing.T) (*Server, *store.Store) {
 		"text":    "Hello world.",
 		"created": "20230101000000000",
 	}}
-	s.PutWithPath(td, "/fake/Hello.tid")
+	s.PutWithPath(td, "/fake/Hello.md")
 
 	// Create a temp index.html.
 	f, err := os.CreateTemp("", "index-*.html")
@@ -172,6 +173,40 @@ func TestGetNote(t *testing.T) {
 	}
 }
 
+// TestGetNoteRenderPlain verifies GET with ?render=plain uses the
+// plain renderer (no chroma, per-line data-line on code blocks).
+func TestGetNoteRenderPlain(t *testing.T) {
+	srv, s := newTestServer(t)
+	// Add a note with a fenced code block.
+	td := &tid.Note{Fields: map[string]string{
+		"title": "CodeNote",
+		"text":  "```go\nfmt.Println()\n```",
+		"type":  "text/markdown",
+	}}
+	s.PutWithPath(td, "/fake/CodeNote.md")
+
+	req := httptest.NewRequest("GET", "/notes/CodeNote?render=plain", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	html := body["html"]
+	// Plain render should have data-line on code lines.
+	if !strings.Contains(html, "data-line=") {
+		t.Errorf("expected data-line in plain render, got:\n%s", html)
+	}
+	// Plain render should NOT have chroma classes.
+	if strings.Contains(html, "chroma") {
+		t.Errorf("plain render should not have chroma, got:\n%s", html)
+	}
+}
+
 // TestGetNoteNotFound verifies GET for a missing note returns 404.
 func TestGetNoteNotFound(t *testing.T) {
 	srv, _ := newTestServer(t)
@@ -182,6 +217,192 @@ func TestGetNoteNotFound(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusNotFound)
 	}
+}
+
+// TestTouchAtimeUpdatesAccessTime verifies touchAtime changes atime
+// without changing mtime.
+func TestTouchAtimeUpdatesAccessTime(t *testing.T) {
+	f, err := os.CreateTemp("", "atime-*.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString("title: Test\n\nhi")
+	f.Close()
+	defer os.Remove(f.Name())
+
+	// Set mtime to the past.
+	past := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	os.Chtimes(f.Name(), past, past)
+
+	touchAtime(f.Name())
+
+	info, _ := os.Stat(f.Name())
+	// mtime should still be in the past.
+	if info.ModTime().After(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("touchAtime changed mtime: %v", info.ModTime())
+	}
+}
+
+// TestTouchAtimeNonExistent verifies touchAtime silently ignores
+// a missing file.
+func TestTouchAtimeNonExistent(t *testing.T) {
+	touchAtime("/no/such/file.md") // should not panic
+}
+
+// TestFileAtimeNonExistent verifies fileAtime returns "" for
+// a missing file.
+func TestFileAtimeNonExistent(t *testing.T) {
+	got := fileAtime("/no/such/file.md")
+	if got != "" {
+		t.Errorf("fileAtime = %q, want empty", got)
+	}
+}
+
+// TestFileAtimeReturnsISO verifies fileAtime returns an ISO 8601
+// timestamp for an existing file.
+func TestFileAtimeReturnsISO(t *testing.T) {
+	f, err := os.CreateTemp("", "atime-*.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	defer os.Remove(f.Name())
+	got := fileAtime(f.Name())
+	if got == "" {
+		t.Fatal("fileAtime returned empty for existing file")
+	}
+	if _, err := time.Parse(time.RFC3339, got); err != nil {
+		t.Errorf("fileAtime not valid ISO 8601: %q", got)
+	}
+}
+
+// TestAtimeFunction verifies the platform atime extraction.
+func TestAtimeFunction(t *testing.T) {
+	f, err := os.CreateTemp("", "atime-*.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	defer os.Remove(f.Name())
+	info, _ := os.Stat(f.Name())
+	at := atime(info)
+	if at.IsZero() {
+		t.Error("atime returned zero time")
+	}
+}
+
+// TestGetNoteTouchesAtime verifies that GET /notes/:title updates
+// the file's access time.
+func TestGetNoteTouchesAtime(t *testing.T) {
+	srv, s := newTestServer(t)
+	// Create a real temp file for the note.
+	f, err := os.CreateTemp("", "note-*.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString("title: RealNote\n\nhello")
+	f.Close()
+	defer os.Remove(f.Name())
+
+	td := &tid.Note{Fields: map[string]string{
+		"title": "RealNote",
+		"text":  "hello",
+	}}
+	s.PutWithPath(td, f.Name())
+
+	// Set atime to the past.
+	past := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	info, _ := os.Stat(f.Name())
+	os.Chtimes(f.Name(), past, info.ModTime())
+
+	req := httptest.NewRequest("GET", "/notes/RealNote", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	at := fileAtime(f.Name())
+	atTime, _ := time.Parse(time.RFC3339, at)
+	if atTime.Before(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("atime not updated: %v", at)
+	}
+}
+
+// TestPutNoteStampsModified verifies PUT stamps modified and created.
+func TestPutNoteStampsModified(t *testing.T) {
+	srv, s := newTestServer(t)
+	body := `{"title":"Stamped","text":"hi"}`
+	req := httptest.NewRequest("PUT", "/notes/Stamped",
+		strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", w.Code)
+	}
+	td := s.Get("Stamped")
+	if td == nil {
+		t.Fatal("note not found after PUT")
+	}
+	mod := td.Fields["modified"]
+	if mod == "" {
+		t.Error("modified not stamped")
+	}
+	if _, err := time.Parse(time.RFC3339, mod); err != nil {
+		t.Errorf("modified not ISO 8601: %q", mod)
+	}
+	created := td.Fields["created"]
+	if created == "" {
+		t.Error("created not stamped on new note")
+	}
+
+	// Second PUT should not overwrite created.
+	body2 := `{"title":"Stamped","text":"updated"}`
+	req2 := httptest.NewRequest("PUT", "/notes/Stamped",
+		strings.NewReader(body2))
+	w2 := httptest.NewRecorder()
+	srv.ServeHTTP(w2, req2)
+	td2 := s.Get("Stamped")
+	if td2.Fields["created"] != created {
+		t.Errorf("created changed: %q -> %q", created, td2.Fields["created"])
+	}
+}
+
+// TestListNotesIncludesAccessed verifies the listing includes
+// accessed time from file atime.
+func TestListNotesIncludesAccessed(t *testing.T) {
+	srv, s := newTestServer(t)
+	// Create a real temp file.
+	f, err := os.CreateTemp("", "list-*.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString("title: Listed\n\nhi")
+	f.Close()
+	defer os.Remove(f.Name())
+
+	td := &tid.Note{Fields: map[string]string{
+		"title": "Listed",
+		"text":  "hi",
+	}}
+	s.PutWithPath(td, f.Name())
+
+	req := httptest.NewRequest("GET", "/notes", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	var body []map[string]string
+	json.Unmarshal(w.Body.Bytes(), &body)
+	for _, n := range body {
+		if n["title"] == "Listed" {
+			if n["accessed"] == "" {
+				t.Error("listing should include accessed for notes with real files")
+			}
+			return
+		}
+	}
+	t.Error("Listed note not found in listing")
 }
 
 // TestPutNote verifies PUT creates/updates a note and returns
@@ -212,7 +433,7 @@ func TestPutNote(t *testing.T) {
 }
 
 // TestPutNewNoteWritesToDisk verifies that PUT for a new note
-// creates a .tid file on disk when noteDir is configured.
+// creates a .md file on disk when noteDir is configured.
 func TestPutNewNoteWritesToDisk(t *testing.T) {
 	srv, s := newTestServer(t)
 	dir := t.TempDir()
@@ -377,7 +598,7 @@ func TestHandleEditExternalNoPath(t *testing.T) {
 // when no editor is configured.
 func TestHandleEditExternalNoEditor(t *testing.T) {
 	s := store.New()
-	s.PutWithPath(&tid.Note{Fields: map[string]string{"title": "X"}}, "/x.tid")
+	s.PutWithPath(&tid.Note{Fields: map[string]string{"title": "X"}}, "/x.md")
 	srv := New(s, "", nil)
 
 	req := httptest.NewRequest("POST", "/edit-external/X", nil)
@@ -489,12 +710,12 @@ func TestPutNoteNoFilePathNoDir(t *testing.T) {
 }
 
 // TestDeleteNoteWithDiskFile verifies that DELETE removes the
-// backing .tid file from disk when the note has a file path.
+// backing .md file from disk when the note has a file path.
 func TestDeleteNoteWithDiskFile(t *testing.T) {
 	srv, s := newTestServer(t)
 
 	// Create a real temp file to act as the note's backing file.
-	f, err := os.CreateTemp("", "note-*.tid")
+	f, err := os.CreateTemp("", "note-*.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,7 +752,7 @@ func TestHandleEditExternalEditorFails(t *testing.T) {
 	s.PutWithPath(&tid.Note{Fields: map[string]string{
 		"title": "FailEdit",
 		"text":  "Body.",
-	}}, "/tmp/FailEdit.tid")
+	}}, "/tmp/FailEdit.md")
 
 	// Use a nonexistent binary so exec.Command.Start returns an error.
 	ed := editor.New("/nonexistent/editor %s")
@@ -613,7 +834,7 @@ func TestDeleteNoteRemoveError(t *testing.T) {
 	s.PutWithPath(&tid.Note{Fields: map[string]string{
 		"title": "RemErr",
 		"text":  "Body.",
-	}}, "/fake/RemErr.tid")
+	}}, "/fake/RemErr.md")
 
 	req := httptest.NewRequest("DELETE", "/notes/RemErr", nil)
 	w := httptest.NewRecorder()
@@ -631,9 +852,9 @@ func TestDeleteNoteRemoveError(t *testing.T) {
 func TestLineEditReplace(t *testing.T) {
 	srv, s := newTestServer(t)
 
-	// Create a .tid file with headers and a list body.
+	// Create a .md file with headers and a list body.
 	dir := t.TempDir()
-	path := dir + "/LineTest.tid"
+	path := dir + "/LineTest.md"
 	content := "title: LineTest\n\n- alpha\n- beta\n- gamma\n"
 	os.WriteFile(path, []byte(content), 0644)
 	td, _ := tid.Parse([]byte(content))
@@ -672,7 +893,7 @@ func TestLineEditInsert(t *testing.T) {
 	srv, s := newTestServer(t)
 
 	dir := t.TempDir()
-	path := dir + "/InsTest.tid"
+	path := dir + "/InsTest.md"
 	content := "title: InsTest\n\n- first\n- second\n"
 	os.WriteFile(path, []byte(content), 0644)
 	td, _ := tid.Parse([]byte(content))
@@ -703,7 +924,7 @@ func TestLineEditBadLine(t *testing.T) {
 	srv, s := newTestServer(t)
 
 	dir := t.TempDir()
-	path := dir + "/Short.tid"
+	path := dir + "/Short.md"
 	content := "title: Short\n\n- one\n"
 	os.WriteFile(path, []byte(content), 0644)
 	td, _ := tid.Parse([]byte(content))
@@ -795,9 +1016,9 @@ func TestHandleSearchWithResults(t *testing.T) {
 	dir := t.TempDir()
 	srv.SetNoteDir(dir)
 
-	// Create a .tid file with searchable content.
+	// Create a .md file with searchable content.
 	content := "title: SearchMe\ntags: Test\n\nUnique searchable content here.\n"
-	path := dir + "/SearchMe.tid"
+	path := dir + "/SearchMe.md"
 	os.WriteFile(path, []byte(content), 0644)
 	td, _ := tid.Parse([]byte(content))
 	s.PutWithPath(td, path)
@@ -876,7 +1097,7 @@ func TestPutNoteRevisionConflict(t *testing.T) {
 	s.PutWithPath(&tid.Note{Fields: map[string]string{
 		"title": "Conflict",
 		"text":  "Original.",
-	}}, dir+"/Conflict.tid")
+	}}, dir+"/Conflict.md")
 
 	// PUT again to bump revision to 2.
 	body1 := `{"title":"Conflict","text":"Updated."}`
@@ -910,7 +1131,7 @@ func TestPutNoteRevisionFieldSkipped(t *testing.T) {
 	s.PutWithPath(&tid.Note{Fields: map[string]string{
 		"title": "RevSkip",
 		"text":  "Original.",
-	}}, dir+"/RevSkip.tid")
+	}}, dir+"/RevSkip.md")
 
 	// PUT with revision that matches current (1) — should succeed
 	// and the "revision" key should NOT appear in the stored fields.
@@ -942,7 +1163,7 @@ func TestPutNoteRevisionNonString(t *testing.T) {
 	s.PutWithPath(&tid.Note{Fields: map[string]string{
 		"title": "RevNum",
 		"text":  "Original.",
-	}}, dir+"/RevNum.tid")
+	}}, dir+"/RevNum.md")
 
 	// PUT with revision as a number (JSON parses as float64).
 	body := `{"title":"RevNum","text":"New.","revision":999}`
@@ -1008,7 +1229,7 @@ func TestLineEditReadFileError(t *testing.T) {
 	s.PutWithPath(&tid.Note{Fields: map[string]string{
 		"title": "ReadErr",
 		"text":  "Body.",
-	}}, "/fake/ReadErr.tid")
+	}}, "/fake/ReadErr.md")
 
 	body := `{"line":1,"text":"x"}`
 	req := httptest.NewRequest("POST", "/line-edit/ReadErr", strings.NewReader(body))
@@ -1030,7 +1251,7 @@ func TestLineEditWriteFileError(t *testing.T) {
 	srv, s := newTestServer(t)
 
 	dir := t.TempDir()
-	path := dir + "/WrErr.tid"
+	path := dir + "/WrErr.md"
 	content := "title: WrErr\n\n- alpha\n- beta\n"
 	os.WriteFile(path, []byte(content), 0644)
 	td, _ := tid.Parse([]byte(content))
@@ -1069,7 +1290,7 @@ func TestLineEditRCSCheckinError(t *testing.T) {
 	srv, s := newTestServer(t)
 
 	dir := t.TempDir()
-	path := dir + "/RcsErr.tid"
+	path := dir + "/RcsErr.md"
 	content := "title: RcsErr\n\n- alpha\n- beta\n"
 	os.WriteFile(path, []byte(content), 0644)
 	td, _ := tid.Parse([]byte(content))
@@ -1094,7 +1315,7 @@ func TestLineEditParseError(t *testing.T) {
 	srv, s := newTestServer(t)
 
 	dir := t.TempDir()
-	path := dir + "/ParseErr.tid"
+	path := dir + "/ParseErr.md"
 	content := "title: ParseErr\n\n- alpha\n- beta\n"
 	os.WriteFile(path, []byte(content), 0644)
 	td, _ := tid.Parse([]byte(content))
@@ -1150,7 +1371,7 @@ func TestHandleSearchNilLines(t *testing.T) {
 	// all matched lines are header lines, filtered out by rg).
 	patches := gomonkey.ApplyFunc(search.Search, func(dir, query string) ([]search.Result, error) {
 		return []search.Result{
-			{File: "Hello.tid", Lines: nil},
+			{File: "Hello.md", Lines: nil},
 		}, nil
 	})
 	defer patches.Reset()
@@ -1191,7 +1412,7 @@ func TestHandleSearchNilResults(t *testing.T) {
 	// Return a hit for a file whose title isn't in the store.
 	patches := gomonkey.ApplyFunc(search.Search, func(dir, query string) ([]search.Result, error) {
 		return []search.Result{
-			{File: "NoSuchNote.tid", Lines: []string{"some line"}},
+			{File: "NoSuchNote.md", Lines: []string{"some line"}},
 		}, nil
 	})
 	defer patches.Reset()

@@ -10,7 +10,7 @@ import (
 // a ,v archive file and keeps the working copy.
 func TestCheckinCreatesArchive(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "test.tid")
+	path := filepath.Join(dir, "test.md")
 	os.WriteFile(path, []byte("title: Test\n\nBody."), 0644)
 
 	if err := Checkin(path); err != nil {
@@ -18,7 +18,7 @@ func TestCheckinCreatesArchive(t *testing.T) {
 	}
 
 	// Archive should exist in the RCS/ subdirectory.
-	archive := filepath.Join(dir, "RCS", "test.tid,v")
+	archive := filepath.Join(dir, "RCS", "test.md,v")
 	if !fileExists(archive) {
 		t.Fatal("archive not created")
 	}
@@ -32,7 +32,7 @@ func TestCheckinCreatesArchive(t *testing.T) {
 // existing archive succeeds.
 func TestCheckinSubsequent(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "test.tid")
+	path := filepath.Join(dir, "test.md")
 	os.WriteFile(path, []byte("title: Test\n\nVersion 1."), 0644)
 
 	if err := Checkin(path); err != nil {
@@ -54,7 +54,7 @@ func TestCheckinSubsequent(t *testing.T) {
 // TestCheckinBadPath verifies that Checkin returns an error for a
 // nonexistent file.
 func TestCheckinBadPath(t *testing.T) {
-	err := Checkin("/no/such/file.tid")
+	err := Checkin("/no/such/file.md")
 	if err == nil {
 		t.Fatal("expected error for bad path, got nil")
 	}

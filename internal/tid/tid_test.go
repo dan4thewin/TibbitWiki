@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestParseValidNote verifies that a standard .tid file with
+// TestParseValidNote verifies that a standard .md file with
 // headers and body is parsed correctly into fields.
 func TestParseValidNote(t *testing.T) {
 	input := "created: 20230710174528965\ntags: Journal\ntitle: My Note\n\nBody text here.\nSecond line."
@@ -205,27 +205,27 @@ func TestTitleToFilename(t *testing.T) {
 		{
 			name:  "RegularTitle",
 			title: "My Note",
-			want:  "My Note.tid",
+			want:  "My Note.md",
 		},
 		{
 			name:  "SystemNote",
 			title: "$:/config/SyncPollingInterval",
-			want:  "$__config_SyncPollingInterval.tid",
+			want:  "$__config_SyncPollingInterval.md",
 		},
 		{
 			name:  "NestedSystemNote",
 			title: "$:/themes/tiddlywiki/vanilla/options/sidebarlayout",
-			want:  "$__themes_tiddlywiki_vanilla_options_sidebarlayout.tid",
+			want:  "$__themes_tiddlywiki_vanilla_options_sidebarlayout.md",
 		},
 		{
 			name:  "TitleWithSlash",
 			title: "/Users/dg/notes/Test",
-			want:  "%2FUsers%2Fdg%2Fnotes%2FTest.tid",
+			want:  "%2FUsers%2Fdg%2Fnotes%2FTest.md",
 		},
 		{
 			name:  "SimpleTitleNoSlash",
 			title: "Hello World",
-			want:  "Hello World.tid",
+			want:  "Hello World.md",
 		},
 	}
 	for _, tc := range tests {
@@ -248,22 +248,22 @@ func TestFilenameToTitle(t *testing.T) {
 	}{
 		{
 			name:     "RegularFilename",
-			filename: "My Note.tid",
+			filename: "My Note.md",
 			want:     "My Note",
 		},
 		{
 			name:     "SystemNote",
-			filename: "$__config_SyncPollingInterval.tid",
+			filename: "$__config_SyncPollingInterval.md",
 			want:     "$:/config/SyncPollingInterval",
 		},
 		{
 			name:     "URLEncodedFilename",
-			filename: "%2FUsers%2Fdg%2Fnotes%2FTest.tid",
+			filename: "%2FUsers%2Fdg%2Fnotes%2FTest.md",
 			want:     "/Users/dg/notes/Test",
 		},
 		{
 			name:     "WithDirectoryPath",
-			filename: "/some/path/$__palette.tid",
+			filename: "/some/path/$__palette.md",
 			want:     "$:/palette",
 		},
 	}
@@ -313,9 +313,9 @@ func TestParseTrailingCRInHeaders(t *testing.T) {
 // TestFilenameToTitleBadPercent verifies that a filename with invalid
 // percent-encoding falls through to return the raw name unchanged.
 func TestFilenameToTitleBadPercent(t *testing.T) {
-	got := FilenameToTitle("bad%zztitle.tid")
+	got := FilenameToTitle("bad%zztitle.md")
 	if got != "bad%zztitle" {
-		t.Errorf("FilenameToTitle(%q) = %q, want %q", "bad%zztitle.tid", got, "bad%zztitle")
+		t.Errorf("FilenameToTitle(%q) = %q, want %q", "bad%zztitle.md", got, "bad%zztitle")
 	}
 }
 

@@ -96,14 +96,14 @@ func TestDeleteMissing(t *testing.T) {
 func TestPutWithPath(t *testing.T) {
 	s := New()
 	td := makeNote("Pathed", "text")
-	s.PutWithPath(td, "/some/path/Pathed.tid")
+	s.PutWithPath(td, "/some/path/Pathed.md")
 
 	got := s.Get("Pathed")
 	if got == nil {
 		t.Fatal("expected note, got nil")
 	}
-	if p := s.FilePath("Pathed"); p != "/some/path/Pathed.tid" {
-		t.Errorf("path = %q, want %q", p, "/some/path/Pathed.tid")
+	if p := s.FilePath("Pathed"); p != "/some/path/Pathed.md" {
+		t.Errorf("path = %q, want %q", p, "/some/path/Pathed.md")
 	}
 	if r := s.Revision("Pathed"); r != 1 {
 		t.Errorf("revision = %d, want 1", r)
@@ -116,13 +116,13 @@ func TestSetFilePath(t *testing.T) {
 	s := New()
 	s.Put(makeNote("FP", "text"))
 	r1 := s.Revision("FP")
-	s.SetFilePath("FP", "/new/path.tid")
+	s.SetFilePath("FP", "/new/path.md")
 	r2 := s.Revision("FP")
 	if r2 != r1 {
 		t.Errorf("SetFilePath bumped revision: %d → %d", r1, r2)
 	}
-	if p := s.FilePath("FP"); p != "/new/path.tid" {
-		t.Errorf("path = %q, want %q", p, "/new/path.tid")
+	if p := s.FilePath("FP"); p != "/new/path.md" {
+		t.Errorf("path = %q, want %q", p, "/new/path.md")
 	}
 }
 
@@ -139,7 +139,7 @@ func TestFilePathMissing(t *testing.T) {
 // file path mapping.
 func TestDeleteClearsFilePath(t *testing.T) {
 	s := New()
-	s.PutWithPath(makeNote("DP", "x"), "/dp.tid")
+	s.PutWithPath(makeNote("DP", "x"), "/dp.md")
 	s.Delete("DP")
 	if p := s.FilePath("DP"); p != "" {
 		t.Errorf("path after delete = %q, want empty", p)

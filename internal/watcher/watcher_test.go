@@ -14,16 +14,16 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// TestReloadFileAddsToStore verifies that reloadFile reads a .tid
+// TestReloadFileAddsToStore verifies that reloadFile reads a .md
 // file and adds it to the store.
 func TestReloadFileAddsToStore(t *testing.T) {
 	dir := t.TempDir()
 	s := store.New()
 	w := &Watcher{dir: dir, store: s}
 
-	// Write a .tid file.
+	// Write a .md file.
 	content := "title: TestReload\ntags: Watcher\n\nBody here."
-	path := filepath.Join(dir, "TestReload.tid")
+	path := filepath.Join(dir, "TestReload.md")
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -51,25 +51,25 @@ func TestReloadFileDeletedRemovesFromStore(t *testing.T) {
 
 	// Pre-populate the store.
 	td := &tid.Note{Fields: map[string]string{"title": "Gone"}}
-	s.PutWithPath(td, filepath.Join(dir, "Gone.tid"))
+	s.PutWithPath(td, filepath.Join(dir, "Gone.md"))
 
 	// Reload a path that doesn't exist on disk.
-	w.reloadFile(filepath.Join(dir, "Gone.tid"))
+	w.reloadFile(filepath.Join(dir, "Gone.md"))
 
 	if got := s.Get("Gone"); got != nil {
 		t.Errorf("expected nil after delete, got %+v", got)
 	}
 }
 
-// TestReloadFileBadParse verifies that a malformed .tid file is
+// TestReloadFileBadParse verifies that a malformed .md file is
 // skipped without crashing.
 func TestReloadFileBadParse(t *testing.T) {
 	dir := t.TempDir()
 	s := store.New()
 	w := &Watcher{dir: dir, store: s}
 
-	// Write a malformed .tid file (no title).
-	path := filepath.Join(dir, "Bad.tid")
+	// Write a malformed .md file (no title).
+	path := filepath.Join(dir, "Bad.md")
 	if err := os.WriteFile(path, []byte("tags: Oops\n\nNo title."), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestReloadFileBadParse(t *testing.T) {
 }
 
 // TestHandleEventFiltersTid verifies that handleEvent ignores
-// non-.tid files and temp files.
+// non-.md files and temp files.
 func TestHandleEventFiltersTid(t *testing.T) {
 	w := &Watcher{
 		pending: make(map[string]time.Time),
@@ -92,23 +92,23 @@ func TestHandleEventFiltersTid(t *testing.T) {
 	// Non-tid file — should be ignored.
 	w.handleEvent(fakeEvent("notes.txt"))
 	if len(w.pending) != 0 {
-		t.Error("non-.tid file should be ignored")
+		t.Error("non-.md file should be ignored")
 	}
 
 	// Temp file starting with dot — should be ignored.
-	w.handleEvent(fakeEvent(".tmp_file.tid"))
+	w.handleEvent(fakeEvent(".tmp_file.md"))
 	if len(w.pending) != 0 {
-		t.Error("dotfile .tid should be ignored")
+		t.Error("dotfile .md should be ignored")
 	}
 
 	// Temp file starting with tilde — should be ignored.
-	w.handleEvent(fakeEvent("~backup.tid"))
+	w.handleEvent(fakeEvent("~backup.md"))
 	if len(w.pending) != 0 {
-		t.Error("tilde .tid should be ignored")
+		t.Error("tilde .md should be ignored")
 	}
 
-	// Valid .tid file — should be queued.
-	w.handleEvent(fakeEvent("/path/to/My Note.tid"))
+	// Valid .md file — should be queued.
+	w.handleEvent(fakeEvent("/path/to/My Note.md"))
 	if len(w.pending) != 1 {
 		t.Errorf("pending count = %d, want 1", len(w.pending))
 	}
@@ -120,9 +120,9 @@ func TestProcessPendingDebounce(t *testing.T) {
 	dir := t.TempDir()
 	s := store.New()
 
-	// Write a .tid file so reloadFile can read it.
+	// Write a .md file so reloadFile can read it.
 	content := "title: Debounced\n\nBody."
-	path := filepath.Join(dir, "Debounced.tid")
+	path := filepath.Join(dir, "Debounced.md")
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +247,7 @@ func TestStartBadDirectory(t *testing.T) {
 }
 
 // TestFullLifecycleWriteFile is an integration test that verifies
-// the complete pipeline: fsnotify detects a new .tid file, the
+// the complete pipeline: fsnotify detects a new .md file, the
 // event flows through eventLoop → handleEvent → debounceLoop →
 // processPending → reloadFile → store.
 func TestFullLifecycleWriteFile(t *testing.T) {
@@ -266,9 +266,9 @@ func TestFullLifecycleWriteFile(t *testing.T) {
 	}
 	t.Cleanup(func() { w.Stop() })
 
-	// Write a .tid file into the watched directory.
+	// Write a .md file into the watched directory.
 	content := "title: LiveTest\n\nLive body."
-	path := filepath.Join(dir, "LiveTest.tid")
+	path := filepath.Join(dir, "LiveTest.md")
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatalf("WriteFile error: %v", err)
 	}
@@ -291,14 +291,14 @@ func TestFullLifecycleWriteFile(t *testing.T) {
 }
 
 // TestFullLifecycleDeleteFile is an integration test that verifies
-// deleting a watched .tid file removes the note from the store.
+// deleting a watched .md file removes the note from the store.
 func TestFullLifecycleDeleteFile(t *testing.T) {
 	dir := t.TempDir()
 	s := store.New()
 
-	// Create a .tid file BEFORE starting the watcher.
+	// Create a .md file BEFORE starting the watcher.
 	content := "title: DeleteMe\n\nGoing away."
-	path := filepath.Join(dir, "DeleteMe.tid")
+	path := filepath.Join(dir, "DeleteMe.md")
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatalf("WriteFile error: %v", err)
 	}
@@ -401,7 +401,7 @@ func TestReloadFileWithRCSSuccess(t *testing.T) {
 	defer patches.Reset()
 
 	content := "title: RCSTest\n\nBody."
-	path := filepath.Join(dir, "RCSTest.tid")
+	path := filepath.Join(dir, "RCSTest.md")
 	os.WriteFile(path, []byte(content), 0644)
 	w.reloadFile(path)
 
@@ -427,7 +427,7 @@ func TestReloadFileRCSCheckinError(t *testing.T) {
 	defer patches.Reset()
 
 	content := "title: RCSFail\n\nBody."
-	path := filepath.Join(dir, "RCSFail.tid")
+	path := filepath.Join(dir, "RCSFail.md")
 	os.WriteFile(path, []byte(content), 0644)
 	w.reloadFile(path)
 
@@ -493,7 +493,7 @@ func TestReloadFileReadError(t *testing.T) {
 	s := store.New()
 	w := &Watcher{dir: dir, store: s}
 
-	path := filepath.Join(dir, "Unreadable.tid")
+	path := filepath.Join(dir, "Unreadable.md")
 	os.WriteFile(path, []byte("title: Unreadable\n\nBody."), 0644)
 	// Remove read permissions.
 	os.Chmod(path, 0000)
@@ -520,7 +520,7 @@ func TestReloadFileSkipsUnchanged(t *testing.T) {
 	defer patches.Reset()
 
 	content := "title: SameContent\ntags: Test\n\nBody text."
-	path := filepath.Join(dir, "SameContent.tid")
+	path := filepath.Join(dir, "SameContent.md")
 	os.WriteFile(path, []byte(content), 0644)
 
 	w := &Watcher{dir: dir, store: s}

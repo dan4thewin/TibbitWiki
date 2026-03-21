@@ -42,7 +42,7 @@ TIDDLER_DIR="$TMPDIR/tiddlers"
 mkdir -p "$TIDDLER_DIR"
 
 # Create test tiddlers.
-cat > "$TIDDLER_DIR/TestMarkdown.tid" <<'EOF'
+cat > "$TIDDLER_DIR/TestMarkdown.md" <<'EOF'
 title: TestMarkdown
 tags: IntTest Docs
 modified: 20260321000000000
@@ -58,7 +58,7 @@ def hello():
 ```
 EOF
 
-cat > "$TIDDLER_DIR/TestSearch.tid" <<'EOF'
+cat > "$TIDDLER_DIR/TestSearch.md" <<'EOF'
 title: TestSearch
 tags: IntTest
 modified: 20260321000001000
@@ -67,7 +67,7 @@ type: text/vnd.tiddlywiki
 This tiddler mentions gopher and golang.
 EOF
 
-cat > "$TIDDLER_DIR/NoMatch.tid" <<'EOF'
+cat > "$TIDDLER_DIR/NoMatch.md" <<'EOF'
 title: NoMatch
 tags: Other
 modified: 20260321000002000
@@ -76,7 +76,7 @@ type: text/vnd.tiddlywiki
 Nothing interesting here.
 EOF
 
-cat > "$TIDDLER_DIR/ToDo.tid" <<'EOF'
+cat > "$TIDDLER_DIR/ToDo.md" <<'EOF'
 title: ToDo
 modified: 20260321000003000
 type: text/vnd.tiddlywiki

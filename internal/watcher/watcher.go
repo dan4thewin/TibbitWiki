@@ -16,7 +16,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// Watcher monitors a directory for .tid file changes and updates
+// Watcher monitors a directory for .md file changes and updates
 // the store accordingly.
 type Watcher struct {
 	dir     string
@@ -91,8 +91,8 @@ func (w *Watcher) eventLoop() {
 
 // handleEvent filters and queues a single fsnotify event.
 func (w *Watcher) handleEvent(event fsnotify.Event) {
-	// Only care about .tid files.
-	if !strings.HasSuffix(event.Name, ".tid") {
+	// Only care about .md files.
+	if !strings.HasSuffix(event.Name, ".md") {
 		return
 	}
 	// Ignore cloud drive temp files.
@@ -141,7 +141,7 @@ func (w *Watcher) processPending() {
 	}
 }
 
-// reloadFile reads a .tid file from disk and updates the store.
+// reloadFile reads a .md file from disk and updates the store.
 // If the file no longer exists, the note is removed. Skips the
 // update if content hasn't changed, preventing feedback loops from
 // browser PUT-backs and server disk writes.

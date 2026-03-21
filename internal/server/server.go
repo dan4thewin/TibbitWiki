@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/dan4thewin/tibbitwiki/internal/editor"
 	"github.com/dan4thewin/tibbitwiki/internal/rcs"
@@ -19,12 +20,37 @@ import (
 	"github.com/dan4thewin/tibbitwiki/internal/tid"
 )
 
+// nowFunc returns the current time. Overridden in tests.
+var nowFunc = time.Now
+
+func isoNow() string {
+	return nowFunc().UTC().Format(time.RFC3339)
+}
+
+// touchAtime updates only the access time, preserving mtime.
+func touchAtime(path string) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	_ = os.Chtimes(path, nowFunc(), info.ModTime())
+}
+
+// fileAtime returns the access time of a file as ISO 8601, or "".
+func fileAtime(path string) string {
+	info, err := os.Stat(path)
+	if err != nil {
+		return ""
+	}
+	return atime(info).UTC().Format(time.RFC3339)
+}
+
 // Server is the HTTP handler for the TibbitWiki API.
 type Server struct {
 	store     *store.Store
 	indexHTML string // path to pre-rendered index.html
 	editor    *editor.Editor
-	noteDir   string // directory for writing new .tid files
+	noteDir   string // directory for writing new .md files
 	mux       *http.ServeMux
 }
 
@@ -155,6 +181,11 @@ func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
 	for _, td := range all {
 		fields := td.SkinnyFields()
 		fields["revision"] = fmt.Sprintf("%d", s.store.Revision(td.Title()))
+		if fp := s.store.FilePath(td.Title()); fp != "" {
+			if at := fileAtime(fp); at != "" {
+				fields["accessed"] = at
+			}
+		}
 		skinny = append(skinny, fields)
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -171,7 +202,7 @@ func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		s.getNote(w, title)
+		s.getNote(w, r, title)
 	case http.MethodPut:
 		s.putNote(w, r, title)
 	case http.MethodDelete:
@@ -182,11 +213,15 @@ func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
 }
 
 // getNote returns a single note as JSON with all fields.
-func (s *Server) getNote(w http.ResponseWriter, title string) {
+func (s *Server) getNote(w http.ResponseWriter, r *http.Request, title string) {
 	td := s.store.Get(title)
 	if td == nil {
 		http.NotFound(w, nil)
 		return
+	}
+	// Touch access time so sidebar can sort by recency.
+	if fp := s.store.FilePath(title); fp != "" {
+		touchAtime(fp)
 	}
 	fields := make(map[string]string, len(td.Fields))
 	for k, v := range td.Fields {
@@ -194,7 +229,11 @@ func (s *Server) getNote(w http.ResponseWriter, title string) {
 	}
 	fields["revision"] = fmt.Sprintf("%d", s.store.Revision(title))
 	if text := fields["text"]; text != "" {
-		fields["html"] = render.ToHTML(text)
+		if r.URL.Query().Get("render") == "plain" {
+			fields["html"] = render.ToPlainHTML(text)
+		} else {
+			fields["html"] = render.ToHTML(text)
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	etag := fmt.Sprintf("\"default/%s/%d:\"", title, s.store.Revision(title))
@@ -239,16 +278,8 @@ func (s *Server) putNote(w http.ResponseWriter, r *http.Request, title string) {
 	}
 	tFields["title"] = title
 
-	// Handle skinny notes — preserve existing text if the
-	// incoming note is marked as skinny.
-	if tFields["_is_skinny"] != "" {
-		delete(tFields, "_is_skinny")
-		if existing := s.store.Get(title); existing != nil {
-			if existingText := existing.Text(); existingText != "" {
-				tFields["text"] = existingText
-			}
-		}
-	}
+	s.stampTimestamps(title, tFields)
+	s.applySkinny(title, tFields)
 
 	td := &tid.Note{Fields: tFields}
 	s.persistNote(td, title)
@@ -261,6 +292,32 @@ func (s *Server) putNote(w http.ResponseWriter, r *http.Request, title string) {
 
 // revisionConflict returns true when the client's revision is stale
 // relative to the store (meaning an external edit occurred).
+// stampTimestamps sets modified to now and preserves or initialises created.
+func (s *Server) stampTimestamps(title string, f map[string]string) {
+	now := isoNow()
+	f["modified"] = now
+	if existing := s.store.Get(title); existing != nil {
+		if c := existing.Fields["created"]; c != "" && f["created"] == "" {
+			f["created"] = c
+		}
+	} else {
+		f["created"] = now
+	}
+}
+
+// applySkinny preserves existing text when the incoming note is skinny.
+func (s *Server) applySkinny(title string, f map[string]string) {
+	if f["_is_skinny"] == "" {
+		return
+	}
+	delete(f, "_is_skinny")
+	if existing := s.store.Get(title); existing != nil {
+		if t := existing.Text(); t != "" {
+			f["text"] = t
+		}
+	}
+}
+
 func (s *Server) revisionConflict(title string, fields map[string]interface{}) bool {
 	revVal, ok := fields["revision"]
 	if !ok {
@@ -397,6 +454,7 @@ func (s *Server) handleLineEdit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "parse error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	td.Fields["modified"] = isoNow()
 	s.store.PutWithPath(td, filePath)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -406,7 +464,7 @@ func (s *Server) handleLineEdit(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// spliceFileLine reads a .tid file, finds where the body starts
+// spliceFileLine reads a .md file, finds where the body starts
 // (after headers + blank line), and replaces or inserts a line.
 func spliceFileLine(filePath string, line int, text string, insert bool) ([]byte, error) {
 	data, err := os.ReadFile(filePath)

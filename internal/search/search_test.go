@@ -188,15 +188,15 @@ func TestParseQueryOrLiteral(t *testing.T) {
 
 // --- FileToTitle ---
 
-// TestFileToTitle verifies .tid extension is stripped.
+// TestFileToTitle verifies .md extension is stripped.
 func TestFileToTitle(t *testing.T) {
-	got := FileToTitle("/some/path/MyNote.tid")
+	got := FileToTitle("/some/path/MyNote.md")
 	if got != "MyNote" {
 		t.Errorf("expected MyNote, got %q", got)
 	}
 }
 
-// TestFileToTitleNoExtension verifies a file without .tid extension.
+// TestFileToTitleNoExtension verifies a file without .md extension.
 func TestFileToTitleNoExtension(t *testing.T) {
 	got := FileToTitle("/some/path/Readme")
 	if got != "Readme" {
@@ -317,8 +317,8 @@ func TestToRgPatternNotRegex(t *testing.T) {
 func TestSearchNotOnly(t *testing.T) {
 	checkRg(t)
 	dir := makeTidDir(t,
-		"A.tid", "title: A\n\ngopher here.",
-		"B.tid", "title: B\n\nnothing here.",
+		"A.md", "title: A\n\ngopher here.",
+		"B.md", "title: B\n\nnothing here.",
 	)
 	results, err := Search(dir, "!gopher")
 	if err != nil {
@@ -336,9 +336,9 @@ func TestSearchNotOnly(t *testing.T) {
 func TestSearchOR(t *testing.T) {
 	checkRg(t)
 	dir := makeTidDir(t,
-		"A.tid", "title: A\n\ncat owner.",
-		"B.tid", "title: B\n\ndog owner.",
-		"C.tid", "title: C\n\nfish owner.",
+		"A.md", "title: A\n\ncat owner.",
+		"B.md", "title: B\n\ndog owner.",
+		"C.md", "title: C\n\nfish owner.",
 	)
 	results, err := Search(dir, "cat|dog")
 	if err != nil {
@@ -353,8 +353,8 @@ func TestSearchOR(t *testing.T) {
 func TestSearchRegex(t *testing.T) {
 	checkRg(t)
 	dir := makeTidDir(t,
-		"A.tid", "title: A\n\ngopher123.",
-		"B.tid", "title: B\n\nnothing.",
+		"A.md", "title: A\n\ngopher123.",
+		"B.md", "title: B\n\nnothing.",
 	)
 	results, err := Search(dir, "/gopher[0-9]+/")
 	if err != nil {
@@ -369,9 +369,9 @@ func TestSearchRegex(t *testing.T) {
 func TestSearchANDIntersection(t *testing.T) {
 	checkRg(t)
 	dir := makeTidDir(t,
-		"A.tid", "title: A\n\nalpha beta.",
-		"B.tid", "title: B\n\nalpha only.",
-		"C.tid", "title: C\n\nbeta only.",
+		"A.md", "title: A\n\nalpha beta.",
+		"B.md", "title: B\n\nalpha only.",
+		"C.md", "title: C\n\nbeta only.",
 	)
 	results, err := Search(dir, "alpha beta")
 	if err != nil {
@@ -389,8 +389,8 @@ func TestSearchANDIntersection(t *testing.T) {
 func TestSearchLiteral(t *testing.T) {
 	checkRg(t)
 	dir := makeTidDir(t,
-		"Alpha.tid", "title: Alpha\n\nHello gopher world.",
-		"Beta.tid", "title: Beta\n\nNo match here.",
+		"Alpha.md", "title: Alpha\n\nHello gopher world.",
+		"Beta.md", "title: Beta\n\nNo match here.",
 	)
 	results, err := Search(dir, "gopher")
 	if err != nil {
@@ -411,8 +411,8 @@ func TestSearchLiteral(t *testing.T) {
 func TestSearchTag(t *testing.T) {
 	checkRg(t)
 	dir := makeTidDir(t,
-		"A.tid", "title: A\ntags: Journal\n\nBody.",
-		"B.tid", "title: B\ntags: Draft\n\nBody.",
+		"A.md", "title: A\ntags: Journal\n\nBody.",
+		"B.md", "title: B\ntags: Draft\n\nBody.",
 	)
 	results, err := Search(dir, "#Journal")
 	if err != nil {
@@ -430,8 +430,8 @@ func TestSearchTag(t *testing.T) {
 func TestSearchTitle(t *testing.T) {
 	checkRg(t)
 	dir := makeTidDir(t,
-		"Foo.tid", "title: Foo\n\nBody.",
-		"Bar.tid", "title: Bar\n\nBody.",
+		"Foo.md", "title: Foo\n\nBody.",
+		"Bar.md", "title: Bar\n\nBody.",
 	)
 	results, err := Search(dir, "@Foo")
 	if err != nil {
@@ -446,8 +446,8 @@ func TestSearchTitle(t *testing.T) {
 func TestSearchNot(t *testing.T) {
 	checkRg(t)
 	dir := makeTidDir(t,
-		"A.tid", "title: A\n\ngopher and golang.",
-		"B.tid", "title: B\n\ngopher only.",
+		"A.md", "title: A\n\ngopher and golang.",
+		"B.md", "title: B\n\ngopher only.",
 	)
 	results, err := Search(dir, "gopher !golang")
 	if err != nil {
@@ -465,7 +465,7 @@ func TestSearchNot(t *testing.T) {
 func TestSearchNoMatch(t *testing.T) {
 	checkRg(t)
 	dir := makeTidDir(t,
-		"A.tid", "title: A\n\nHello.",
+		"A.md", "title: A\n\nHello.",
 	)
 	results, err := Search(dir, "zzzznothere")
 	if err != nil {
@@ -492,7 +492,7 @@ func TestSearchEmpty(t *testing.T) {
 func TestSearchHeaderLinesFiltered(t *testing.T) {
 	checkRg(t)
 	dir := makeTidDir(t,
-		"A.tid", "title: A\ntags: Journal\n\nBody text.",
+		"A.md", "title: A\ntags: Journal\n\nBody text.",
 	)
 	results, err := Search(dir, "#Journal")
 	if err != nil {
@@ -523,7 +523,7 @@ func findRg() (string, error) {
 	return filepath.Abs("rg") // just a path check
 }
 
-// makeTidDir creates a temp directory with .tid files. Arguments are
+// makeTidDir creates a temp directory with .md files. Arguments are
 // alternating (filename, content) pairs.
 func makeTidDir(t *testing.T, pairs ...string) string {
 	t.Helper()
@@ -544,7 +544,7 @@ func makeTidDir(t *testing.T, pairs ...string) string {
 func TestSearchInvalidRegex(t *testing.T) {
 	checkRg(t)
 	dir := makeTidDir(t,
-		"A.tid", "title: A\n\nSome text.",
+		"A.md", "title: A\n\nSome text.",
 	)
 	// Unbalanced parenthesis is an invalid regex that rg rejects
 	// with exit code 2.
@@ -559,7 +559,7 @@ func TestSearchInvalidRegex(t *testing.T) {
 func TestSearchNegatedQueryGlobError(t *testing.T) {
 	checkRg(t)
 	dir := makeTidDir(t,
-		"A.tid", "title: A\n\nalpha text.",
+		"A.md", "title: A\n\nalpha text.",
 	)
 	// Mock filepath.Glob to return an error when called for allTidFiles.
 	patches := gomonkey.ApplyFunc(filepath.Glob, func(pattern string) ([]string, error) {
@@ -600,7 +600,7 @@ func TestSearchWhitespaceOnly(t *testing.T) {
 func TestSearchRgNonExitError(t *testing.T) {
 	checkRg(t)
 	dir := makeTidDir(t,
-		"A.tid", "title: A\n\nalpha.",
+		"A.md", "title: A\n\nalpha.",
 	)
 	old := os.Getenv("PATH")
 	t.Setenv("PATH", "")

@@ -1,4 +1,4 @@
-// Package search provides full-text search over .tid files using ripgrep.
+// Package search provides full-text search over .md files using ripgrep.
 package search
 
 import (
@@ -133,7 +133,7 @@ func isNegated(kind int) bool {
 	return kind == tokNot || kind == tokNotTag || kind == tokNotTitle || kind == tokNotRegex
 }
 
-// Search runs a query against .tid files in dir and returns matching
+// Search runs a query against .md files in dir and returns matching
 // files with their matched lines.
 func Search(dir, query string) ([]Result, error) {
 	tokens := parseQuery(query)
@@ -178,7 +178,7 @@ func Search(dir, query string) ([]Result, error) {
 }
 
 // subtractFiles removes fileSet entries from result. If result is
-// nil (first negated token), it initializes from all .tid files.
+// nil (first negated token), it initializes from all .md files.
 func subtractFiles(result, fileSet map[string]bool, dir string) (map[string]bool, error) {
 	if result == nil {
 		all, err := allTidFiles(dir)
@@ -237,7 +237,7 @@ type rgText struct {
 }
 
 func rgSearch(dir, pattern string, caseInsensitive bool) ([]Result, error) {
-	args := []string{"--json", "--glob", "*.tid"}
+	args := []string{"--json", "--glob", "*.md"}
 	if caseInsensitive {
 		args = append(args, "-i")
 	}
@@ -294,7 +294,7 @@ func parseRgJSON(out []byte) []Result {
 	return results
 }
 
-// isHeaderLine returns true for .tid metadata lines we don't want in results.
+// isHeaderLine returns true for .md metadata lines we don't want in results.
 func isHeaderLine(line string) bool {
 	for _, prefix := range []string{"title:", "tags:", "modified:", "created:", "type:"} {
 		if strings.HasPrefix(line, prefix) {
@@ -305,7 +305,7 @@ func isHeaderLine(line string) bool {
 }
 
 func allTidFiles(dir string) ([]string, error) {
-	matches, err := filepath.Glob(filepath.Join(dir, "*.tid"))
+	matches, err := filepath.Glob(filepath.Join(dir, "*.md"))
 	if err != nil {
 		return nil, err
 	}
@@ -320,9 +320,9 @@ func toSet(files []string) map[string]bool {
 	return s
 }
 
-// FileToTitle extracts a note title from a .tid filename by reading
+// FileToTitle extracts a note title from a .md filename by reading
 // the title header. This is a fallback — prefer store lookup.
 func FileToTitle(path string) string {
 	base := filepath.Base(path)
-	return strings.TrimSuffix(base, ".tid")
+	return strings.TrimSuffix(base, ".md")
 }

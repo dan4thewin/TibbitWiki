@@ -16,7 +16,7 @@ func TestNewEditor(t *testing.T) {
 // simple command (echo) without error.
 func TestOpenWithEcho(t *testing.T) {
 	e := New("echo %s")
-	err := e.Open("/tmp/test.tid")
+	err := e.Open("/tmp/test.md")
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -25,7 +25,7 @@ func TestOpenWithEcho(t *testing.T) {
 // TestOpenEmptyCommand verifies that an empty command returns error.
 func TestOpenEmptyCommand(t *testing.T) {
 	e := New("")
-	err := e.Open("/tmp/test.tid")
+	err := e.Open("/tmp/test.md")
 	if err == nil {
 		t.Fatal("expected error for empty command, got nil")
 	}
@@ -35,7 +35,7 @@ func TestOpenEmptyCommand(t *testing.T) {
 // an error.
 func TestOpenBadCommand(t *testing.T) {
 	e := New("/no/such/binary %s")
-	err := e.Open("/tmp/test.tid")
+	err := e.Open("/tmp/test.md")
 	if err == nil {
 		t.Fatal("expected error for bad command, got nil")
 	}

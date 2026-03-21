@@ -8,16 +8,16 @@ import (
 	"github.com/dan4thewin/tibbitwiki/internal/store"
 )
 
-// TestLoadValidDirectory verifies that Load reads all .tid files
+// TestLoadValidDirectory verifies that Load reads all .md files
 // from a directory and populates the store.
 func TestLoadValidDirectory(t *testing.T) {
 	dir := t.TempDir()
 
-	// Write two valid .tid files.
-	writeFile(t, dir, "Alpha.tid", "title: Alpha\ntags: Test\n\nAlpha body.")
-	writeFile(t, dir, "Bravo.tid", "title: Bravo\n\nBravo body.")
+	// Write two valid .md files.
+	writeFile(t, dir, "Alpha.md", "title: Alpha\ntags: Test\n\nAlpha body.")
+	writeFile(t, dir, "Bravo.md", "title: Bravo\n\nBravo body.")
 
-	// Write a non-.tid file that should be ignored.
+	// Write a non-.md file that should be ignored.
 	writeFile(t, dir, "notes.txt", "not a note")
 
 	s := store.New()
@@ -35,17 +35,17 @@ func TestLoadValidDirectory(t *testing.T) {
 		t.Error("expected Bravo in store")
 	}
 	// Verify file path is recorded.
-	if p := s.FilePath("Alpha"); p != filepath.Join(dir, "Alpha.tid") {
-		t.Errorf("path = %q, want %q", p, filepath.Join(dir, "Alpha.tid"))
+	if p := s.FilePath("Alpha"); p != filepath.Join(dir, "Alpha.md") {
+		t.Errorf("path = %q, want %q", p, filepath.Join(dir, "Alpha.md"))
 	}
 }
 
-// TestLoadSkipsMalformed verifies that malformed .tid files are
+// TestLoadSkipsMalformed verifies that malformed .md files are
 // skipped without error.
 func TestLoadSkipsMalformed(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "Good.tid", "title: Good\n\nBody.")
-	writeFile(t, dir, "Bad.tid", "no title here\n\nOops.")
+	writeFile(t, dir, "Good.md", "title: Good\n\nBody.")
+	writeFile(t, dir, "Bad.md", "no title here\n\nOops.")
 
 	s := store.New()
 	n, err := Load(dir, s)
@@ -64,7 +64,7 @@ func TestLoadSkipsMalformed(t *testing.T) {
 // are loaded correctly.
 func TestLoadSystemNote(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "$__config_Test.tid", "title: $:/config/Test\n\nvalue")
+	writeFile(t, dir, "$__config_Test.md", "title: $:/config/Test\n\nvalue")
 
 	s := store.New()
 	n, err := Load(dir, s)
@@ -107,7 +107,7 @@ func TestLoadBadDirectory(t *testing.T) {
 // treated as note files.
 func TestLoadSkipsSubdirectories(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "Valid.tid", "title: Valid\n\nBody.")
+	writeFile(t, dir, "Valid.md", "title: Valid\n\nBody.")
 	os.Mkdir(filepath.Join(dir, "subdir"), 0755)
 
 	s := store.New()
@@ -120,7 +120,7 @@ func TestLoadSkipsSubdirectories(t *testing.T) {
 	}
 }
 
-// TestLoadSkipsUnreadableFile verifies that a .tid file with no read
+// TestLoadSkipsUnreadableFile verifies that a .md file with no read
 // permissions is skipped without error (covers the os.ReadFile error path).
 func TestLoadSkipsUnreadableFile(t *testing.T) {
 	if os.Getuid() == 0 {
@@ -128,10 +128,10 @@ func TestLoadSkipsUnreadableFile(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	writeFile(t, dir, "Readable.tid", "title: Readable\n\nBody.")
+	writeFile(t, dir, "Readable.md", "title: Readable\n\nBody.")
 
-	// Create a .tid file with no permissions.
-	unreadable := filepath.Join(dir, "Unreadable.tid")
+	// Create a .md file with no permissions.
+	unreadable := filepath.Join(dir, "Unreadable.md")
 	if err := os.WriteFile(unreadable, []byte("title: Unreadable\n\nBody."), 0000); err != nil {
 		t.Fatal(err)
 	}

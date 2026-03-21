@@ -1,4 +1,4 @@
-// Package loader scans a notes directory and loads all .tid files
+// Package loader scans a notes directory and loads all .md files
 // into the store at startup.
 package loader
 
@@ -13,7 +13,7 @@ import (
 	"github.com/dan4thewin/tibbitwiki/internal/tid"
 )
 
-// Load reads all .tid files from dir and populates the store.
+// Load reads all .md files from dir and populates the store.
 // Returns the number of notes loaded.
 func Load(dir string, s *store.Store) (int, error) {
 	entries, err := os.ReadDir(dir)
@@ -26,7 +26,7 @@ func Load(dir string, s *store.Store) (int, error) {
 		if entry.IsDir() {
 			continue
 		}
-		if !strings.HasSuffix(entry.Name(), ".tid") {
+		if !strings.HasSuffix(entry.Name(), ".md") {
 			continue
 		}
 

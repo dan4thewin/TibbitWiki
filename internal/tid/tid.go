@@ -1,6 +1,6 @@
-// Package tid parses and serializes .tid files.
+// Package tid parses and serializes .md files.
 //
-// The .tid format uses RFC822-style headers (key: value), a blank
+// The .md format uses RFC822-style headers (key: value), a blank
 // line separator, then the body text. Example:
 //
 //	created: 20230710174528965
@@ -45,7 +45,7 @@ func (t *Note) SkinnyFields() map[string]string {
 	return out
 }
 
-// Parse reads a .tid file's content and returns a Note.
+// Parse reads a .md file's content and returns a Note.
 // The format is: header lines (key: value), blank line, body text.
 func Parse(data []byte) (*Note, error) {
 	content := string(data)
@@ -78,7 +78,7 @@ func Parse(data []byte) (*Note, error) {
 	return &Note{Fields: fields}, nil
 }
 
-// Serialize writes a Note back to .tid format bytes.
+// Serialize writes a Note back to .md format bytes.
 func Serialize(t *Note) []byte {
 	var b strings.Builder
 
@@ -104,26 +104,26 @@ func Serialize(t *Note) []byte {
 	return []byte(b.String())
 }
 
-// TitleToFilename converts a note title to its .tid filename.
-// $:/foo/bar becomes $__foo_bar.tid. Titles containing path
+// TitleToFilename converts a note title to its .md filename.
+// $:/foo/bar becomes $__foo_bar.md. Titles containing path
 // separators get URL-encoded.
 func TitleToFilename(title string) string {
 	// System notes: $:/ prefix → $__ prefix, / → _
 	if strings.HasPrefix(title, "$:/") {
 		name := "$__" + strings.ReplaceAll(title[3:], "/", "_")
-		return name + ".tid"
+		return name + ".md"
 	}
 	// Non-system notes with slashes get URL-encoded.
 	if strings.Contains(title, "/") {
-		return url.PathEscape(title) + ".tid"
+		return url.PathEscape(title) + ".md"
 	}
-	return title + ".tid"
+	return title + ".md"
 }
 
-// FilenameToTitle converts a .tid filename back to a note title.
-// $__foo_bar.tid becomes $:/foo/bar. URL-encoded names are decoded.
+// FilenameToTitle converts a .md filename back to a note title.
+// $__foo_bar.md becomes $:/foo/bar. URL-encoded names are decoded.
 func FilenameToTitle(filename string) string {
-	name := strings.TrimSuffix(filepath.Base(filename), ".tid")
+	name := strings.TrimSuffix(filepath.Base(filename), ".md")
 
 	// System notes: $__ prefix → $:/ prefix, _ → /
 	if strings.HasPrefix(name, "$__") {
