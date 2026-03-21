@@ -79,17 +79,29 @@ poll_interval: 3s
 ./tibbitwiki \
   --wiki-path ~/notes \
   --listen 127.0.0.1:8080 \
-  --index-html exp/012-integration/index.html \
-  --editor-cmd "neovide -- %s"
+  --index-html exp/017-tag-pills/index.html \
+  --editor-cmd "scripts/neovide-wrapper.sh %s"
 ```
 
 Open http://127.0.0.1:8080/ in Safari. You'll see the dark-themed
 viewer with your tiddlers in the recent sidebar. Click any tiddler
 to open it, click "edit" to launch neovide.
 
+### Neovide wrapper (single-instance editing)
+
+The default `neovide -- %s` spawns a new window per edit.
+Use `scripts/neovide-wrapper.sh %s` instead to reuse one window:
+
+- First edit: launches Neovide with a fixed Neovim socket
+  (`/tmp/nvim-tibbitwiki.sock`)
+- Subsequent edits: opens the file in the existing Neovide via
+  `nvim --server --remote`
+- Override socket path with `NVIM_LISTEN_ADDRESS` env var
+
 ### Editing workflow
 
 1. Click "edit" on a tiddler → neovide opens the `.tid` file
+   (or reuses the existing window)
 2. Edit in neovide, save
 3. Browser updates within 3 seconds (poll-based)
 4. Click "+ Journal" for a date-titled entry
