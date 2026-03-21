@@ -57,6 +57,7 @@ func (s *Server) routes() {
 
 // ServeHTTP delegates to the internal mux.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	s.mux.ServeHTTP(w, r)
 }
 

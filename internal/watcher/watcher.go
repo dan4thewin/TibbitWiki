@@ -137,7 +137,9 @@ func (w *Watcher) processPending() {
 }
 
 // reloadFile reads a .tid file from disk and updates the store.
-// If the file no longer exists, the tiddler is removed.
+// If the file no longer exists, the tiddler is removed. Skips the
+// update if content hasn't changed, preventing feedback loops from
+// browser PUT-backs and server disk writes.
 func (w *Watcher) reloadFile(path string) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -158,6 +160,13 @@ func (w *Watcher) reloadFile(path string) {
 		return
 	}
 
+	// Skip if content matches what's already in the store.
+	if existing := w.store.Get(td.Title()); existing != nil {
+		if fieldsEqual(existing.Fields, td.Fields) {
+			return
+		}
+	}
+
 	w.store.PutWithPath(td, path)
 	log.Printf("watcher: reloaded %q", td.Title())
 
@@ -165,4 +174,16 @@ func (w *Watcher) reloadFile(path string) {
 	if err := rcs.Checkin(path); err != nil {
 		log.Printf("watcher: rcs checkin %s: %v", path, err)
 	}
+}
+
+func fieldsEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
 }
