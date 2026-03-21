@@ -158,27 +158,12 @@ func Search(dir, query string) ([]Result, error) {
 		}
 
 		if isNegated(tok.kind) {
-			if result == nil {
-				all, err := allTidFiles(dir)
-				if err != nil {
-					return nil, err
-				}
-				result = toSet(all)
-			}
-			for f := range fileSet {
-				delete(result, f)
+			result, err = subtractFiles(result, fileSet, dir)
+			if err != nil {
+				return nil, err
 			}
 		} else {
-			if result == nil {
-				result = fileSet
-			} else {
-				for f := range result {
-					if !fileSet[f] {
-						delete(result, f)
-					}
-				}
-			}
-			// Accumulate match lines from positive terms.
+			result = intersectFiles(result, fileSet)
 			for _, h := range hits {
 				matches[h.File] = appendUnique(matches[h.File], h.Lines)
 			}
@@ -190,6 +175,36 @@ func Search(dir, query string) ([]Result, error) {
 		out = append(out, Result{File: f, Lines: matches[f]})
 	}
 	return out, nil
+}
+
+// subtractFiles removes fileSet entries from result. If result is
+// nil (first negated token), it initializes from all .tid files.
+func subtractFiles(result, fileSet map[string]bool, dir string) (map[string]bool, error) {
+	if result == nil {
+		all, err := allTidFiles(dir)
+		if err != nil {
+			return nil, err
+		}
+		result = toSet(all)
+	}
+	for f := range fileSet {
+		delete(result, f)
+	}
+	return result, nil
+}
+
+// intersectFiles keeps only files present in both result and
+// fileSet. If result is nil (first positive token), uses fileSet.
+func intersectFiles(result, fileSet map[string]bool) map[string]bool {
+	if result == nil {
+		return fileSet
+	}
+	for f := range result {
+		if !fileSet[f] {
+			delete(result, f)
+		}
+	}
+	return result
 }
 
 func appendUnique(dst, src []string) []string {

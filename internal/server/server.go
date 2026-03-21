@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/dan4thewin/tibbitwiki/internal/editor"
@@ -225,20 +224,12 @@ func (s *Server) putNote(w http.ResponseWriter, r *http.Request, title string) {
 		delete(fields, "fields")
 	}
 
-	// Reject stale PUTs: if the browser's revision is behind the
-	// store (meaning an external edit occurred), return 409 so the
-	// syncer refetches instead of overwriting.
-	if revVal, ok := fields["revision"]; ok {
-		if clientRev, ok := revVal.(string); ok {
-			serverRev := s.store.Revision(title)
-			if serverRev > 0 && clientRev != fmt.Sprintf("%d", serverRev) {
-				w.WriteHeader(http.StatusConflict)
-				return
-			}
-		}
+	if s.revisionConflict(title, fields) {
+		w.WriteHeader(http.StatusConflict)
+		return
 	}
 
-	// Build note fields as strings.
+	// Build note fields as strings, skipping revision.
 	tFields := make(map[string]string)
 	for k, v := range fields {
 		if k == "revision" {
@@ -260,30 +251,46 @@ func (s *Server) putNote(w http.ResponseWriter, r *http.Request, title string) {
 	}
 
 	td := &tid.Note{Fields: tFields}
-
-	// Write to disk.
-	filePath := s.store.FilePath(title)
-	if filePath == "" && s.noteDir != "" {
-		// New note — derive filename from title.
-		filePath = filepath.Join(s.noteDir, tid.TitleToFilename(title))
-	}
-	if filePath != "" {
-		if err := os.WriteFile(filePath, tid.Serialize(td), 0644); err != nil {
-			log.Printf("error writing note %q: %v", title, err)
-		} else {
-			if err := rcs.Checkin(filePath); err != nil {
-				log.Printf("rcs checkin %q: %v", title, err)
-			}
-		}
-		s.store.PutWithPath(td, filePath)
-	} else {
-		s.store.Put(td)
-	}
+	s.persistNote(td, title)
 
 	rev := s.store.Revision(title)
 	etag := fmt.Sprintf("\"default/%s/%d:\"", title, rev)
 	w.Header().Set("ETag", etag)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// revisionConflict returns true when the client's revision is stale
+// relative to the store (meaning an external edit occurred).
+func (s *Server) revisionConflict(title string, fields map[string]interface{}) bool {
+	revVal, ok := fields["revision"]
+	if !ok {
+		return false
+	}
+	clientRev, ok := revVal.(string)
+	if !ok {
+		return false
+	}
+	serverRev := s.store.Revision(title)
+	return serverRev > 0 && clientRev != fmt.Sprintf("%d", serverRev)
+}
+
+// persistNote writes a note to the store and, when a file path is
+// available, to disk with an RCS checkin.
+func (s *Server) persistNote(td *tid.Note, title string) {
+	filePath := s.store.FilePath(title)
+	if filePath == "" && s.noteDir != "" {
+		filePath = filepath.Join(s.noteDir, tid.TitleToFilename(title))
+	}
+	if filePath == "" {
+		s.store.Put(td)
+		return
+	}
+	if err := os.WriteFile(filePath, tid.Serialize(td), 0644); err != nil {
+		log.Printf("error writing note %q: %v", title, err)
+	} else if err := rcs.Checkin(filePath); err != nil {
+		log.Printf("rcs checkin %q: %v", title, err)
+	}
+	s.store.PutWithPath(td, filePath)
 }
 
 // deleteNote removes a note and its file on disk.
@@ -367,40 +374,16 @@ func (s *Server) handleLineEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := os.ReadFile(filePath)
+	newData, err := spliceFileLine(filePath, req.Line, req.Text, req.Insert)
 	if err != nil {
-		http.Error(w, "reading file: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	lines := strings.Split(string(data), "\n")
-
-	// data-line is relative to the body text (after headers + blank
-	// line). Find where the body starts in the file.
-	bodyStart := 0
-	for i, line := range lines {
-		if line == "" {
-			bodyStart = i + 1
-			break
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "out of range") {
+			status = http.StatusBadRequest
 		}
-	}
-	absLine := bodyStart + req.Line // 1-based body line → 0-based file index
-	if absLine > len(lines) {
-		http.Error(w, "line "+strconv.Itoa(req.Line)+" out of range", http.StatusBadRequest)
+		http.Error(w, err.Error(), status)
 		return
 	}
 
-	if req.Insert {
-		newLines := make([]string, 0, len(lines)+1)
-		newLines = append(newLines, lines[:absLine]...)
-		newLines = append(newLines, req.Text)
-		newLines = append(newLines, lines[absLine:]...)
-		lines = newLines
-	} else {
-		lines[absLine-1] = req.Text
-	}
-
-	newData := []byte(strings.Join(lines, "\n"))
 	if err := os.WriteFile(filePath, newData, 0644); err != nil {
 		http.Error(w, "writing file: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -409,7 +392,6 @@ func (s *Server) handleLineEdit(w http.ResponseWriter, r *http.Request) {
 		log.Printf("rcs checkin %q: %v", title, err)
 	}
 
-	// Re-parse the file to update the store.
 	td, err := tid.Parse(newData)
 	if err != nil {
 		http.Error(w, "parse error: "+err.Error(), http.StatusInternalServerError)
@@ -417,14 +399,45 @@ func (s *Server) handleLineEdit(w http.ResponseWriter, r *http.Request) {
 	}
 	s.store.PutWithPath(td, filePath)
 
-	// Return re-rendered HTML for the note body.
-	text := td.Text()
-	resp := map[string]string{
-		"html":     render.ToHTML(text),
-		"revision": fmt.Sprintf("%d", s.store.Revision(title)),
-	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	json.NewEncoder(w).Encode(map[string]string{
+		"html":     render.ToHTML(td.Text()),
+		"revision": fmt.Sprintf("%d", s.store.Revision(title)),
+	})
+}
+
+// spliceFileLine reads a .tid file, finds where the body starts
+// (after headers + blank line), and replaces or inserts a line.
+func spliceFileLine(filePath string, line int, text string, insert bool) ([]byte, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("reading file: %w", err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+
+	bodyStart := 0
+	for i, l := range lines {
+		if l == "" {
+			bodyStart = i + 1
+			break
+		}
+	}
+	absLine := bodyStart + line
+	if absLine > len(lines) {
+		return nil, fmt.Errorf("line %d out of range", line)
+	}
+
+	if insert {
+		newLines := make([]string, 0, len(lines)+1)
+		newLines = append(newLines, lines[:absLine]...)
+		newLines = append(newLines, text)
+		newLines = append(newLines, lines[absLine:]...)
+		lines = newLines
+	} else {
+		lines[absLine-1] = text
+	}
+	return []byte(strings.Join(lines, "\n")), nil
 }
 
 // extractTitle pulls the note title from a URL path by removing

@@ -932,7 +932,29 @@ func TestPutNoteRevisionFieldSkipped(t *testing.T) {
 	}
 }
 
-// TestPutNoteReadBodyError verifies that a broken request body
+// TestPutNoteRevisionNonString verifies that a numeric revision
+// value (not a string) is ignored — no conflict check occurs.
+func TestPutNoteRevisionNonString(t *testing.T) {
+	srv, s := newTestServer(t)
+	dir := t.TempDir()
+	srv.SetNoteDir(dir)
+
+	s.PutWithPath(&tid.Note{Fields: map[string]string{
+		"title": "RevNum",
+		"text":  "Original.",
+	}}, dir+"/RevNum.tid")
+
+	// PUT with revision as a number (JSON parses as float64).
+	body := `{"title":"RevNum","text":"New.","revision":999}`
+	req := httptest.NewRequest("PUT", "/notes/RevNum", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d (non-string revision should be ignored)", w.Code, http.StatusNoContent)
+	}
+}
+
 // returns 400. This covers lines 209-212 of server.go.
 func TestPutNoteReadBodyError(t *testing.T) {
 	srv, _ := newTestServer(t)
