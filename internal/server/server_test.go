@@ -622,3 +622,111 @@ func TestDeleteNoteRemoveError(t *testing.T) {
 		t.Error("note should be deleted from store")
 	}
 }
+
+// TestLineEditReplace verifies replacing a body line via /line-edit/.
+func TestLineEditReplace(t *testing.T) {
+	srv, s := newTestServer(t)
+
+	// Create a .tid file with headers and a list body.
+	dir := t.TempDir()
+	path := dir + "/LineTest.tid"
+	content := "title: LineTest\n\n- alpha\n- beta\n- gamma\n"
+	os.WriteFile(path, []byte(content), 0644)
+	td, _ := tid.Parse([]byte(content))
+	s.PutWithPath(td, path)
+	srv.SetNoteDir(dir)
+
+	body := `{"line":2,"text":"- BETA"}`
+	req := httptest.NewRequest("POST", "/line-edit/LineTest", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify file on disk was updated.
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "- BETA") {
+		t.Errorf("file should contain '- BETA', got:\n%s", data)
+	}
+	if strings.Contains(string(data), "- beta") {
+		t.Errorf("file should not contain '- beta' anymore")
+	}
+
+	// Verify response contains re-rendered HTML.
+	var resp map[string]string
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if !strings.Contains(resp["html"], "BETA") {
+		t.Errorf("response html should contain BETA, got: %s", resp["html"])
+	}
+}
+
+// TestLineEditInsert verifies inserting a line after line N.
+func TestLineEditInsert(t *testing.T) {
+	srv, s := newTestServer(t)
+
+	dir := t.TempDir()
+	path := dir + "/InsTest.tid"
+	content := "title: InsTest\n\n- first\n- second\n"
+	os.WriteFile(path, []byte(content), 0644)
+	td, _ := tid.Parse([]byte(content))
+	s.PutWithPath(td, path)
+	srv.SetNoteDir(dir)
+
+	body := `{"line":1,"text":"- inserted","insert":true}`
+	req := httptest.NewRequest("POST", "/line-edit/InsTest", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	data, _ := os.ReadFile(path)
+	lines := strings.Split(string(data), "\n")
+	// After header (line 0: "title: InsTest", line 1: ""),
+	// body: line 2: "- first", line 3: "- inserted", line 4: "- second"
+	if len(lines) < 5 || lines[3] != "- inserted" {
+		t.Errorf("expected '- inserted' at file line 4, got:\n%s", data)
+	}
+}
+
+// TestLineEditBadLine verifies out-of-range line returns 400.
+func TestLineEditBadLine(t *testing.T) {
+	srv, s := newTestServer(t)
+
+	dir := t.TempDir()
+	path := dir + "/Short.tid"
+	content := "title: Short\n\n- one\n"
+	os.WriteFile(path, []byte(content), 0644)
+	td, _ := tid.Parse([]byte(content))
+	s.PutWithPath(td, path)
+	srv.SetNoteDir(dir)
+
+	body := `{"line":99,"text":"nope"}`
+	req := httptest.NewRequest("POST", "/line-edit/Short", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+}
+
+// TestLineEditNoFile verifies missing file returns 404.
+func TestLineEditNoFile(t *testing.T) {
+	srv, _ := newTestServer(t)
+	body := `{"line":1,"text":"x"}`
+	req := httptest.NewRequest("POST", "/line-edit/NoSuch", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
+	}
+}

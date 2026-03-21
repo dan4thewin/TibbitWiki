@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/dan4thewin/tibbitwiki/internal/editor"
@@ -52,6 +53,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/favicon.ico", s.handleFavicon)
 	s.mux.HandleFunc("/notes", s.handleListNotes)
 	s.mux.HandleFunc("/notes/", s.handleNote)
+	s.mux.HandleFunc("/line-edit/", s.handleLineEdit)
 	s.mux.HandleFunc("/edit-external/", s.handleEditExternal)
 	s.mux.HandleFunc("/theme.css", s.handleThemeCSS)
 	s.mux.HandleFunc("/search", s.handleSearch)
@@ -325,6 +327,104 @@ func (s *Server) handleEditExternal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleLineEdit replaces or inserts a line in a note's source text.
+//
+//	POST /line-edit/:title with JSON body:
+//	  {"line": N, "text": "new content"}           — replace line N
+//	  {"line": N, "text": "new content", "insert": true} — insert after line N
+//
+// Returns the re-rendered HTML of the full note body.
+func (s *Server) handleLineEdit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	title := extractTitle(r.URL.Path, "/line-edit/")
+	if title == "" {
+		http.Error(w, "missing note title", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Line   int    `json:"line"`
+		Text   string `json:"text"`
+		Insert bool   `json:"insert"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if req.Line < 1 {
+		http.Error(w, "line must be >= 1", http.StatusBadRequest)
+		return
+	}
+
+	filePath := s.store.FilePath(title)
+	if filePath == "" {
+		http.Error(w, "no file for note", http.StatusNotFound)
+		return
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		http.Error(w, "reading file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	lines := strings.Split(string(data), "\n")
+
+	// data-line is relative to the body text (after headers + blank
+	// line). Find where the body starts in the file.
+	bodyStart := 0
+	for i, line := range lines {
+		if line == "" {
+			bodyStart = i + 1
+			break
+		}
+	}
+	absLine := bodyStart + req.Line // 1-based body line → 0-based file index
+	if absLine > len(lines) {
+		http.Error(w, "line "+strconv.Itoa(req.Line)+" out of range", http.StatusBadRequest)
+		return
+	}
+
+	if req.Insert {
+		newLines := make([]string, 0, len(lines)+1)
+		newLines = append(newLines, lines[:absLine]...)
+		newLines = append(newLines, req.Text)
+		newLines = append(newLines, lines[absLine:]...)
+		lines = newLines
+	} else {
+		lines[absLine-1] = req.Text
+	}
+
+	newData := []byte(strings.Join(lines, "\n"))
+	if err := os.WriteFile(filePath, newData, 0644); err != nil {
+		http.Error(w, "writing file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := rcs.Checkin(filePath); err != nil {
+		log.Printf("rcs checkin %q: %v", title, err)
+	}
+
+	// Re-parse the file to update the store.
+	td, err := tid.Parse(newData)
+	if err != nil {
+		http.Error(w, "parse error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.store.PutWithPath(td, filePath)
+
+	// Return re-rendered HTML for the note body.
+	text := td.Text()
+	resp := map[string]string{
+		"html":     render.ToHTML(text),
+		"revision": fmt.Sprintf("%d", s.store.Revision(title)),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 // extractTitle pulls the note title from a URL path by removing
