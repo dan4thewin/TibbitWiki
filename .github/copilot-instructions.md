@@ -62,6 +62,12 @@ large rewrites.
   isolation. Tests must run with `-gcflags=all=-l` (disable
   inlining).
 
+- **gomonkey + `-coverprofile` caveat.** On darwin/arm64, patching
+  certain functions (e.g. `fsnotify.NewWatcher`, `exec.Command`)
+  causes SIGBUS under `-coverprofile`. Use package-level function
+  variables instead (see `newFsWatcher` in watcher.go), or clear
+  `PATH` to force lookup failure (see `TestSearchRgNonExitError`).
+
 - **Minimal test helpers.** Use raw structs when only a few fields
   matter (especially with mocks).
 

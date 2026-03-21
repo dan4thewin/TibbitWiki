@@ -2,7 +2,9 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +15,7 @@ import (
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/dan4thewin/tibbitwiki/internal/editor"
 	"github.com/dan4thewin/tibbitwiki/internal/rcs"
+	"github.com/dan4thewin/tibbitwiki/internal/search"
 	"github.com/dan4thewin/tibbitwiki/internal/store"
 	"github.com/dan4thewin/tibbitwiki/internal/tid"
 )
@@ -858,3 +861,336 @@ func TestLineEditLineLessThanOne(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
 	}
 }
+
+// --- Coverage gap tests ---
+
+// TestPutNoteRevisionConflict verifies that a PUT with a stale
+// revision returns 409 Conflict. This covers lines 231-237 (revision
+// conflict) of server.go.
+func TestPutNoteRevisionConflict(t *testing.T) {
+	srv, s := newTestServer(t)
+	dir := t.TempDir()
+	srv.SetNoteDir(dir)
+
+	// Create a note in the store — PutWithPath sets revision to 1.
+	s.PutWithPath(&tid.Note{Fields: map[string]string{
+		"title": "Conflict",
+		"text":  "Original.",
+	}}, dir+"/Conflict.tid")
+
+	// PUT again to bump revision to 2.
+	body1 := `{"title":"Conflict","text":"Updated."}`
+	req1 := httptest.NewRequest("PUT", "/notes/Conflict", strings.NewReader(body1))
+	w1 := httptest.NewRecorder()
+	srv.ServeHTTP(w1, req1)
+	if w1.Code != http.StatusNoContent {
+		t.Fatalf("first PUT status = %d, want %d", w1.Code, http.StatusNoContent)
+	}
+
+	// PUT with stale revision "1" — server revision is now > 1.
+	body2 := `{"title":"Conflict","text":"Stale.","revision":"1"}`
+	req2 := httptest.NewRequest("PUT", "/notes/Conflict", strings.NewReader(body2))
+	w2 := httptest.NewRecorder()
+	srv.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusConflict {
+		t.Fatalf("stale PUT status = %d, want %d (409 Conflict)", w2.Code, http.StatusConflict)
+	}
+}
+
+// TestPutNoteRevisionFieldSkipped verifies that a PUT with a
+// matching revision still skips the "revision" key in tFields.
+// This covers lines 244-245 of server.go.
+func TestPutNoteRevisionFieldSkipped(t *testing.T) {
+	srv, s := newTestServer(t)
+	dir := t.TempDir()
+	srv.SetNoteDir(dir)
+
+	// Create note at revision 1.
+	s.PutWithPath(&tid.Note{Fields: map[string]string{
+		"title": "RevSkip",
+		"text":  "Original.",
+	}}, dir+"/RevSkip.tid")
+
+	// PUT with revision that matches current (1) — should succeed
+	// and the "revision" key should NOT appear in the stored fields.
+	body := `{"title":"RevSkip","text":"New.","revision":"1"}`
+	req := httptest.NewRequest("PUT", "/notes/RevSkip", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+	// The stored note should not have a "revision" field.
+	td := s.Get("RevSkip")
+	if td == nil {
+		t.Fatal("note not found in store")
+	}
+	if _, ok := td.Fields["revision"]; ok {
+		t.Error("revision field should not be stored in note fields")
+	}
+}
+
+// TestPutNoteReadBodyError verifies that a broken request body
+// returns 400. This covers lines 209-212 of server.go.
+func TestPutNoteReadBodyError(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	// errReader always returns an error on Read.
+	req := httptest.NewRequest("PUT", "/notes/BadBody", &errReader{})
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+// errReader is an io.Reader that always returns an error.
+type errReader struct{}
+
+func (e *errReader) Read(p []byte) (int, error) {
+	return 0, errors.New("simulated read error")
+}
+
+// TestLineEditMissingTitle verifies that POST /line-edit/ with no
+// title returns 400. This covers lines 345-348 of server.go.
+func TestLineEditMissingTitle(t *testing.T) {
+	srv, _ := newTestServer(t)
+	body := `{"line":1,"text":"x"}`
+	req := httptest.NewRequest("POST", "/line-edit/", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(w.Body.String(), "missing note title") {
+		t.Errorf("body = %q, want mention of 'missing note title'", w.Body.String())
+	}
+}
+
+// TestLineEditReadFileError verifies that an os.ReadFile failure
+// returns 500. This covers lines 371-374 of server.go.
+func TestLineEditReadFileError(t *testing.T) {
+	patches := gomonkey.ApplyFunc(os.ReadFile, func(name string) ([]byte, error) {
+		return nil, fmt.Errorf("disk error")
+	})
+	defer patches.Reset()
+
+	srv, s := newTestServer(t)
+	// Note must be in store with a filePath so we get past the
+	// "no file for note" check.
+	s.PutWithPath(&tid.Note{Fields: map[string]string{
+		"title": "ReadErr",
+		"text":  "Body.",
+	}}, "/fake/ReadErr.tid")
+
+	body := `{"line":1,"text":"x"}`
+	req := httptest.NewRequest("POST", "/line-edit/ReadErr", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+	if !strings.Contains(w.Body.String(), "reading file") {
+		t.Errorf("body = %q, want mention of 'reading file'", w.Body.String())
+	}
+}
+
+// TestLineEditWriteFileError verifies that an os.WriteFile failure
+// during line-edit returns 500. This covers lines 404-407 of server.go.
+func TestLineEditWriteFileError(t *testing.T) {
+	srv, s := newTestServer(t)
+
+	dir := t.TempDir()
+	path := dir + "/WrErr.tid"
+	content := "title: WrErr\n\n- alpha\n- beta\n"
+	os.WriteFile(path, []byte(content), 0644)
+	td, _ := tid.Parse([]byte(content))
+	s.PutWithPath(td, path)
+	srv.SetNoteDir(dir)
+
+	// Mock os.WriteFile to fail AFTER os.ReadFile succeeds.
+	patches := gomonkey.ApplyFunc(os.WriteFile, func(name string, data []byte, perm os.FileMode) error {
+		return fmt.Errorf("disk full")
+	})
+	defer patches.Reset()
+
+	body := `{"line":1,"text":"- ALPHA"}`
+	req := httptest.NewRequest("POST", "/line-edit/WrErr", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+	if !strings.Contains(w.Body.String(), "writing file") {
+		t.Errorf("body = %q, want mention of 'writing file'", w.Body.String())
+	}
+}
+
+// TestLineEditRCSCheckinError verifies that an rcs.Checkin failure
+// during line-edit is logged but doesn't prevent completion.
+// This covers lines 408-410 of server.go.
+func TestLineEditRCSCheckinError(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(path string) error {
+		return fmt.Errorf("rcs failed")
+	})
+	defer patches.Reset()
+
+	srv, s := newTestServer(t)
+
+	dir := t.TempDir()
+	path := dir + "/RcsErr.tid"
+	content := "title: RcsErr\n\n- alpha\n- beta\n"
+	os.WriteFile(path, []byte(content), 0644)
+	td, _ := tid.Parse([]byte(content))
+	s.PutWithPath(td, path)
+	srv.SetNoteDir(dir)
+
+	body := `{"line":1,"text":"- ALPHA"}`
+	req := httptest.NewRequest("POST", "/line-edit/RcsErr", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	// Should succeed (200) despite rcs error — the error is just logged.
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestLineEditParseError verifies that a tid.Parse failure after
+// writing returns 500. This covers lines 414-417 of server.go.
+func TestLineEditParseError(t *testing.T) {
+	srv, s := newTestServer(t)
+
+	dir := t.TempDir()
+	path := dir + "/ParseErr.tid"
+	content := "title: ParseErr\n\n- alpha\n- beta\n"
+	os.WriteFile(path, []byte(content), 0644)
+	td, _ := tid.Parse([]byte(content))
+	s.PutWithPath(td, path)
+	srv.SetNoteDir(dir)
+
+	// Mock tid.Parse to fail (called after WriteFile succeeds).
+	patches := gomonkey.ApplyFunc(tid.Parse, func(data []byte) (*tid.Note, error) {
+		return nil, fmt.Errorf("parse boom")
+	})
+	defer patches.Reset()
+
+	body := `{"line":1,"text":"- ALPHA"}`
+	req := httptest.NewRequest("POST", "/line-edit/ParseErr", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+	if !strings.Contains(w.Body.String(), "parse error") {
+		t.Errorf("body = %q, want mention of 'parse error'", w.Body.String())
+	}
+}
+
+// TestHandleSearchError verifies that a search.Search error returns
+// 500. This covers lines 85-88 of server.go.
+func TestHandleSearchError(t *testing.T) {
+	patches := gomonkey.ApplyFunc(search.Search, func(dir, query string) ([]search.Result, error) {
+		return nil, fmt.Errorf("rg exploded")
+	})
+	defer patches.Reset()
+
+	srv, _ := newTestServer(t)
+	srv.SetNoteDir("/tmp") // non-empty so we get past noteDir check
+	req := httptest.NewRequest("GET", "/search?q=hello", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+	if !strings.Contains(w.Body.String(), "search error") {
+		t.Errorf("body = %q, want mention of 'search error'", w.Body.String())
+	}
+}
+
+// TestHandleSearchNilLines verifies that a search hit with nil Lines
+// is coalesced to an empty slice. This covers lines 99-101 of server.go.
+func TestHandleSearchNilLines(t *testing.T) {
+	// Return a hit with nil Lines (e.g. a tag-only match where
+	// all matched lines are header lines, filtered out by rg).
+	patches := gomonkey.ApplyFunc(search.Search, func(dir, query string) ([]search.Result, error) {
+		return []search.Result{
+			{File: "Hello.tid", Lines: nil},
+		}, nil
+	})
+	defer patches.Reset()
+
+	srv, _ := newTestServer(t)
+	srv.SetNoteDir("/tmp")
+	req := httptest.NewRequest("GET", "/search?q=Test", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	// Parse response — matches should be [] not null.
+	var results []struct {
+		Title   string   `json:"title"`
+		Matches []string `json:"matches"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &results); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Matches == nil {
+		t.Error("matches should be [] not nil")
+	}
+	if len(results[0].Matches) != 0 {
+		t.Errorf("expected 0 matches, got %d", len(results[0].Matches))
+	}
+}
+
+// TestHandleSearchNilResults verifies that when search hits don't
+// match any note in the store, results is coalesced to []. This
+// covers lines 108-110 of server.go.
+func TestHandleSearchNilResults(t *testing.T) {
+	// Return a hit for a file whose title isn't in the store.
+	patches := gomonkey.ApplyFunc(search.Search, func(dir, query string) ([]search.Result, error) {
+		return []search.Result{
+			{File: "NoSuchNote.tid", Lines: []string{"some line"}},
+		}, nil
+	})
+	defer patches.Reset()
+
+	srv, _ := newTestServer(t)
+	srv.SetNoteDir("/tmp")
+	req := httptest.NewRequest("GET", "/search?q=missing", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	// Response should be [] (not null), since no results matched
+	// notes in the store.
+	body := strings.TrimSpace(w.Body.String())
+	if body != "[]" {
+		t.Errorf("body = %q, want %q", body, "[]")
+	}
+}
+
+// Keep unused imports from erroring.
+var _ = io.Discard

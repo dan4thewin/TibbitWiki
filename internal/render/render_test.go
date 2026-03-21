@@ -1,8 +1,16 @@
 package render
 
 import (
+	"bytes"
+	"fmt"
+	"io"
 	"strings"
 	"testing"
+
+	"github.com/agiledragon/gomonkey/v2"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/text"
 )
 
 // TestToHTMLHeading verifies that a markdown heading becomes an <h1>.
@@ -153,5 +161,83 @@ func TestListItemMixedContent(t *testing.T) {
 	count := strings.Count(got, "data-line=")
 	if count != 1 {
 		t.Errorf("expected 1 data-line attr, got %d", count)
+	}
+}
+
+// TestByteOffsetToLineDirectLines verifies the primary path where a
+// node has direct Lines() info (lines 71-73 of render.go). Goldmark's
+// current parser never sets Lines on ListItem, but a future version
+// might. We build a synthetic AST node with Lines set directly.
+func TestByteOffsetToLineDirectLines(t *testing.T) {
+	source := []byte("line one\nline two\nline three\n")
+	// Create a ListItem and set a line segment starting at
+	// "line two" (offset 9). That's after one newline → line 2.
+	node := ast.NewListItem(0)
+	seg := text.NewSegment(9, 17) // "line two"
+	node.Lines().Append(seg)
+
+	got := byteOffsetToLine(source, node)
+	if got != 2 {
+		t.Errorf("byteOffsetToLine = %d, want 2", got)
+	}
+}
+
+// TestByteOffsetToLineNoLines verifies the return-0 path when
+// neither the node nor any child has line info (line 84).
+func TestByteOffsetToLineNoLines(t *testing.T) {
+	source := []byte("anything")
+	// A ListItem with no lines and no children.
+	node := ast.NewListItem(0)
+	got := byteOffsetToLine(source, node)
+	if got != 0 {
+		t.Errorf("byteOffsetToLine = %d, want 0", got)
+	}
+}
+
+// TestRenderListItemNoLineInfo verifies that renderListItem emits
+// a bare <li> (no data-line) when byteOffsetToLine returns 0
+// (lines 50-52). We render a list whose ListItem has no source
+// mapping by constructing minimal AST programmatically.
+func TestRenderListItemNoLineInfo(t *testing.T) {
+	doc := ast.NewDocument()
+	list := ast.NewList('-')
+	item := ast.NewListItem(0)
+	tb := ast.NewTextBlock()
+	// No Lines set on item or tb → byteOffsetToLine returns 0.
+	item.AppendChild(item, tb)
+	list.AppendChild(list, item)
+	doc.AppendChild(doc, list)
+
+	source := []byte("hello")
+	var buf bytes.Buffer
+	r := md.Renderer()
+	if err := r.Render(&buf, source, doc); err != nil {
+		t.Fatal(err)
+	}
+	got := buf.String()
+	// Should have <li> without data-line attribute.
+	if strings.Contains(got, "data-line") {
+		t.Errorf("expected no data-line on lineless item, got:\n%s", got)
+	}
+	if !strings.Contains(got, "<li>") {
+		t.Errorf("expected bare <li>, got:\n%s", got)
+	}
+}
+
+// TestToHTMLConvertError verifies the error fallback that returns
+// the original source when md.Convert fails (lines 90-92).
+func TestToHTMLConvertError(t *testing.T) {
+	patches := gomonkey.ApplyMethodFunc(
+		md, "Convert",
+		func(source []byte, writer io.Writer, opts ...parser.ParseOption) error {
+			return fmt.Errorf("forced convert error")
+		},
+	)
+	defer patches.Reset()
+
+	input := "# Should be returned as-is"
+	got := ToHTML(input)
+	if got != input {
+		t.Errorf("ToHTML = %q, want original %q", got, input)
 	}
 }

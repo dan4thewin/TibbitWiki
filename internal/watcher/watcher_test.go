@@ -342,12 +342,14 @@ func TestFullLifecycleDeleteFile(t *testing.T) {
 // --- gomonkey-based tests for error-logging branches ---
 
 // TestNewFsnotifyError verifies that New returns nil and an error
-// when fsnotify.NewWatcher fails.
+// when fsnotify.NewWatcher fails. Uses the package-level newFsWatcher
+// variable instead of gomonkey to avoid SIGBUS under -coverprofile.
 func TestNewFsnotifyError(t *testing.T) {
-	patches := gomonkey.ApplyFunc(fsnotify.NewWatcher, func() (*fsnotify.Watcher, error) {
+	orig := newFsWatcher
+	newFsWatcher = func() (*fsnotify.Watcher, error) {
 		return nil, fmt.Errorf("inotify init failed")
-	})
-	defer patches.Reset()
+	}
+	defer func() { newFsWatcher = orig }()
 
 	w, err := New(t.TempDir(), store.New())
 	if err == nil {
@@ -358,18 +360,19 @@ func TestNewFsnotifyError(t *testing.T) {
 	}
 }
 
-// TestEventLoopExitsOnChannelClose verifies that eventLoop returns
-// when the fsnotify watcher's channels are closed.
-func TestEventLoopExitsOnChannelClose(t *testing.T) {
-	dir := t.TempDir()
-	s := store.New()
-	w, err := New(dir, s)
-	if err != nil {
-		t.Fatal(err)
+// TestEventLoopEventsChannelClosed verifies that eventLoop returns
+// when the Events channel is closed (lines 79-81 of watcher.go).
+func TestEventLoopEventsChannelClosed(t *testing.T) {
+	events := make(chan fsnotify.Event)
+	errors := make(chan error)
+
+	w := &Watcher{
+		done:    make(chan struct{}),
+		pending: make(map[string]time.Time),
+		watcher: &fsnotify.Watcher{Events: events, Errors: errors},
 	}
-	// Close the fsnotify watcher — this closes Events and Errors channels.
-	w.watcher.Close()
-	// Run eventLoop — it should return when channels are closed.
+
+	close(events)
 	done := make(chan struct{})
 	go func() {
 		w.eventLoop()
@@ -377,9 +380,8 @@ func TestEventLoopExitsOnChannelClose(t *testing.T) {
 	}()
 	select {
 	case <-done:
-		// eventLoop exited cleanly.
 	case <-time.After(2 * time.Second):
-		t.Fatal("eventLoop did not exit after channels closed")
+		t.Fatal("eventLoop did not exit after Events channel closed")
 	}
 }
 
@@ -408,5 +410,159 @@ func TestReloadFileWithRCSSuccess(t *testing.T) {
 	}
 	if checkedIn != path {
 		t.Errorf("rcs.Checkin called with %q, want %q", checkedIn, path)
+	}
+}
+
+// TestReloadFileRCSCheckinError verifies the rcs.Checkin error log
+// path (lines 179-181 of watcher.go). The note should still be
+// stored even when RCS fails.
+func TestReloadFileRCSCheckinError(t *testing.T) {
+	dir := t.TempDir()
+	s := store.New()
+	w := &Watcher{dir: dir, store: s}
+
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(path string) error {
+		return fmt.Errorf("rcs unavailable")
+	})
+	defer patches.Reset()
+
+	content := "title: RCSFail\n\nBody."
+	path := filepath.Join(dir, "RCSFail.tid")
+	os.WriteFile(path, []byte(content), 0644)
+	w.reloadFile(path)
+
+	if s.Get("RCSFail") == nil {
+		t.Fatal("expected note in store despite rcs.Checkin error")
+	}
+}
+
+// TestEventLoopErrorsChannelClosed verifies the !ok branch on the
+// Errors channel (lines 84-86 of watcher.go). We close only the
+// Errors channel; eventLoop returns immediately on the !ok receive.
+func TestEventLoopErrorsChannelClosed(t *testing.T) {
+	// Use buffered Events so eventLoop blocks on select until
+	// Errors is ready, preventing Events !ok from racing.
+	events := make(chan fsnotify.Event)
+	errors := make(chan error)
+	close(errors)
+
+	w := &Watcher{
+		done:    make(chan struct{}),
+		pending: make(map[string]time.Time),
+		watcher: &fsnotify.Watcher{Events: events, Errors: errors},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		w.eventLoop()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("eventLoop did not exit after Errors channel closed")
+	}
+}
+
+// TestEventLoopHandlesError verifies the log.Printf path when an
+// error arrives on the Errors channel (line 87 of watcher.go).
+func TestEventLoopHandlesError(t *testing.T) {
+	events := make(chan fsnotify.Event)
+	errors := make(chan error, 1)
+
+	w := &Watcher{
+		done:    make(chan struct{}),
+		pending: make(map[string]time.Time),
+		watcher: &fsnotify.Watcher{Events: events, Errors: errors},
+	}
+
+	// Send an error, then signal exit.
+	errors <- fmt.Errorf("synthetic error")
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		close(w.done)
+	}()
+	w.eventLoop()
+}
+
+// TestReloadFileReadError verifies the non-NotExist read error
+// branch (line 158 of watcher.go). We create a path that exists
+// but is unreadable.
+func TestReloadFileReadError(t *testing.T) {
+	dir := t.TempDir()
+	s := store.New()
+	w := &Watcher{dir: dir, store: s}
+
+	path := filepath.Join(dir, "Unreadable.tid")
+	os.WriteFile(path, []byte("title: Unreadable\n\nBody."), 0644)
+	// Remove read permissions.
+	os.Chmod(path, 0000)
+	t.Cleanup(func() { os.Chmod(path, 0644) })
+
+	// Should log the error and return without crashing.
+	w.reloadFile(path)
+	if s.Get("Unreadable") != nil {
+		t.Error("note should not be in store after read error")
+	}
+}
+
+// TestReloadFileSkipsUnchanged verifies the fieldsEqual early-return
+// path (lines 169-172) and the fieldsEqual true path (line 193).
+func TestReloadFileSkipsUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	s := store.New()
+
+	var checkinCalled bool
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(path string) error {
+		checkinCalled = true
+		return nil
+	})
+	defer patches.Reset()
+
+	content := "title: SameContent\ntags: Test\n\nBody text."
+	path := filepath.Join(dir, "SameContent.tid")
+	os.WriteFile(path, []byte(content), 0644)
+
+	w := &Watcher{dir: dir, store: s}
+	// First load — should add to store.
+	w.reloadFile(path)
+	if s.Get("SameContent") == nil {
+		t.Fatal("expected note in store after first reload")
+	}
+	checkinCalled = false
+
+	// Second load with identical content — should skip (no rcs call).
+	w.reloadFile(path)
+	if checkinCalled {
+		t.Error("rcs.Checkin should not be called for unchanged content")
+	}
+}
+
+// TestFieldsEqualDifferentLen covers the len(a) != len(b) branch
+// (line 185 of watcher.go).
+func TestFieldsEqualDifferentLen(t *testing.T) {
+	a := map[string]string{"k": "v"}
+	b := map[string]string{"k": "v", "k2": "v2"}
+	if fieldsEqual(a, b) {
+		t.Error("expected false for different-length maps")
+	}
+}
+
+// TestFieldsEqualDifferentValues covers the b[k] != v branch
+// (lines 189-191 of watcher.go).
+func TestFieldsEqualDifferentValues(t *testing.T) {
+	a := map[string]string{"k": "v1"}
+	b := map[string]string{"k": "v2"}
+	if fieldsEqual(a, b) {
+		t.Error("expected false for different values")
+	}
+}
+
+// TestFieldsEqualIdentical covers the return true path (line 193).
+func TestFieldsEqualIdentical(t *testing.T) {
+	a := map[string]string{"k": "v"}
+	b := map[string]string{"k": "v"}
+	if !fieldsEqual(a, b) {
+		t.Error("expected true for identical maps")
 	}
 }

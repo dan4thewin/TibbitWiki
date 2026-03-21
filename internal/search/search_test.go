@@ -1,10 +1,13 @@
 package search
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/agiledragon/gomonkey/v2"
 )
 
 // --- parseMPattern ---
@@ -531,4 +534,98 @@ func makeTidDir(t *testing.T, pairs ...string) string {
 		}
 	}
 	return dir
+}
+
+// --- Coverage gap tests ---
+
+// TestSearchInvalidRegex verifies that an invalid regex (which makes
+// rg exit with code 2) propagates as an error from Search.
+// This covers lines 151-153 (rgSearch error) of search.go.
+func TestSearchInvalidRegex(t *testing.T) {
+	checkRg(t)
+	dir := makeTidDir(t,
+		"A.tid", "title: A\n\nSome text.",
+	)
+	// Unbalanced parenthesis is an invalid regex that rg rejects
+	// with exit code 2.
+	_, err := Search(dir, "/(/")
+	if err == nil {
+		t.Fatal("expected error for invalid regex, got nil")
+	}
+}
+
+// TestSearchNegatedQueryGlobError verifies that a filepath.Glob error
+// during a negated query propagates. This covers lines 163-165 of search.go.
+func TestSearchNegatedQueryGlobError(t *testing.T) {
+	checkRg(t)
+	dir := makeTidDir(t,
+		"A.tid", "title: A\n\nalpha text.",
+	)
+	// Mock filepath.Glob to return an error when called for allTidFiles.
+	patches := gomonkey.ApplyFunc(filepath.Glob, func(pattern string) ([]string, error) {
+		return nil, fmt.Errorf("glob exploded")
+	})
+	defer patches.Reset()
+
+	// A NOT-only query triggers allTidFiles to initialize the result set.
+	_, err := Search(dir, "!alpha")
+	if err == nil {
+		t.Fatal("expected error from glob mock, got nil")
+	}
+	if !strings.Contains(err.Error(), "glob exploded") {
+		t.Errorf("error = %q, want mention of 'glob exploded'", err.Error())
+	}
+}
+
+// TestSearchWhitespaceOnly verifies that a whitespace-only query
+// returns nil (no tokens parsed). Lines 188-190 of search.go
+// (result == nil after loop) are unreachable dead code: any positive
+// token sets result to a non-nil map, and any negated token
+// initializes result via toSet(allTidFiles). So we skip that gap.
+func TestSearchWhitespaceOnly(t *testing.T) {
+	results, err := Search("/tmp", "   ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results != nil {
+		t.Errorf("expected nil for whitespace-only query, got %+v", results)
+	}
+}
+
+// TestSearchRgNonExitError verifies that a non-ExitError from cmd.Output
+// propagates (line 248 of search.go). We clear PATH so exec.Command
+// can't find rg, producing a PathError (not ExitError). This avoids
+// gomonkey on exec.Command which causes infinite recursion under
+// coverage instrumentation.
+func TestSearchRgNonExitError(t *testing.T) {
+	checkRg(t)
+	dir := makeTidDir(t,
+		"A.tid", "title: A\n\nalpha.",
+	)
+	old := os.Getenv("PATH")
+	t.Setenv("PATH", "")
+	defer os.Setenv("PATH", old)
+
+	_, err := Search(dir, "alpha")
+	if err == nil {
+		t.Fatal("expected error when rg not on PATH, got nil")
+	}
+}
+
+// TestSearchAllTidFilesGlobError verifies that a filepath.Glob error
+// inside allTidFiles propagates. This covers lines 297-299 of search.go.
+// (Same as TestSearchNegatedQueryGlobError but tests the allTidFiles
+// function directly via a negated query.)
+// Already covered above in TestSearchNegatedQueryGlobError.
+
+// TestParseRgJSONMalformedData verifies parseRgJSON skips lines where
+// the outer JSON is valid with type "match" but data unmarshal fails
+// (line 264-265 of search.go).
+func TestParseRgJSONMalformedData(t *testing.T) {
+	// Valid rgMatch envelope with type "match" but garbage data field.
+	input := `{"type":"match","data":"not-an-object"}` + "\n"
+	results := parseRgJSON([]byte(input))
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for malformed data, got %d", len(results))
+	}
 }

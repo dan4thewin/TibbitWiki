@@ -31,9 +31,14 @@ type Watcher struct {
 	debounce time.Duration
 }
 
+// newFsWatcher is the constructor for fsnotify.Watcher, replaceable
+// in tests to simulate creation failure without gomonkey (which
+// crashes under -coverprofile on darwin/arm64).
+var newFsWatcher = fsnotify.NewWatcher
+
 // New creates a Watcher for the given directory.
 func New(dir string, s *store.Store) (*Watcher, error) {
-	fw, err := fsnotify.NewWatcher()
+	fw, err := newFsWatcher()
 	if err != nil {
 		return nil, err
 	}

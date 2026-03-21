@@ -185,9 +185,6 @@ func Search(dir, query string) ([]Result, error) {
 		}
 	}
 
-	if result == nil {
-		return nil, nil
-	}
 	out := make([]Result, 0, len(result))
 	for f := range result {
 		out = append(out, Result{File: f, Lines: matches[f]})

@@ -18,6 +18,20 @@ go test -gcflags=all=-l -count=1 ./...
 The `-gcflags=all=-l` disables inlining, required for gomonkey
 patches in watcher and editor tests.
 
+### Statement coverage
+
+All 10 `internal/` packages are at 100% statement coverage.
+
+```bash
+# Quick check (per-package percentages):
+go test -gcflags=all=-l -count=1 -coverprofile=cover.out ./...
+go tool cover -func=cover.out | grep -v 100
+```
+
+The total will show ~96% because `main.go` (wiring only) has no
+tests.  If the `grep` returns only the `main.go` and `total` lines,
+coverage is intact.
+
 ## Browser automation via osascript
 
 Safari's `do JavaScript` AppleScript command lets you read DOM

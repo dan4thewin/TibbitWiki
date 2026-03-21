@@ -277,6 +277,39 @@ func TestFilenameToTitle(t *testing.T) {
 	}
 }
 
+// TestParseTrailingCRInHeaders verifies that a trailing \r on the
+// header section (e.g. "title: Foo\r\n\n") produces an empty string
+// after splitting on \n, which exercises the continue on line 60-61
+// of the header parsing loop.
+func TestParseTrailingCRInHeaders(t *testing.T) {
+	// splitHeaderBody splits on \n\n, giving headerEnd = "title: Foo\r".
+	// strings.Split("title: Foo\r", "\n") → ["title: Foo\r"]
+	// That doesn't produce an empty line. We need the header section
+	// itself to contain an empty line after splitting on \n.
+	//
+	// With input "title: Foo\r\r\n\nBody", splitHeaderBody finds \n\n
+	// at index 12, giving headerEnd = "title: Foo\r\r".
+	// strings.Split("title: Foo\r\r", "\n") → ["title: Foo\r\r"]
+	// Still one element. We need a \n inside the header section.
+	//
+	// Simplest approach: "title: Foo\n\r\n\nBody".
+	// splitHeaderBody finds \n\n first at index 11 (after "Foo\n\r"),
+	// giving headerEnd = "title: Foo\n\r".
+	// strings.Split on \n → ["title: Foo", "\r"].
+	// TrimRight("\r", "\r") → "" → hits line 60-61.
+	input := "title: Foo\n\r\n\nBody here."
+	got, err := Parse([]byte(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Title() != "Foo" {
+		t.Errorf("title = %q, want %q", got.Title(), "Foo")
+	}
+	if got.Text() != "Body here." {
+		t.Errorf("text = %q, want %q", got.Text(), "Body here.")
+	}
+}
+
 // TestFilenameToTitleBadPercent verifies that a filename with invalid
 // percent-encoding falls through to return the raw name unchanged.
 func TestFilenameToTitleBadPercent(t *testing.T) {
