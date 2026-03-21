@@ -1,0 +1,23 @@
+# Binaries
+go-tiddle
+*.exe
+
+# Test/coverage
+cover.out
+coverage.html
+*.test
+
+# Build
+output/
+index.html
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
