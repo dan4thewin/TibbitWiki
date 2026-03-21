@@ -1,10 +1,7 @@
 name: CI
 
 on:
-  push:
-    branches: [main, feature/*]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:  # manual-only; auto triggers disabled
 
 jobs:
   build-and-test:
