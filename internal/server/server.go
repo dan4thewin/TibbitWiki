@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/dan4thewin/go-tiddle/internal/editor"
+	"github.com/dan4thewin/go-tiddle/internal/rcs"
 	"github.com/dan4thewin/go-tiddle/internal/store"
 	"github.com/dan4thewin/go-tiddle/internal/tid"
 )
@@ -200,6 +201,10 @@ func (s *Server) putTiddler(w http.ResponseWriter, r *http.Request, title string
 	if filePath != "" {
 		if err := os.WriteFile(filePath, tid.Serialize(td), 0644); err != nil {
 			log.Printf("error writing tiddler %q: %v", title, err)
+		} else {
+			if err := rcs.Checkin(filePath); err != nil {
+				log.Printf("rcs checkin %q: %v", title, err)
+			}
 		}
 		s.store.PutWithPath(td, filePath)
 	} else {

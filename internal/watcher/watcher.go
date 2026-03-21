@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dan4thewin/go-tiddle/internal/rcs"
 	"github.com/dan4thewin/go-tiddle/internal/store"
 	"github.com/dan4thewin/go-tiddle/internal/tid"
 	"github.com/fsnotify/fsnotify"
@@ -159,4 +160,9 @@ func (w *Watcher) reloadFile(path string) {
 
 	w.store.PutWithPath(td, path)
 	log.Printf("watcher: reloaded %q", td.Title())
+
+	// RCS checkin after external edit.
+	if err := rcs.Checkin(path); err != nil {
+		log.Printf("watcher: rcs checkin %s: %v", path, err)
+	}
 }
