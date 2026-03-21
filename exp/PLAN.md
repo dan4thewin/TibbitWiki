@@ -129,18 +129,16 @@ see changes in browser, navigate via WikiWords.
 - **Pass:** DG uses it for a real editing session without
   reaching for the old TW interface
 
-## Out of scope (v2)
+## Out of scope
 
-- Browser-based editing (textarea)
-- Search
-- Tag navigation / tag pills
 - Hugo integration
 - Auto-conversion of wikitext to markdown
 - Multiple simultaneous browser clients
 
 ## Status
 
-v1 complete (experiments 001–012). Final client: `012-integration/index.html`.
+v1 complete (experiments 001–012). v2 complete (experiments 013–018).
+Final client: `017-tag-pills/index.html`.
 
 ## v2 Experiments
 
@@ -220,4 +218,76 @@ Examples:
 
 - Where to put the final index.html: embed in Go binary as
   `embed.FS`, or keep as separate static file?
-- chroma theme: OneDark if available, else monokai/dracula
+
+## v3 Experiments
+
+### 019 — Sidebar tabs (Recent + Journals)
+**Goal:** Replace single Recent list with tabbed sidebar.
+- Three tab headers: Recent | Journals | Tags
+- Tab 1 (Recent): non-journal tibbits sorted by modified,
+  `--sidebar-limit` shown (default 20), ellipsis expands to all
+- Tab 2 (Journals): journal tibbits sorted by modified, same
+  ellipsis pattern
+- Journal detection: has #Journal tag OR title matches date
+  format (`/^\d{1,2}(?:st|nd|rd|th) \w+ \d{4}$/`)
+- Limits configurable via CSS custom properties:
+  `:root { --sidebar-limit: 20; --tag-limit: 5; }`
+- Tags tab is a placeholder (built in exp-020)
+- **Pass:** tab switching works, Recent excludes journals,
+  Journals tab shows only journals, ellipsis expands
+
+### 020 — Tags tab
+**Goal:** Third sidebar tab showing tibbits grouped by tag.
+- Each tag is a group header with tibbits listed beneath
+- Tags sorted by most-recent tibbit in the group
+- Show first `--tag-limit` tibbits per tag (default 5)
+- Ellipsis per tag expands that tag's full list
+- Skip system tags ($:/ prefix)
+- **Pass:** tags tab shows grouped tibbits, expand works
+
+### 021 — Rename tiddlers → tibbits
+**Goal:** Rename throughout codebase — Go types/vars, API routes,
+client JS, docs.
+- API: `/recipes/default/tiddlers/` → `/tibbits/` (etc.)
+- Go: type names, variable names, comments
+- Client JS: all fetch URLs, display text
+- Keep backward compat? TBD — single user, probably not needed
+- **Pass:** everything works with new names, old routes 404
+
+### 022 — Render line annotation
+**Goal:** Add `data-line="N"` attributes to `<li>` elements in
+server-rendered HTML.
+- Walk goldmark AST in `internal/render/render.go`
+- For each ListItem node, inject `data-line` with source line number
+- Only annotate list items (not paragraphs, headings, etc.)
+- **Pass:** inspect rendered HTML, `<li>` elements have data-line attrs
+
+### 023 — Line edit
+**Goal:** Inline editing of list items.
+- On hover over `<li data-line>`, show auto-hiding ✏️ icon
+- Click: replace `<li>` content with `<input>` prefilled with
+  source line text
+- Enter: PATCH `/tibbits/:title/line/:n` with new text, re-fetch
+  and re-render the whole tibbit
+- Escape: cancel, restore original rendered content
+- Server: new PATCH endpoint reads .tid file, replaces line N,
+  writes back, bumps revision
+- **Pass:** edit a list item in-browser, see re-rendered result
+
+### 024 — Insert below
+**Goal:** Insert a new list item after the current one.
+- On hover, show ➕ icon alongside ✏️
+- Click: open empty `<input>` below current `<li>`
+- Enter: POST `/tibbits/:title/line/:n/insert` with new text,
+  re-fetch and re-render
+- Escape: cancel
+- **Pass:** add a new list item in-browser, see it rendered
+
+### 025 — v3 integration test
+**Goal:** Full automated test of all v3 features.
+- Sidebar tab switching + journal detection
+- Tags tab grouping + expand
+- Line edit round-trip (edit list item, verify re-render)
+- Insert-below round-trip
+- osascript automation pattern
+- **Pass:** all assertions pass

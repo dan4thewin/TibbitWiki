@@ -126,9 +126,149 @@ keeps file paths with spaces as a single argument.
 - **Config over constants** — listen address, wiki path, editor
   command, poll interval all configurable
 
-## Out of scope (v2)
+## Out of scope
 
-- Browser-based editing (textarea)
 - Hugo integration
 - Auto-conversion of wikitext to markdown
 - Multiple simultaneous browser clients
+
+---
+
+## v3 Plan
+
+### Feature 1: Neovide Wrapper Script
+
+**Goal:** Reuse an existing Neovide instance instead of spawning a
+new window for every edit.
+
+**Approach:** Shell script used as `--editor-cmd`:
+- Check if a Neovide process is running
+- If yes: use `nvim --server` (Neovim's remote) to open the file
+  in the existing instance (`--remote` or `nvim --server <addr>
+  --remote <file>`)
+- If no: launch `neovide -- <file>` normally
+- Neovide connects to Neovim, so the server address is a socket
+  (look for `$NVIM_LISTEN_ADDRESS` or a known socket path)
+
+**Files:**
+- `scripts/neovide-wrapper.sh` — the script
+- Update SETUP.md with usage
+
+**Complexity:** Low. One shell script, no Go changes.
+
+---
+
+### Feature 2: Sidebar Tabs
+
+**Goal:** Three-tab sidebar replacing the current Recent list.
+
+#### Tab 1: Recent (non-journals)
+- Sorted by modified date (current behavior)
+- Show first `--sidebar-limit` items (default 20)
+- Ellipsis button at bottom expands to show ALL non-journal tibbits
+- "Non-journal" = does NOT have #Journal tag AND title doesn't
+  match date format (e.g. "21st March 2026")
+
+#### Tab 2: Journals
+- Sorted by modified date
+- Show first `--sidebar-limit` items
+- Ellipsis expands to all journals
+- "Journal" = has #Journal tag OR title matches date format
+
+#### Tab 3: Tags
+- Each tag is a collapsible group, sorted by most-recent tibbit
+  in that group
+- Show first `--tag-limit` tibbits per tag (default 5)
+- Ellipsis per tag expands that tag's full list
+- Skip system tags ($:/ prefix)
+
+#### Config (CSS custom properties)
+```css
+:root {
+  --sidebar-limit: 20;
+  --tag-limit: 5;
+}
+```
+JS reads via `getComputedStyle`. Change one line, no recompile.
+
+#### Naming
+Rename "tiddlers" → "tibbits" throughout: UI text, Go types/vars,
+API endpoint paths, docs. This is a breaking rename of the REST API.
+
+#### Implementation
+- Tab UI: three clickable tab headers at top of sidebar, one active
+  panel visible at a time
+- Journal detection: function in client JS that checks tag OR date
+  regex (`/^\d{1,2}(?:st|nd|rd|th) \w+ \d{4}$/`)
+- Server changes: tiddlers.json already returns tags — no new
+  endpoint needed, client filters/groups locally
+- Rename: `tiddlers` → `tibbits` across Go packages, API routes,
+  client JS, docs (big but mechanical)
+
+---
+
+### Feature 3: Line-Level Quick Edit
+
+**Goal:** Edit individual list items in-place without launching
+neovide. Hover a list item → icons appear → click to edit or
+insert below.
+
+#### Render annotation
+- Extend `internal/render/render.go` to walk the goldmark AST
+- For each `ListItem` node, wrap the output `<li>` with
+  `data-line="N"` where N is the source line number
+- Only annotate list items (not paragraphs, headings, etc.)
+
+#### Client interaction
+- On hover over an `<li data-line>`, show two auto-hiding icons:
+  - ✏️ **Edit** — replace the `<li>` content with a single-line
+    `<input>` containing the raw source line. Enter = save,
+    Escape = cancel.
+  - ➕ **Insert below** — open an empty `<input>` below the
+    current `<li>`. Enter = save new line, Escape = cancel.
+- Icons are positioned to the left/right of the list item,
+  appear on hover, hidden otherwise
+
+#### Server endpoint
+- `PATCH /tibbits/:title/line/:n` — edit line N of the .tid body
+  - Body: `{"text": "new line content"}`
+  - Server reads the file, replaces line N, writes back, bumps
+    revision
+- `POST /tibbits/:title/line/:n/insert` — insert after line N
+  - Body: `{"text": "new line content"}`
+  - Server reads, inserts after line N, writes back
+
+#### Re-render
+- After PATCH/POST succeeds, client re-fetches the full tibbit
+  (same as existing `refreshTiddler`) — the whole tibbit body
+  re-renders with correct markdown context (list numbering, etc.)
+
+#### Scope limits
+- List items only (for now)
+- Paragraphs: skip or stretch goal (multi-line box, low priority)
+- No quick-edit for headings, code blocks, blockquotes
+
+---
+
+### Experiment sequence
+
+| # | Feature | Description |
+|---|---------|-------------|
+| 019 | Sidebar tabs | Recent (non-journal) + Journal tabs |
+| 020 | Tags tab | Tag groups with expand |
+| 021 | Rename | tiddlers → tibbits everywhere |
+| 022 | Line annotation | data-line on `<li>` in rendered HTML |
+| 023 | Line edit | Hover icons + inline edit input |
+| 024 | Insert below | Add new list item inline |
+| 025 | v3 integration test | Full automated test |
+
+Neovide wrapper is standalone (scripts/), no experiment needed.
+
+### Open questions
+
+- Rename timing: do the big rename (exp-021) before or after
+  line-edit? Before keeps the API consistent; after avoids
+  merge pain if we're iterating. Suggest: before.
+- PATCH endpoint: should it use line numbers (fragile if file
+  changes between render and edit) or content matching? Line
+  numbers are simpler; re-render on conflict handles staleness.
