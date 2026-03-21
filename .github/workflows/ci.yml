@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  workflow_dispatch:  # manual-only; auto triggers disabled
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Format check
+        run: |
+          bad=$(gofmt -l .)
+          if [ -n "$bad" ]; then
+            echo "gofmt needed on:"
+            echo "$bad"
+            exit 1
+          fi
+
+      - name: Test
+        run: go test -gcflags=all=-l -count=1 ./...
+
+      - name: Coverage
+        run: |
+          go test -gcflags=all=-l -coverprofile=cover.out ./...
+          go tool cover -func=cover.out | grep total:
+
+      - name: Install gocyclo
+        run: go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
+
+      - name: Cyclomatic complexity
+        run: gocyclo -top 20 .

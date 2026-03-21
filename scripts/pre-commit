@@ -1,0 +1,35 @@
+#!/bin/sh
+set -e
+
+echo "=== pre-commit: fmt ==="
+bad=$(gofmt -l .)
+if [ -n "$bad" ]; then
+	echo "gofmt needed on:"
+	echo "$bad"
+	exit 1
+fi
+
+echo "=== pre-commit: vet ==="
+go vet ./...
+
+echo "=== pre-commit: test + coverage ==="
+go test -gcflags=all=-l -count=1 -coverprofile=cover.out ./... 2>&1
+total=$(go tool cover -func=cover.out | awk '/^total:/{print $3}' | tr -d '%')
+echo "coverage: ${total}%"
+rm -f cover.out
+threshold=80
+if [ "$(echo "$total < $threshold" | bc)" -eq 1 ]; then
+	echo "FAIL: coverage ${total}% < ${threshold}%"
+	exit 1
+fi
+
+echo "=== pre-commit: complexity ==="
+max=11
+worst=$(gocyclo -top 1 . | awk '{print $1}')
+if [ -n "$worst" ] && [ "$worst" -gt "$max" ]; then
+	echo "FAIL: max cyclomatic complexity $worst > $max"
+	gocyclo -top 5 .
+	exit 1
+fi
+
+echo "=== pre-commit: all clear ==="

@@ -1,215 +1,274 @@
-# go-tiddle
+# TibbitWiki
 
-A Go replacement for TiddlyWiki's Node.js server, with filesystem
-watching and Neovide integration for editing tiddlers from the
-terminal or browser.
+A Go replacement for TiddlyWiki's Node.js server, with a minimal
+browser client, filesystem watching, and Neovide integration.
 
 ## Problem
 
 TiddlyWiki's Node.js server has no filesystem watching — edits made
-outside the browser (e.g. in a text editor) are invisible until
-restart. The codebase is deeply interconnected and hard to extend.
-The REST API surface is small (~5 endpoints), making a focused Go
-rewrite faster than retrofitting the Node.js code.
+outside the browser are invisible until restart. The browser client
+is deeply interconnected (~4.5MB of JS), making it hard to debug or
+extend. The syncer assumes the browser is authoritative, overwriting
+external edits with stale baked-in content.
 
 ## Approach
 
-Reimplement the TiddlyWeb REST API that the TiddlyWiki browser
-client already speaks. Add fsnotify-based file watching so external
-edits (Neovide, vim, any editor) are picked up automatically. The
-browser polls for changes every 3 seconds — no push mechanism
-needed for a single-user system.
-
-Serve the TiddlyWiki core JS, plugins, and themes from the existing
-`node_modules/tiddlywiki` installation (or a vendored copy).
+Reimplement the TiddlyWeb REST API (7 endpoints) in Go. Add
+fsnotify-based file watching. Replace TiddlyWiki's browser client
+entirely with a ~6KB HTML+JS viewer that uses markdown + CamelCase
+WikiWord links. The server is the single source of truth; the
+browser is view-only, polling every 3 seconds.
 
 ## Architecture
 
 ```
-┌─────────────┐     HTTP (3s poll)     ┌──────────────┐
-│  TW Browser │ ◄──────────────────► │  go-tiddle   │
-│   Client    │                        │   server     │
-└─────────────┘                        └──────┬───────┘
-                                              │
-                              ┌───────────────┼───────────────┐
-                              │               │               │
-                         fsnotify        .tid files      editor launch
-                         watcher      ~/notes/   (neovide)
-                                       tiddlers/
+┌──────────────┐     HTTP (3s poll)     ┌──────────────┐
+│   Browser    │ ◄──────────────────► │  TibbitWiki   │
+│  (view-only) │                        │   server     │
+└──────────────┘                        └──────┬───────┘
+                                               │
+                               ┌───────────────┼───────────────┐
+                               │               │               │
+                          fsnotify        .tid files      editor launch
+                          watcher      ~/notes/   (neovide)
+                                        notes/
+```
+
+### Package layout
+
+```
+internal/
+  config/   — YAML config + CLI flag parsing
+  tid/      — .tid file parser/serializer
+  store/    — in-memory note store with revision tracking
+  watcher/  — fsnotify file watcher with debounce
+  server/   — HTTP server implementing TiddlyWeb API
+  editor/   — external editor launcher
+  rcs/      — RCS version control integration
+  loader/   — startup file loader
+  render/   — goldmark + chroma markdown→HTML rendering, ThemeCSS()
+  search/   — query parser + rg wrapper, returns file matches with matched lines
+main.go     — wiring
+exp/        — browser client experiments (001–018)
 ```
 
 ### REST API (TiddlyWeb compatible)
 
 | Method   | Path                                | Purpose                    |
 |----------|-------------------------------------|----------------------------|
-| `GET`    | `/`                                 | Serve main wiki HTML       |
+| `GET`    | `/`                                 | Serve browser client HTML  |
 | `GET`    | `/status`                           | Server status + user info  |
-| `GET`    | `/recipes/default/tiddlers.json`    | Skinny tiddler list (poll) |
-| `GET`    | `/recipes/default/tiddlers/:title`  | Full tiddler as JSON       |
-| `PUT`    | `/recipes/default/tiddlers/:title`  | Save tiddler               |
-| `DELETE` | `/bags/default/tiddlers/:title`     | Delete tiddler             |
+| `GET`    | `/notes`    | Skinny note list (poll) |
+| `GET`    | `/notes/:title`  | Full note as JSON       |
+| `PUT`    | `/notes/:title`  | Create/save note        |
+| `DELETE` | `/notes/:title`     | Delete note             |
+| `GET`    | `/search?q=...`                     | Full-text search (JSON)    |
+| `GET`    | `/theme.css`                        | Syntax highlighting CSS    |
 | `GET`    | `/favicon.ico`                      | Favicon                    |
+| `POST`   | `/edit-external/:title`             | Launch external editor     |
 
-### File format
+### Browser client
 
-`.tid` files use a simple header/body format:
+Single HTML file (`exp/017-tag-pills/index.html`).
+No build step, no TiddlyWiki code.
 
-```
-created: 20230710174528965
-modified: 20230710232609285
-tags: Journal
-title: 10th July 2023
-
-Body text goes here, separated from headers by a blank line.
-```
-
-The server parses and serializes this format. System tiddlers use
-`$__` prefix in filenames (replacing `$:/` from titles). Some
-filenames are URL-encoded (containing `%2F` etc.) — this must be
-handled.
+- **Rendering:** server-side markdown via goldmark, syntax highlighting
+  via chroma (OneDark theme served as `/theme.css`), regex for CamelCase
+  WikiWord auto-linking
+- **Navigation:** story river (new content appended at bottom), recent
+  sidebar (top 20 by modified date), WikiWord click-to-open
+- **Search:** `/` opens vi-style search bar; results appear as a
+  pseudo-note in the story river with clickable titles and matched
+  lines. Rich query syntax (literal, NOT, tag, title, regex, OR, AND).
+- **Tag pills:** colored pills on notes, click to search by tag
+- **Polling:** GET notes.json every 3s, compare revisions, re-fetch
+  changed notes
+- **Actions:** edit (POST /edit-external), close, + New (prompt for
+  title, PUT), + Journal (auto date title, PUT + edit)
+- **Theme:** dark (navy background, styled cards/sidebar/code blocks)
 
 ### File watching
 
-- Use `fsnotify` to watch the tiddlers directory
-- Debounce events (cloud drives like OneDrive may write temp files,
-  do atomic renames, or fire multiple events per save)
-- On change: re-read the affected `.tid` file, update in-memory
-  store, bump revision counter
-- The browser's 3-second poll picks up the new revision naturally
+- fsnotify on the notes directory
+- Debounce for cloud drive quirks (OneDrive temp files, atomic
+  renames, rapid successive events)
+- On change: re-read `.tid` file, update in-memory store, bump
+  revision counter
+- Browser's 3-second poll picks up new revision naturally
+
+### RCS versioning
+
+Every write creates/updates an RCS archive in `RCS/` subdirectory
+(not inside `notes/` — avoids watcher treating archives as
+notes). Requires `rcs` command.
 
 ### Editor integration
 
-**Browser-triggered editing:**
-- Add a small TiddlyWiki plugin (a system tiddler) that adds an
-  "edit in nvim" button beside the existing pencil (edit) and +
-  (new) buttons
-- Button sends a request to a go-tiddle endpoint (e.g.
-  `POST /edit-external/:title`) which resolves the tiddler's file
-  path and launches the configured editor command
+Command template with `%s` placeholder (e.g. `neovide -- %s`).
+Template is split into args first, then `%s` is substituted — this
+keeps file paths with spaces as a single argument.
 
-**Direct file editing:**
-- Just open the `.tid` file in any editor. fsnotify handles the rest.
-- No CLI command or API call needed.
+## Design decisions
 
-**Editor command:** Configurable, default `neovide -- %s`. The `%s`
-is replaced with the absolute file path. For a running Neovide
-instance, `nvr --servername <addr> --remote %s` could be used
-instead.
+- **No database** — all state in-memory + filesystem
+- **No TiddlyWiki browser code** — the syncer's "browser is
+  authoritative" assumption is fundamentally incompatible with
+  server-as-truth external editing
+- **Markdown over wikitext** — simpler, widely known, no lock-in
+- **Server-side rendering** — goldmark + chroma on the server avoids
+  CDN dependencies and keeps the browser client minimal
+- **rg for search** — ripgrep searches .tid files directly on disk;
+  no in-memory index to build or maintain, handles large wikis easily
+- **Polling over push** — 3s interval is trivial load for single
+  user; no WebSocket complexity
+- **View-only browser** — all editing via neovim; no textarea,
+  no contenteditable, no conflict resolution needed
+- **Config over constants** — listen address, wiki path, editor
+  command, poll interval all configurable
 
-### Configuration
+## Out of scope
 
-YAML or TOML config file, e.g. `go-tiddle.yaml`:
+- Hugo integration
+- Auto-conversion of wikitext to markdown
+- Multiple simultaneous browser clients
 
-```yaml
-wiki_path: ~/notes
-listen: 127.0.0.1:8080
-editor_cmd: "neovide -- %s"
-poll_interval: 3s
-tw_core_path: ~/node_modules/tiddlywiki  # or vendored
+---
+
+## v3 Plan
+
+### Feature 1: Neovide Wrapper Script
+
+**Goal:** Reuse an existing Neovide instance instead of spawning a
+new window for every edit.
+
+**Approach:** Shell script used as `--editor-cmd`:
+- Check if a Neovide process is running
+- If yes: use `nvim --server` (Neovim's remote) to open the file
+  in the existing instance (`--remote` or `nvim --server <addr>
+  --remote <file>`)
+- If no: launch `neovide -- <file>` normally
+- Neovide connects to Neovim, so the server address is a socket
+  (look for `$NVIM_LISTEN_ADDRESS` or a known socket path)
+
+**Files:**
+- `scripts/neovide-wrapper.sh` — the script
+- Update SETUP.md with usage
+
+**Complexity:** Low. One shell script, no Go changes.
+
+---
+
+### Feature 2: Sidebar Tabs
+
+**Goal:** Three-tab sidebar replacing the current Recent list.
+
+#### Tab 1: Recent (non-journals)
+- Sorted by modified date (current behavior)
+- Show first `--sidebar-limit` items (default 20)
+- Ellipsis button at bottom expands to show ALL non-journal tibbits
+- "Non-journal" = does NOT have #Journal tag AND title doesn't
+  match date format (e.g. "21st March 2026")
+
+#### Tab 2: Journals
+- Sorted by modified date
+- Show first `--sidebar-limit` items
+- Ellipsis expands to all journals
+- "Journal" = has #Journal tag OR title matches date format
+
+#### Tab 3: Tags
+- Each tag is a collapsible group, sorted by most-recent tibbit
+  in that group
+- Show first `--tag-limit` tibbits per tag (default 5)
+- Ellipsis per tag expands that tag's full list
+- Skip system tags ($:/ prefix)
+
+#### Config (CSS custom properties)
+```css
+:root {
+  --sidebar-limit: 20;
+  --tag-limit: 5;
+}
 ```
+JS reads via `getComputedStyle`. Change one line, no recompile.
 
-Also support command-line flags and environment variables for all
-options.
+#### Naming
+Rename "notes" → "tibbits" throughout: UI text, Go types/vars,
+API endpoint paths, docs. This is a breaking rename of the REST API.
 
-### Serving TiddlyWiki core
+#### Implementation
+- Tab UI: three clickable tab headers at top of sidebar, one active
+  panel visible at a time
+- Journal detection: function in client JS that checks tag OR date
+  regex (`/^\d{1,2}(?:st|nd|rd|th) \w+ \d{4}$/`)
+- Server changes: notes.json already returns tags — no new
+  endpoint needed, client filters/groups locally
+- Rename: `notes` → `tibbits` across Go packages, API routes,
+  client JS, docs (big but mechanical)
 
-The browser needs the full TiddlyWiki application (core JS, boot
-code, plugins, themes). Two approaches:
+---
 
-1. **Render at startup**: Use the Node.js TiddlyWiki to render a
-   single `index.html` with all core code baked in, then serve that
-   statically. The go server just serves this file for `GET /`.
-   Simplest approach — run `tiddlywiki --render` once at build/start
-   time.
+### Feature 3: Line-Level Quick Edit
 
-2. **Serve components individually**: Serve boot.js, core plugin,
-   theme, etc. as separate requests. More complex, probably
-   unnecessary.
+**Goal:** Edit individual list items in-place without launching
+neovide. Hover a list item → icons appear → click to edit or
+insert below.
 
-**Recommendation**: Option 1. Pre-render the HTML shell with
-TiddlyWiki's own tooling, serve it as a static file. The REST API
-handles all dynamic tiddler data.
+#### Render annotation
+- Extend `internal/render/render.go` to walk the goldmark AST
+- For each `ListItem` node, wrap the output `<li>` with
+  `data-line="N"` where N is the source line number
+- Only annotate list items (not paragraphs, headings, etc.)
 
-### Plugins to support
+#### Client interaction
+- On hover over an `<li data-line>`, show two auto-hiding icons:
+  - ✏️ **Edit** — replace the `<li>` content with a single-line
+    `<input>` containing the raw source line. Enter = save,
+    Escape = cancel.
+  - ➕ **Insert below** — open an empty `<input>` below the
+    current `<li>`. Enter = save new line, Escape = cancel.
+- Icons are positioned to the left/right of the list item,
+  appear on hover, hidden otherwise
 
-From `tiddlywiki.info`:
-- `tiddlywiki/tiddlyweb` — sync adaptor (baked into rendered HTML)
-- `tiddlywiki/filesystem` — not needed (Go server replaces this)
-- `tiddlywiki/highlight` — syntax highlighting plugin
+#### Server endpoint
+- `PATCH /tibbits/:title/line/:n` — edit line N of the .tid body
+  - Body: `{"text": "new line content"}`
+  - Server reads the file, replaces line N, writes back, bumps
+    revision
+- `POST /tibbits/:title/line/:n/insert` — insert after line N
+  - Body: `{"text": "new line content"}`
+  - Server reads, inserts after line N, writes back
 
-Themes:
-- `tiddlywiki/vanilla` + `tiddlywiki/snowwhite`
-- Twilight palette (stored as a tiddler, served via API)
+#### Re-render
+- After PATCH/POST succeeds, client re-fetches the full tibbit
+  (same as existing `refreshNote`) — the whole tibbit body
+  re-renders with correct markdown context (list numbering, etc.)
 
-## Coding standards
+#### Scope limits
+- List items only (for now)
+- Paragraphs: skip or stretch goal (multi-line box, low priority)
+- No quick-edit for headings, code blocks, blockquotes
 
-Carried from dan4thewin/hunted-go:
+---
 
-- **Git:** Feature branches. Diff review before commit. Short,
-  concise commit messages.
-- **Build:** `go build ./...` from repo root. Run `go vet ./...`
-  and `gofmt -l .` after every change batch.
-- **Test:** `go test -gcflags=all=-l -count=1 ./...` (inlining
-  disabled for gomonkey). Statement coverage via
-  `go test -gcflags=all=-l -coverprofile=cover.out ./...` then
-  `go tool cover -func=cover.out`. Condition coverage via
-  `gobco -list-all -test=-gcflags=all=-l .`.
-- **Coverage target:** 100% statement + 100% condition coverage.
-- **Complexity:** `gocyclo -top N .` — threshold is 2× average CC.
-  Flat switches (each case is a single call/assignment) are
-  acceptable above threshold.
-- **Test style:** Clarity over DRY. Each test self-contained and
-  obvious. Copious comments. Descriptive CamelCase subtest names.
-- **Mock external deps with gomonkey/v2.**
-- **No backup files** in the repo.
-- **Surface contradictions immediately** — flag conflicts between
-  docs/comments and actual behavior before proceeding.
-- **Prefer config over hardcoded constants** where feasible.
-- **DRY helpers** with ≤5 params; inline when generics hurt clarity.
+### Experiment sequence
 
-## Todo
+| # | Feature | Description |
+|---|---------|-------------|
+| 019 | Sidebar tabs | Recent (non-journal) + Journal tabs |
+| 020 | Tags tab | Tag groups with expand |
+| 021 | Rename | notes → tibbits everywhere |
+| 022 | Line annotation | data-line on `<li>` in rendered HTML |
+| 023 | Line edit | Hover icons + inline edit input |
+| 024 | Insert below | Add new list item inline |
+| 025 | v3 integration test | Full automated test |
 
-- [ ] Project scaffolding: go mod init, directory structure,
-      .gitignore, Makefile with build/test/lint/coverage targets
-- [ ] .github/copilot-instructions.md with coding standards
-- [ ] Config: YAML config file parsing with CLI flag overrides
-      (wiki_path, listen addr, editor_cmd, poll_interval, tw_core_path)
-- [ ] TID parser: read/write .tid file format (headers + body),
-      handle URL-encoded filenames, $__ system tiddler naming
-- [ ] Tiddler store: in-memory store with revision tracking
-      (title → tiddler map, change counter per tiddler)
-- [ ] File loader: scan tiddlers directory at startup, parse all
-      .tid files into the store
-- [ ] File watcher: fsnotify on tiddlers directory, debounce,
-      re-read changed files, update store, handle cloud drive quirks
-      (temp files, atomic renames, rapid successive events)
-- [ ] HTTP server: net/http router with the 7 TiddlyWeb-compatible
-      endpoints listed in Architecture section
-- [ ] GET / : serve pre-rendered TiddlyWiki HTML
-- [ ] GET /status : return JSON with username, anonymous flag,
-      read_only, tiddlywiki_version, space recipe
-- [ ] GET /recipes/default/tiddlers.json : return skinny tiddler
-      list (all fields except text body)
-- [ ] GET /recipes/default/tiddlers/:title : return full tiddler JSON
-- [ ] PUT /recipes/default/tiddlers/:title : save tiddler to store
-      and write .tid file, return ETag with revision
-- [ ] DELETE /bags/default/tiddlers/:title : delete from store and
-      remove .tid file
-- [ ] GET /favicon.ico : serve favicon from $:/favicon.ico tiddler
-      or default
-- [ ] Editor launch: POST /edit-external/:title endpoint, resolve
-      file path, exec configured editor command
-- [ ] TW plugin: system tiddler that adds "edit externally" buttons
-      beside existing pencil and + buttons in the browser UI
-- [ ] Index HTML generation: script/Makefile target to render the
-      TiddlyWiki shell HTML using node tiddlywiki, including core,
-      tiddlyweb plugin, highlight plugin, snowwhite theme
-- [ ] Integration test: start server, load tiddlers from a test
-      fixture directory, verify all endpoints return correct data
-- [ ] Visual smoke test: use render-url.sh (from ~/src/dpa/scripts/)
-      to open go-tiddle in Safari and screenshot. Compare against
-      baseline screenshot from the Node.js server. Script handles
-      open/reload/capture via AppleScript + screencapture.
-- [ ] CI setup: GitHub Actions workflow for build, test, vet, gofmt,
-      gocyclo, coverage reporting
-- [ ] README.md with installation, configuration, and usage docs
+Neovide wrapper is standalone (scripts/), no experiment needed.
+
+### Open questions
+
+- Rename timing: do the big rename (exp-021) before or after
+  line-edit? Before keeps the API consistent; after avoids
+  merge pain if we're iterating. Suggest: before.
+- PATCH endpoint: should it use line numbers (fragile if file
+  changes between render and edit) or content matching? Line
+  numbers are simpler; re-render on conflict handles staleness.

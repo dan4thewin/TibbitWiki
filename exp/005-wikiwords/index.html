@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TibbitWiki</title>
+</head>
+<body>
+<h1>TibbitWiki</h1>
+<div id="river"></div>
+<script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
+<script>
+// CamelCase regex: uppercase letter, then lowercase(s), then another
+// uppercase-lowercase sequence. Excludes common false positives.
+const CAMEL = /\b([A-Z][a-z]+(?:[A-Z][a-z0-9]*)+)\b/g;
+
+// Known tiddler titles (populated on boot)
+let knownTitles = new Set();
+
+function linkifyWikiWords(html) {
+  // Don't linkify inside <a> tags or HTML attributes
+  const parts = html.split(/(<a[^>]*>.*?<\/a>|<[^>]+>)/gs);
+  return parts.map(part => {
+    if (part.startsWith('<')) return part;
+    return part.replace(CAMEL, (match) => {
+      const cls = knownTitles.has(match) ? 'wikiword' : 'wikiword missing';
+      return `<a href="#" class="${cls}" data-title="${match}">${match}</a>`;
+    });
+  }).join('');
+}
+
+function renderTiddler(t) {
+  const card = document.createElement('div');
+  card.className = 'tiddler';
+  card.dataset.title = t.title;
+  const h2 = document.createElement('h2');
+  h2.textContent = t.title;
+  card.appendChild(h2);
+  const body = document.createElement('div');
+  body.innerHTML = linkifyWikiWords(marked.parse(t.text || ''));
+  card.appendChild(body);
+  return card;
+}
+
+function openTiddler(title) {
+  // Don't open duplicates
+  if (document.querySelector(`.tiddler[data-title="${CSS.escape(title)}"]`)) return;
+  fetch('/recipes/default/tiddlers/' + encodeURIComponent(title))
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(t => {
+      document.getElementById('river').prepend(renderTiddler(t));
+    })
+    .catch(() => alert('Tiddler not found: ' + title));
+}
+
+// Boot: load tiddler list, then open default
+fetch('/recipes/default/tiddlers.json')
+  .then(r => r.json())
+  .then(tiddlers => {
+    tiddlers.forEach(t => knownTitles.add(t.title));
+    openTiddler('ToDo');
+  });
+
+// Handle WikiWord clicks
+document.addEventListener('click', e => {
+  const link = e.target.closest('a.wikiword');
+  if (link) {
+    e.preventDefault();
+    openTiddler(link.dataset.title);
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TibbitWiki</title>
+</head>
+<body>
+<h1>TibbitWiki</h1>
+<h2>Tiddlers</h2>
+<ul id="list"></ul>
+<script>
+fetch('/recipes/default/tiddlers.json')
+  .then(r => r.json())
+  .then(tiddlers => {
+    const ul = document.getElementById('list');
+    tiddlers
+      .filter(t => !t.title.startsWith('$:/'))
+      .sort((a, b) => a.title.localeCompare(b.title))
+      .forEach(t => {
+        const li = document.createElement('li');
+        li.textContent = t.title;
+        ul.appendChild(li);
+      });
+  });
+</script>
+</body>
+</html>
