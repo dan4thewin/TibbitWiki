@@ -66,3 +66,59 @@ func TestThemeCSSContainsBackground(t *testing.T) {
 		t.Errorf("expected background rule in theme CSS")
 	}
 }
+
+// TestListItemLineAnnotation verifies <li> elements get data-line
+// attributes matching their 1-based source line number.
+func TestListItemLineAnnotation(t *testing.T) {
+	// Line 1: heading, line 2: blank, line 3-5: list items.
+	src := "# Title\n\n- alpha\n- beta\n- gamma"
+	got := ToHTML(src)
+	if !strings.Contains(got, `data-line="3"`) {
+		t.Errorf("expected data-line=\"3\" for alpha, got:\n%s", got)
+	}
+	if !strings.Contains(got, `data-line="4"`) {
+		t.Errorf("expected data-line=\"4\" for beta, got:\n%s", got)
+	}
+	if !strings.Contains(got, `data-line="5"`) {
+		t.Errorf("expected data-line=\"5\" for gamma, got:\n%s", got)
+	}
+}
+
+// TestListItemLineAnnotationNested verifies nested list items also
+// get correct data-line attributes.
+func TestListItemLineAnnotationNested(t *testing.T) {
+	src := "- parent\n  - child\n- sibling"
+	got := ToHTML(src)
+	if !strings.Contains(got, `data-line="1"`) {
+		t.Errorf("expected data-line=\"1\" for parent, got:\n%s", got)
+	}
+	if !strings.Contains(got, `data-line="2"`) {
+		t.Errorf("expected data-line=\"2\" for child, got:\n%s", got)
+	}
+	if !strings.Contains(got, `data-line="3"`) {
+		t.Errorf("expected data-line=\"3\" for sibling, got:\n%s", got)
+	}
+}
+
+// TestListItemLineAnnotationOrdered verifies ordered lists get
+// data-line attributes too.
+func TestListItemLineAnnotationOrdered(t *testing.T) {
+	src := "1. first\n2. second"
+	got := ToHTML(src)
+	if !strings.Contains(got, `data-line="1"`) {
+		t.Errorf("expected data-line=\"1\", got:\n%s", got)
+	}
+	if !strings.Contains(got, `data-line="2"`) {
+		t.Errorf("expected data-line=\"2\", got:\n%s", got)
+	}
+}
+
+// TestNonListNoAnnotation verifies paragraphs and headings do NOT
+// get data-line attributes.
+func TestNonListNoAnnotation(t *testing.T) {
+	src := "# Heading\n\nA paragraph."
+	got := ToHTML(src)
+	if strings.Contains(got, "data-line") {
+		t.Errorf("paragraphs/headings should not have data-line, got:\n%s", got)
+	}
+}
