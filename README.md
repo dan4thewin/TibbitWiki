@@ -1,18 +1,21 @@
 # go-tiddle
 
-A Go replacement for TiddlyWiki's Node.js server with filesystem
-watching, external editor integration, and RCS version control.
+A Go replacement for TiddlyWiki's Node.js server with a minimal
+browser client, filesystem watching, external editor integration,
+and RCS version control.
 
 ## Features
 
-- **TiddlyWeb-compatible REST API** — drop-in replacement for the
-  Node.js server; the browser client works unchanged
+- **Minimal browser client** — ~6KB HTML+JS, dark theme, no TiddlyWiki
+  browser code. Markdown rendering with CamelCase WikiWord auto-linking.
+  View-only in browser; all editing via neovim.
+- **TiddlyWeb-compatible REST API** — 7 endpoints plus edit-external
 - **Filesystem watching** — edit `.tid` files in any editor (Neovide,
   vim, etc.) and changes appear in the browser within 3 seconds
-- **External editor launch** — click a button in the browser to open
+- **External editor launch** — click "edit" in the browser to open
   a tiddler in your configured editor
-- **RCS version control** — every tiddler save (browser or external)
-  is automatically checked into RCS; full revision history per file
+- **RCS version control** — every tiddler save is automatically
+  checked into RCS; full revision history per file
 - **Simple configuration** — YAML config file with CLI flag overrides
 
 ## Quick start
@@ -21,20 +24,36 @@ watching, external editor integration, and RCS version control.
 # Build
 go build -o go-tiddle .
 
-# Generate the TiddlyWiki HTML shell (one-time)
-tiddlywiki ~/notes --render \
-  '$:/plugins/tiddlywiki/tiddlyweb/save/offline' \
-  'index.html' 'text/plain'
-
-# Run
+# Run with the built-in minimal client
 ./go-tiddle \
   --wiki-path ~/notes \
   --listen 127.0.0.1:8080 \
-  --index-html ~/notes/output/index.html \
+  --index-html exp/012-integration/index.html \
   --editor-cmd "neovide -- %s"
 ```
 
 Then open http://127.0.0.1:8080 in your browser.
+
+## Browser client
+
+The browser client (`exp/012-integration/index.html`) is a single
+self-contained HTML file with inline JS. No build step, no
+dependencies beyond a CDN link to marked.js.
+
+**Features:**
+- Story river — multiple tiddlers open in a scrollable column
+- Markdown rendering via marked.js
+- CamelCase WikiWord auto-linking (blue for existing, red for missing)
+- Recent tiddlers sidebar (top 20 by modified date)
+- 3-second polling for external changes
+- Edit button per tiddler (launches neovim via server)
+- New tiddler and Journal buttons
+- Dark theme
+
+**Non-features (by design):**
+- No browser-based editing — all editing via neovim
+- No TiddlyWiki wikitext rendering — markdown only
+- No plugin system, no syncer, no complex widget tree
 
 ## Configuration
 
@@ -43,11 +62,10 @@ Then open http://127.0.0.1:8080 in your browser.
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--config` | | Path to YAML config file |
-| `--wiki-path` | `.` | Path to TiddlyWiki folder |
+| `--wiki-path` | `.` | Path to wiki folder containing `tiddlers/` |
 | `--listen` | `127.0.0.1:8080` | Host:port to listen on |
 | `--editor-cmd` | `neovide -- %s` | Editor command (`%s` = file path) |
-| `--index-html` | | Path to pre-rendered index.html |
-| `--tw-core-path` | | Path to TiddlyWiki node module |
+| `--index-html` | | Path to HTML file served for GET / |
 | `--poll-interval` | `3s` | Browser poll interval (informational) |
 
 ### YAML config file
@@ -56,7 +74,7 @@ Then open http://127.0.0.1:8080 in your browser.
 wiki_path: ~/notes
 listen: 127.0.0.1:8080
 editor_cmd: "neovide -- %s"
-index_html: ~/notes/output/index.html
+index_html: exp/012-integration/index.html
 ```
 
 CLI flags override YAML values.
@@ -65,36 +83,54 @@ CLI flags override YAML values.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/` | Serve TiddlyWiki HTML |
+| GET | `/` | Serve browser client HTML |
 | GET | `/status` | Server status JSON |
 | GET | `/recipes/default/tiddlers.json` | Skinny tiddler list |
 | GET | `/recipes/default/tiddlers/:title` | Full tiddler JSON |
-| PUT | `/recipes/default/tiddlers/:title` | Save tiddler |
+| PUT | `/recipes/default/tiddlers/:title` | Create/save tiddler |
 | DELETE | `/bags/default/tiddlers/:title` | Delete tiddler |
 | GET | `/favicon.ico` | Favicon |
 | POST | `/edit-external/:title` | Launch external editor |
 
-## Editing tiddlers externally
+## Editing tiddlers
 
 Two ways:
 
 1. **Direct file edit** — open any `.tid` file in your editor, save,
-   the server picks up changes via fsnotify.
-2. **Browser button** — click the external edit button in the tiddler
-   toolbar to launch your configured editor.
+   the server picks up changes via fsnotify within 3 seconds.
+2. **Browser button** — click "edit" in a tiddler's toolbar to launch
+   neovim via the server's edit-external endpoint.
 
 ## RCS version control
 
-Every tiddler write creates/updates an RCS archive (`filename.tid,v`)
-alongside the working file. View history with:
+Every tiddler write creates/updates an RCS archive in an `RCS/`
+subdirectory alongside the tiddlers. View history with:
 
 ```bash
-rlog tiddlers/MyTiddler.tid        # show revision log
-rcsdiff tiddlers/MyTiddler.tid     # diff working vs latest
-co -r1.2 -p tiddlers/MyTiddler.tid # print revision 1.2
+rlog tiddlers/MyTiddler.tid
+rcsdiff tiddlers/MyTiddler.tid
+co -r1.2 -p tiddlers/MyTiddler.tid
 ```
 
 Requires `rcs` (`brew install rcs` on macOS).
+
+## Architecture
+
+```
+internal/
+  config/   — YAML config + CLI flag parsing
+  tid/      — .tid file parser/serializer
+  store/    — in-memory tiddler store with revision tracking
+  watcher/  — fsnotify file watcher with debounce
+  server/   — HTTP server implementing TiddlyWeb API
+  editor/   — external editor launcher
+  rcs/      — RCS version control integration
+  loader/   — startup file loader
+main.go     — wiring
+exp/        — browser client experiments (001–012)
+```
+
+No database. All state is in-memory + filesystem.
 
 ## Development
 
@@ -109,3 +145,6 @@ mk check      # all of the above
 
 Build tool: [mk](https://github.com/dcjones/mk) (Plan 9 mk in Go).
 Install: `go install github.com/dcjones/mk@latest`
+
+See [TESTING.md](TESTING.md) for browser automation and integration
+testing techniques.

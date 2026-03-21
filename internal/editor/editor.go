@@ -22,10 +22,16 @@ func New(cmdTemplate string) *Editor {
 // Open launches the editor with the given file path.
 // The command is run asynchronously (fire and forget).
 func (e *Editor) Open(filePath string) error {
-	cmdStr := strings.Replace(e.cmdTemplate, "%s", filePath, 1)
-	parts := strings.Fields(cmdStr)
+	// Split template first, then substitute %s so file paths with
+	// spaces stay as a single argument.
+	parts := strings.Fields(e.cmdTemplate)
 	if len(parts) == 0 {
 		return fmt.Errorf("empty editor command")
+	}
+	for i, p := range parts {
+		if strings.Contains(p, "%s") {
+			parts[i] = strings.Replace(p, "%s", filePath, 1)
+		}
 	}
 
 	cmd := exec.Command(parts[0], parts[1:]...)

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>go-tiddle</title>
+</head>
+<body>
+<h1>go-tiddle</h1>
+<div id="river"></div>
+<script>
+const title = 'ToDo';
+fetch('/recipes/default/tiddlers/' + encodeURIComponent(title))
+  .then(r => r.json())
+  .then(t => {
+    const river = document.getElementById('river');
+    const h2 = document.createElement('h2');
+    h2.textContent = t.title;
+    river.appendChild(h2);
+    const pre = document.createElement('pre');
+    pre.textContent = t.text || '(empty)';
+    river.appendChild(pre);
+  });
+</script>
+</body>
+</html>

@@ -170,6 +170,19 @@ func (s *Server) putTiddler(w http.ResponseWriter, r *http.Request, title string
 		delete(fields, "fields")
 	}
 
+	// Reject stale PUTs: if the browser's revision is behind the
+	// store (meaning an external edit occurred), return 409 so the
+	// syncer refetches instead of overwriting.
+	if revVal, ok := fields["revision"]; ok {
+		if clientRev, ok := revVal.(string); ok {
+			serverRev := s.store.Revision(title)
+			if serverRev > 0 && clientRev != fmt.Sprintf("%d", serverRev) {
+				w.WriteHeader(http.StatusConflict)
+				return
+			}
+		}
+	}
+
 	// Build tiddler fields as strings.
 	tFields := make(map[string]string)
 	for k, v := range fields {

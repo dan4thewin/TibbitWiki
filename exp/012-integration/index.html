@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>go-tiddle</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 20px; display: flex; gap: 20px; background: #1a1a2e; color: #e0e0e0; }
+h1 { margin-top: 0; color: #e0e0e0; }
+#main { flex: 1; min-width: 0; }
+#sidebar { width: 220px; flex-shrink: 0; }
+#sidebar h3 { margin-top: 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+#sidebar ul { list-style: none; padding: 0; margin: 0; }
+#sidebar li { padding: 4px 0; cursor: pointer; color: #6cacee; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#sidebar li:hover { color: #8ecaff; text-decoration: underline; }
+.tiddler { border: 1px solid #333; border-radius: 6px; padding: 16px; margin-bottom: 16px; background: #16213e; }
+.tiddler-header { display: flex; align-items: center; justify-content: space-between; }
+.tiddler-header h2 { margin: 0; color: #e0e0e0; }
+.tiddler-toolbar { display: flex; gap: 4px; }
+.tiddler-toolbar button { background: none; border: 1px solid #444; border-radius: 4px; cursor: pointer; padding: 2px 8px; font-size: 16px; color: #aaa; }
+.tiddler-toolbar button:hover { background: #2a2a4a; color: #e0e0e0; }
+a.wikiword { color: #6cacee; text-decoration: none; }
+a.wikiword:hover { text-decoration: underline; color: #8ecaff; }
+a.wikiword.missing { color: #e06060; font-style: italic; }
+#top-bar { margin-bottom: 16px; display: flex; gap: 8px; }
+#top-bar button { padding: 6px 14px; font-size: 14px; border: 1px solid #444; border-radius: 4px; cursor: pointer; background: #16213e; color: #e0e0e0; }
+#top-bar button:hover { background: #2a2a4a; }
+.tiddler-body { line-height: 1.6; }
+.tiddler-body code { background: #0d1117; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+.tiddler-body pre { background: #0d1117; padding: 12px; border-radius: 6px; overflow-x: auto; }
+.tiddler-body pre code { background: none; padding: 0; }
+.tiddler-body blockquote { border-left: 3px solid #444; margin-left: 0; padding-left: 16px; color: #aaa; }
+</style>
+</head>
+<body>
+<div id="main">
+  <h1>go-tiddle</h1>
+  <div id="top-bar">
+    <button onclick="newTiddler()">+ New</button>
+    <button onclick="newJournal()">+ Journal</button>
+  </div>
+  <div id="river"></div>
+</div>
+<div id="sidebar">
+  <h3>Recent</h3>
+  <ul id="recent-list"></ul>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
+<script>
+const CAMEL = /\b([A-Z][a-z]+(?:[A-Z][a-z0-9]*)+)\b/g;
+let knownTitles = new Set();
+let knownRevisions = {};
+
+function linkifyWikiWords(html) {
+  const parts = html.split(/(<a[^>]*>.*?<\/a>|<[^>]+>)/gs);
+  return parts.map(part => {
+    if (part.startsWith('<')) return part;
+    return part.replace(CAMEL, (match) => {
+      const cls = knownTitles.has(match) ? 'wikiword' : 'wikiword missing';
+      return `<a href="#" class="${cls}" data-title="${match}">${match}</a>`;
+    });
+  }).join('');
+}
+
+function renderTiddler(t) {
+  const card = document.createElement('div');
+  card.className = 'tiddler';
+  card.dataset.title = t.title;
+  card.dataset.revision = t.revision || '0';
+
+  const header = document.createElement('div');
+  header.className = 'tiddler-header';
+  const h2 = document.createElement('h2');
+  h2.textContent = t.title;
+  header.appendChild(h2);
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'tiddler-toolbar';
+
+  // Edit-external button
+  const editBtn = document.createElement('button');
+  editBtn.textContent = 'edit';
+  editBtn.title = 'Edit in Neovim';
+  editBtn.onclick = () => {
+    fetch('/edit-external/' + encodeURIComponent(t.title), {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'TiddlyWiki' }
+    });
+  };
+  toolbar.appendChild(editBtn);
+
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '✕';
+  closeBtn.title = 'Close';
+  closeBtn.onclick = () => card.remove();
+  toolbar.appendChild(closeBtn);
+
+  header.appendChild(toolbar);
+  card.appendChild(header);
+
+  const body = document.createElement('div');
+  body.className = 'tiddler-body';
+  body.innerHTML = linkifyWikiWords(marked.parse(t.text || ''));
+  card.appendChild(body);
+  return card;
+}
+
+function openTiddler(title) {
+  const existing = document.querySelector(`.tiddler[data-title="${CSS.escape(title)}"]`);
+  if (existing) { existing.scrollIntoView({ behavior: 'smooth' }); return; }
+  fetch('/recipes/default/tiddlers/' + encodeURIComponent(title))
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(t => {
+      knownRevisions[t.title] = t.revision;
+      document.getElementById('river').prepend(renderTiddler(t));
+    })
+    .catch(() => alert('Tiddler not found: ' + title));
+}
+
+function refreshTiddler(title) {
+  fetch('/recipes/default/tiddlers/' + encodeURIComponent(title))
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(t => {
+      knownRevisions[t.title] = t.revision;
+      const existing = document.querySelector(`.tiddler[data-title="${CSS.escape(title)}"]`);
+      if (existing) {
+        const body = existing.querySelector('.tiddler-body');
+        body.innerHTML = linkifyWikiWords(marked.parse(t.text || ''));
+        existing.dataset.revision = t.revision;
+      }
+    });
+}
+
+function poll() {
+  fetch('/recipes/default/tiddlers.json')
+    .then(r => r.json())
+    .then(tiddlers => {
+      knownTitles = new Set(tiddlers.map(t => t.title));
+      updateSidebar(tiddlers);
+      tiddlers.forEach(t => {
+        const prev = knownRevisions[t.title];
+        if (prev !== undefined && String(t.revision) !== String(prev)) {
+          refreshTiddler(t.title);
+        }
+      });
+    })
+    .finally(() => setTimeout(poll, 3000));
+}
+
+function updateSidebar(tiddlers) {
+  const recent = tiddlers
+    .filter(t => t.modified)
+    .sort((a, b) => (b.modified || '').localeCompare(a.modified || ''))
+    .slice(0, 20);
+  const ul = document.getElementById('recent-list');
+  ul.innerHTML = '';
+  recent.forEach(t => {
+    const li = document.createElement('li');
+    li.textContent = t.title;
+    li.title = t.title;
+    li.onclick = () => openTiddler(t.title);
+    ul.appendChild(li);
+  });
+}
+
+function createTiddler(title, openEditor) {
+  const body = JSON.stringify({ title: title, text: '', type: 'text/vnd.tiddlywiki' });
+  fetch('/recipes/default/tiddlers/' + encodeURIComponent(title), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'TiddlyWiki' },
+    body: body
+  }).then(r => {
+    if (!r.ok) throw new Error(r.status);
+    knownTitles.add(title);
+    openTiddler(title);
+    if (openEditor) {
+      fetch('/edit-external/' + encodeURIComponent(title), {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'TiddlyWiki' }
+      });
+    }
+  }).catch(e => alert('Create failed: ' + e.message));
+}
+
+function newTiddler() {
+  const title = prompt('New tiddler title:');
+  if (!title) return;
+  createTiddler(title, true);
+}
+
+function newJournal() {
+  const d = new Date();
+  const day = d.getDate();
+  const suffix = ([,'st','nd','rd'][day % 10] && (day < 4 || day > 20))
+    ? [,'st','nd','rd'][day % 10] : 'th';
+  const months = ['January','February','March','April','May','June',
+    'July','August','September','October','November','December'];
+  const title = day + suffix + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+  createTiddler(title, true);
+}
+
+fetch('/recipes/default/tiddlers.json')
+  .then(r => r.json())
+  .then(tiddlers => {
+    tiddlers.forEach(t => {
+      knownTitles.add(t.title);
+      knownRevisions[t.title] = t.revision;
+    });
+    updateSidebar(tiddlers);
+    openTiddler('ToDo');
+    setTimeout(poll, 3000);
+  });
+
+document.addEventListener('click', e => {
+  const link = e.target.closest('a.wikiword');
+  if (link) {
+    e.preventDefault();
+    openTiddler(link.dataset.title);
+  }
+});
+</script>
+</body>
+</html>
