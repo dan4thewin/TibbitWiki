@@ -167,11 +167,12 @@ etc. Root `/` shows wiki selector or redirects to a default.
 
 ### Phase 4: Browser client updates
 
-- [ ] Multi-wiki URL awareness
+- [x] Multi-wiki URL awareness
   - Client detects wiki prefix from `window.location.pathname`
-  - API calls prepend wiki prefix
-  - Wiki name shown in header/title
-- [ ] Wiki selector page (simple: list of wiki names as links)
+  - All fetch calls prepend `PREFIX` (`/{wiki}`)
+  - Wiki name shown in document title
+  - theme.css href patched via JS
+- [x] Wiki selector page (server-side: list of wiki names as links)
 
 ### Design notes
 

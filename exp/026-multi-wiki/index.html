@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TibbitWiki</title>
+<link rel="stylesheet" href="/theme.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+:root {
+  --sidebar-limit: 20;
+  --tag-limit: 5;
+}
+body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 20px; display: flex; gap: 20px; background: #1a1a2e; color: #e0e0e0; }
+h1 { margin-top: 0; color: #e0e0e0; }
+#main { flex: 1; min-width: 0; }
+#sidebar { width: 220px; flex-shrink: 0; }
+
+/* Tab headers */
+#tab-headers { display: flex; gap: 0; margin-bottom: 8px; border-bottom: 1px solid #333; }
+#tab-headers .tab { padding: 6px 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #666; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+#tab-headers .tab:hover { color: #aaa; }
+#tab-headers .tab.active { color: #6cacee; border-bottom-color: #6cacee; }
+
+/* Tab panels */
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+.tab-panel ul { list-style: none; padding: 0; margin: 0; }
+.tab-panel li { padding: 4px 0; cursor: pointer; color: #6cacee; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tab-panel li:hover { color: #8ecaff; text-decoration: underline; }
+.ellipsis-btn { display: block; padding: 6px 0; color: #666; font-size: 18px; cursor: pointer; text-align: center; letter-spacing: 3px; }
+.ellipsis-btn:hover { color: #aaa; }
+
+/* Tag groups */
+.tag-group-header { display: flex; align-items: center; margin: 10px 0 4px; }
+.tag-group-header:first-child { margin-top: 0; }
+
+.note { border: 1px solid #333; border-radius: 6px; padding: 16px; margin-bottom: 16px; background: #16213e; }
+.note-header { display: flex; align-items: center; justify-content: space-between; }
+.note-header h2 { margin: 0; color: #e0e0e0; }
+.note-date { margin-left: 12px; font-size: 13px; font-weight: 400; color: #666; }
+.note-toolbar { display: flex; gap: 4px; }
+.note-toolbar button { background: none; border: 1px solid #444; border-radius: 4px; cursor: pointer; padding: 2px 8px; font-size: 16px; color: #aaa; }
+.note-toolbar button:hover { background: #2a2a4a; color: #e0e0e0; }
+.note-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.tag-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 12px; font-size: 12px; cursor: pointer; font-weight: 500; }
+.tag-pill:hover { filter: brightness(1.2); }
+.tag-pill .tag-remove { font-size: 10px; opacity: 0; margin-left: 2px; cursor: pointer; }
+.tag-pill:hover .tag-remove { opacity: 0.7; }
+.tag-pill .tag-remove:hover { opacity: 1; }
+.tag-add-btn { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 12px; font-size: 12px; cursor: pointer; background: #2a2a4a; color: #6cacee; border: 1px dashed #444; }
+.tag-add-btn:hover { background: #333; border-color: #6cacee; }
+.tag-add-input { background: #0d1117; border: 1px solid #6cacee; border-radius: 12px; color: #e0e0e0; font-size: 12px; padding: 2px 10px; outline: none; width: 100px; }
+a.wikiword { color: #6cacee; text-decoration: none; }
+a.wikiword:hover { text-decoration: underline; color: #8ecaff; }
+a.wikiword.missing { color: #e06060; font-style: italic; }
+#top-bar { margin-bottom: 16px; display: flex; gap: 8px; }
+#top-bar button { padding: 6px 14px; font-size: 14px; border: 1px solid #444; border-radius: 4px; cursor: pointer; background: #16213e; color: #e0e0e0; }
+#top-bar button:hover { background: #2a2a4a; }
+.note-body { line-height: 1.6; }
+.note-body code { background: #0d1117; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+.note-body pre { background: #0d1117; padding: 12px; border-radius: 6px; overflow-x: auto; position: relative; cursor: pointer; }
+.note-body pre:hover::after { content: 'click to edit'; position: absolute; top: 4px; right: 8px; font-size: 11px; color: #6cacee; opacity: 0.6; font-family: sans-serif; }
+.note-body pre.editing { cursor: default; }
+.note-body pre.editing:hover::after { display: none; }
+.note-body pre code div[data-line] { padding-left: 24px; position: relative; min-height: 1.4em; cursor: pointer; }
+.note-body pre code div[data-line]:hover { background: rgba(108,172,238,0.08); }
+.note-body pre code div[data-line] > .line-icons { display: none; position: absolute; left: 0; top: 0; white-space: nowrap; }
+.note-body pre code div[data-line]:hover > .line-icons { display: inline-flex; gap: 0; }
+.note-body pre code { background: none; padding: 0; }
+.note-body blockquote { border-left: 3px solid #444; margin-left: 0; padding-left: 16px; color: #aaa; }
+#search-bar { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: #0d1117; border-top: 1px solid #444; padding: 8px 16px; z-index: 100; }
+#search-bar.active { display: flex; align-items: center; gap: 8px; }
+#search-bar label { color: #6cacee; font-size: 16px; font-family: monospace; }
+#search-bar input { flex: 1; background: #1a1a2e; border: 1px solid #444; border-radius: 4px; color: #e0e0e0; font-size: 16px; font-family: monospace; padding: 6px 10px; outline: none; }
+#search-bar input:focus { border-color: #6cacee; }
+#search-bar .hint { color: #555; font-size: 12px; }
+.search-result { margin-bottom: 8px; }
+.search-result-title { color: #6cacee; cursor: pointer; font-weight: bold; font-size: 15px; }
+.search-result-title:hover { text-decoration: underline; color: #8ecaff; }
+.search-result-lines { font-family: monospace; font-size: 13px; color: #999; margin: 2px 0 0 16px; white-space: pre-wrap; word-break: break-word; }
+
+/* Line-edit hover icons */
+.note-body [data-line] { position: relative; }
+.note-body [data-line] > .line-icons { display: none; position: absolute; left: -2.5em; bottom: 0.25em; white-space: nowrap; }
+.note-body [data-line]:hover > .line-icons { display: inline-flex; align-items: center; }
+.line-icons button { background: none; border: none; cursor: pointer; font-size: 14px; padding: 0; margin: 0; opacity: 0.4; color: #6cacee; line-height: 1; }
+.line-icons button:hover { opacity: 1; }
+.line-edit-input { width: 100%; background: #0d1117; border: 1px solid #6cacee; border-radius: 3px; color: #e0e0e0; font-family: inherit; font-size: inherit; padding: 2px 6px; outline: none; box-sizing: border-box; }
+</style>
+</head>
+<body>
+<div id="main">
+  <h1>TibbitWiki</h1>
+  <div id="top-bar">
+    <button onclick="newNote()"><i class="bi bi-plus-lg"></i> New</button>
+    <button onclick="newJournal()"><i class="bi bi-journal-plus"></i> Journal</button>
+  </div>
+  <div id="river"></div>
+</div>
+<div id="sidebar">
+  <div id="tab-headers">
+    <span class="tab active" data-tab="recent">Recent</span>
+    <span class="tab" data-tab="journals">Journals</span>
+    <span class="tab" data-tab="tags">Tags</span>
+  </div>
+  <div id="tab-recent" class="tab-panel active">
+    <ul id="recent-list"></ul>
+  </div>
+  <div id="tab-journals" class="tab-panel">
+    <ul id="journal-list"></ul>
+  </div>
+  <div id="tab-tags" class="tab-panel">
+    <div id="tag-groups"></div>
+  </div>
+</div>
+
+<div id="search-bar">
+  <label>/</label>
+  <input id="search-input" type="text" placeholder="word !not #tag @title /regex/ m|regex|" autocomplete="off">
+  <span class="hint">Enter=search  Esc=close</span>
+</div>
+
+<script>
+// Derive wiki prefix from the URL path (e.g., "/work" from "/work/")
+const PREFIX = '/' + window.location.pathname.split('/').filter(Boolean)[0];
+document.querySelector('link[href="/theme.css"]').href = PREFIX + '/theme.css';
+document.title = 'TibbitWiki — ' + PREFIX.slice(1);
+
+const CAMEL = /\b([A-Z][a-z]+(?:[A-Z][a-z0-9]*)+)\b/g;
+const DATE_RE = /^\d{1,2}(?:st|nd|rd|th) \w+ \d{4}$/;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+let knownTitles = new Set();
+let knownRevisions = {};
+let allNotes = [];
+
+function cssVar(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name);
+  return parseInt(v) || fallback;
+}
+
+const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// Format an ISO 8601 or TiddlyWiki timestamp to "21 Mar 2026".
+function fmtDate(s) {
+  if (!s) return '';
+  let d;
+  if (/^\d{17}$/.test(s)) {
+    // TiddlyWiki format: YYYYMMDDHHmmssSSS
+    d = new Date(s.slice(0,4) + '-' + s.slice(4,6) + '-' + s.slice(6,8));
+  } else {
+    d = new Date(s);
+  }
+  if (isNaN(d)) return '';
+  return d.getUTCDate() + ' ' + SHORT_MONTHS[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+}
+
+// Journal detection: #Journal tag OR date-format title.
+function isJournal(t) {
+  const tags = parseTags(t.tags);
+  if (tags.some(tag => tag.toLowerCase() === 'journal')) return true;
+  return DATE_RE.test(t.title) || ISO_DATE_RE.test(t.title);
+}
+
+// Stable color from tag name — dark-friendly palette.
+const TAG_COLORS = [
+  {bg:'#2d4a3e',fg:'#7ee8a8'}, {bg:'#3d2d4a',fg:'#c49beb'},
+  {bg:'#4a3d2d',fg:'#e8c57e'}, {bg:'#2d3d4a',fg:'#7eb8e8'},
+  {bg:'#4a2d3d',fg:'#e87eae'}, {bg:'#2d4a4a',fg:'#7ee8e8'},
+  {bg:'#4a4a2d',fg:'#d4d47e'}, {bg:'#3d2d3d',fg:'#c49bc4'},
+];
+function tagColor(tag) {
+  let h = 0;
+  for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) | 0;
+  return TAG_COLORS[Math.abs(h) % TAG_COLORS.length];
+}
+
+function parseTags(s) {
+  if (!s) return [];
+  const tags = [];
+  const re = /\[\[([^\]]+)\]\]|(\S+)/g;
+  let m;
+  while ((m = re.exec(s)) !== null) tags.push(m[1] || m[2]);
+  return tags;
+}
+
+function linkifyWikiWords(html) {
+  const parts = html.split(/(<a[^>]*>.*?<\/a>|<[^>]+>)/gs);
+  return parts.map(part => {
+    if (part.startsWith('<')) return part;
+    return part.replace(CAMEL, (match) => {
+      const cls = knownTitles.has(match) ? 'wikiword' : 'wikiword missing';
+      return `<a href="#" class="${cls}" data-title="${match}">${match}</a>`;
+    });
+  }).join('');
+}
+
+function renderNote(t) {
+  const card = document.createElement('div');
+  card.className = 'note';
+  card.dataset.title = t.title;
+  card.dataset.revision = t.revision || '0';
+
+  const header = document.createElement('div');
+  header.className = 'note-header';
+  const h2 = document.createElement('h2');
+  h2.textContent = t.title;
+  const dateStr = fmtDate(t.modified);
+  if (dateStr) {
+    const dateSp = document.createElement('span');
+    dateSp.className = 'note-date';
+    dateSp.textContent = dateStr;
+    h2.appendChild(dateSp);
+  }
+  header.appendChild(h2);
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'note-toolbar';
+  const editBtn = document.createElement('button');
+  editBtn.innerHTML = '<i class="bi bi-pencil"></i>';
+  editBtn.title = 'Edit in Neovim';
+  editBtn.onclick = () => {
+    fetch(PREFIX + '/edit-external/' + encodeURIComponent(t.title), { method: 'POST' });
+  };
+  toolbar.appendChild(editBtn);
+  const closeBtn = document.createElement('button');
+  closeBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+  closeBtn.title = 'Close';
+  closeBtn.onclick = () => card.remove();
+  toolbar.appendChild(closeBtn);
+  header.appendChild(toolbar);
+  card.appendChild(header);
+  card.appendChild(buildTagPills(t));
+
+  const body = document.createElement('div');
+  body.className = 'note-body';
+  body.innerHTML = linkifyWikiWords(t.html || t.text || '');
+  injectLineIcons(body, t.title);
+  attachCodeBlockEditing(body, t.title);
+  card.appendChild(body);
+  return card;
+}
+
+function openNote(title) {
+  const existing = document.querySelector(`.note[data-title="${CSS.escape(title)}"]`);
+  if (existing) { existing.scrollIntoView({ behavior: 'smooth' }); return; }
+  fetch(PREFIX + '/notes/' + encodeURIComponent(title))
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(t => {
+      knownRevisions[t.title] = t.revision;
+      const card = renderNote(t);
+      document.getElementById('river').appendChild(card);
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    })
+    .catch(() => alert('Note not found: ' + title));
+}
+
+function refreshNote(title) {
+  const card = document.querySelector(`.note[data-title="${CSS.escape(title)}"]`);
+  if (!card) return;
+  fetch(PREFIX + '/notes/' + encodeURIComponent(title))
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(t => {
+      // Update tags.
+      const oldTags = card.querySelector('.note-tags');
+      if (oldTags) oldTags.remove();
+      const tagDiv = buildTagPills(t);
+      const header = card.querySelector('.note-header');
+      header.after(tagDiv);
+      // Update body.
+      const body = card.querySelector('.note-body');
+      body.innerHTML = linkifyWikiWords(t.html || t.text || '');
+      injectLineIcons(body, t.title);
+      attachCodeBlockEditing(body, t.title);
+      // Update revision.
+      card.dataset.revision = t.revision;
+      knownRevisions[t.title] = t.revision;
+    });
+}
+
+function buildTagPills(t) {
+  const tagDiv = document.createElement('div');
+  tagDiv.className = 'note-tags';
+  parseTags(t.tags).forEach(tag => {
+    const pill = document.createElement('span');
+    pill.className = 'tag-pill';
+    const c = tagColor(tag);
+    pill.style.background = c.bg;
+    pill.style.color = c.fg;
+    const label = document.createElement('span');
+    label.textContent = tag;
+    label.onclick = () => doSearch('#' + tag);
+    pill.appendChild(label);
+    const rm = document.createElement('i');
+    rm.className = 'bi bi-x tag-remove';
+    rm.title = 'Remove tag';
+    rm.onclick = (e) => { e.stopPropagation(); removeTag(t.title, tag); };
+    pill.appendChild(rm);
+    tagDiv.appendChild(pill);
+  });
+  const addBtn = document.createElement('span');
+  addBtn.className = 'tag-add-btn';
+  addBtn.innerHTML = '<i class="bi bi-plus"></i>';
+  addBtn.title = 'Add tag';
+  addBtn.onclick = () => startAddTag(tagDiv, t.title);
+  tagDiv.appendChild(addBtn);
+  return tagDiv;
+}
+
+function poll() {
+  fetch(PREFIX + '/notes')
+    .then(r => r.json())
+    .then(notes => {
+      allNotes = notes;
+      knownTitles = new Set(notes.map(t => t.title));
+      updateSidebar(notes);
+      notes.forEach(t => {
+        const prev = knownRevisions[t.title];
+        if (prev !== undefined && String(t.revision) !== String(prev)) {
+          refreshNote(t.title);
+        }
+      });
+    })
+    .finally(() => setTimeout(poll, 3000));
+}
+
+// Build a list with an optional ellipsis to show remaining items.
+function buildList(ul, items, limit) {
+  ul.innerHTML = '';
+  const parent = ul.parentNode;
+  const oldBtn = parent.querySelector('.ellipsis-btn');
+  if (oldBtn) oldBtn.remove();
+
+  const shown = items.slice(0, limit);
+  const rest = items.slice(limit);
+
+  shown.forEach(t => {
+    const li = document.createElement('li');
+    li.textContent = t.title;
+    li.title = t.title;
+    li.onclick = () => openNote(t.title);
+    ul.appendChild(li);
+  });
+
+  if (rest.length > 0) {
+    const btn = document.createElement('div');
+    btn.className = 'ellipsis-btn';
+    btn.textContent = '···';
+    btn.title = rest.length + ' more';
+    btn.onclick = () => {
+      rest.forEach(t => {
+        const li = document.createElement('li');
+        li.textContent = t.title;
+        li.title = t.title;
+        li.onclick = () => openNote(t.title);
+        ul.appendChild(li);
+      });
+      btn.remove();
+    };
+    parent.appendChild(btn);
+  }
+}
+
+function updateSidebar(notes) {
+  const byAccessed = notes.slice()
+    .sort((a, b) => (b.accessed || '').localeCompare(a.accessed || ''));
+  const byModified = notes.slice()
+    .sort((a, b) => (b.modified || '').localeCompare(a.modified || ''));
+
+  const limit = cssVar('--sidebar-limit', 20);
+  const tagLimit = cssVar('--tag-limit', 5);
+
+  // Split into journals and non-journals.
+  const journals = byModified.filter(t => isJournal(t));
+  const recent = byAccessed.filter(t => !isJournal(t));
+
+  buildList(document.getElementById('recent-list'), recent, limit);
+  buildList(document.getElementById('journal-list'), journals, limit);
+
+  // Tags tab: group by tag, sorted by most recent in each group.
+  const tagMap = {};  // tag -> [notes]
+  byModified.forEach(t => {
+    parseTags(t.tags).forEach(tag => {
+      if (tag.startsWith('$:/')) return;
+      if (!tagMap[tag]) tagMap[tag] = [];
+      tagMap[tag].push(t);
+    });
+  });
+
+  // Sort tags by the modified time of their most recent note.
+  const tagOrder = Object.keys(tagMap).sort((a, b) => {
+    return (tagMap[b][0].modified || '').localeCompare(tagMap[a][0].modified || '');
+  });
+
+  const container = document.getElementById('tag-groups');
+  container.innerHTML = '';
+  tagOrder.forEach(tag => {
+    const items = tagMap[tag];
+    const hdr = document.createElement('div');
+    hdr.className = 'tag-group-header';
+    const pill = document.createElement('span');
+    pill.className = 'tag-pill';
+    const c = tagColor(tag);
+    pill.style.background = c.bg;
+    pill.style.color = c.fg;
+    pill.textContent = tag;
+    pill.onclick = () => doSearch('#' + tag);
+    hdr.appendChild(pill);
+    const count = document.createElement('span');
+    count.style.cssText = 'margin-left:6px;opacity:0.5;font-size:12px';
+    count.textContent = '(' + items.length + ')';
+    hdr.appendChild(count);
+    container.appendChild(hdr);
+
+    const ul = document.createElement('ul');
+    const wrapper = document.createElement('div');
+    wrapper.appendChild(ul);
+    container.appendChild(wrapper);
+    buildList(ul, items, tagLimit);
+  });
+}
+
+// Tab switching
+document.getElementById('tab-headers').addEventListener('click', e => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  document.querySelectorAll('#tab-headers .tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+});
+
+function createNote(title, openEditor) {
+  const body = JSON.stringify({ title: title, text: '', type: 'text/markdown' });
+  fetch(PREFIX + '/notes/' + encodeURIComponent(title), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: body
+  }).then(r => {
+    if (!r.ok) throw new Error(r.status);
+    knownTitles.add(title);
+    openNote(title);
+    if (openEditor) {
+      fetch(PREFIX + '/edit-external/' + encodeURIComponent(title), { method: 'POST' });
+    }
+  }).catch(e => alert('Create failed: ' + e.message));
+}
+
+function newNote() {
+  const title = prompt('New note title:');
+  if (!title) return;
+  createNote(title, true);
+}
+
+function newJournal() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const title = y + '-' + m + '-' + day;
+  createNote(title, true);
+}
+
+fetch(PREFIX + '/notes')
+  .then(r => r.json())
+  .then(notes => {
+    allNotes = notes;
+    notes.forEach(t => {
+      knownTitles.add(t.title);
+      knownRevisions[t.title] = t.revision;
+    });
+    updateSidebar(notes);
+    openNote('ToDo');
+    setTimeout(poll, 3000);
+  });
+
+document.addEventListener('click', e => {
+  const link = e.target.closest('a.wikiword');
+  if (link) {
+    e.preventDefault();
+    openNote(link.dataset.title);
+  }
+  const sr = e.target.closest('.search-result-title');
+  if (sr) {
+    openNote(sr.dataset.title);
+  }
+});
+
+// Search UI — vi-style / to open, Esc to close, Enter to search.
+const searchBar = document.getElementById('search-bar');
+const searchInput = document.getElementById('search-input');
+
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input, textarea')) return;
+  if (e.key === '/' && !searchBar.classList.contains('active')) {
+    e.preventDefault();
+    searchBar.classList.add('active');
+    searchInput.value = '';
+    searchInput.focus();
+  }
+  if (e.key === 'x') {
+    const notes = document.querySelectorAll('#river .note');
+    if (notes.length > 0) notes[notes.length - 1].remove();
+  }
+});
+
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    searchBar.classList.remove('active');
+    searchInput.blur();
+  }
+  if (e.key === 'Enter') {
+    const q = searchInput.value.trim();
+    if (!q) return;
+    searchBar.classList.remove('active');
+    searchInput.blur();
+    doSearch(q);
+  }
+});
+
+function doSearch(q) {
+  fetch(PREFIX + '/search?q=' + encodeURIComponent(q))
+    .then(r => r.json())
+    .then(results => {
+      const prev = document.querySelector('.note[data-title="__search__"]');
+      if (prev) prev.remove();
+
+      const card = document.createElement('div');
+      card.className = 'note';
+      card.dataset.title = '__search__';
+
+      const header = document.createElement('div');
+      header.className = 'note-header';
+      const h2 = document.createElement('h2');
+      h2.textContent = 'Search: ' + q;
+      header.appendChild(h2);
+
+      const toolbar = document.createElement('div');
+      toolbar.className = 'note-toolbar';
+      const closeBtn = document.createElement('button');
+      closeBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+      closeBtn.title = 'Close';
+      closeBtn.onclick = () => card.remove();
+      toolbar.appendChild(closeBtn);
+      header.appendChild(toolbar);
+      card.appendChild(header);
+
+      const body = document.createElement('div');
+      body.className = 'note-body';
+
+      if (results.length === 0) {
+        body.innerHTML = '<p style="color:#888">No results.</p>';
+      } else {
+        body.innerHTML = '<p style="color:#888;margin-top:0">' + results.length + ' notes</p>';
+        results.forEach(r => {
+          const div = document.createElement('div');
+          div.className = 'search-result';
+          const title = document.createElement('div');
+          title.className = 'search-result-title';
+          title.dataset.title = r.title;
+          title.textContent = r.title;
+          div.appendChild(title);
+          if (r.matches && r.matches.length > 0) {
+            const lines = document.createElement('div');
+            lines.className = 'search-result-lines';
+            lines.textContent = r.matches.slice(0, 4).join('\n');
+            if (r.matches.length > 4) {
+              lines.textContent += '\n… (' + (r.matches.length - 4) + ' more)';
+            }
+            div.appendChild(lines);
+          }
+          body.appendChild(div);
+        });
+      }
+      card.appendChild(body);
+      document.getElementById('river').appendChild(card);
+      card.scrollIntoView({ behavior: 'smooth' });
+    })
+    .catch(err => alert('Search failed: ' + err.message));
+}
+
+// --- Tag management ---
+
+function removeTag(noteTitle, tag) {
+  fetch(PREFIX + '/notes/' + encodeURIComponent(noteTitle))
+    .then(r => r.json())
+    .then(t => {
+      const tags = parseTags(t.tags).filter(x => x !== tag);
+      t.tags = tags.join(' ');
+      delete t.html;
+      delete t.revision;
+      return fetch(PREFIX + '/notes/' + encodeURIComponent(noteTitle), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(t)
+      });
+    })
+    .then(r => { if (!r.ok) throw new Error(r.status); refreshNote(noteTitle); })
+    .catch(e => alert('Remove tag failed: ' + e.message));
+}
+
+function addTag(noteTitle, tag) {
+  fetch(PREFIX + '/notes/' + encodeURIComponent(noteTitle))
+    .then(r => r.json())
+    .then(t => {
+      const tags = parseTags(t.tags);
+      if (!tags.includes(tag)) tags.push(tag);
+      t.tags = tags.join(' ');
+      delete t.html;
+      delete t.revision;
+      return fetch(PREFIX + '/notes/' + encodeURIComponent(noteTitle), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(t)
+      });
+    })
+    .then(r => { if (!r.ok) throw new Error(r.status); refreshNote(noteTitle); })
+    .catch(e => alert('Add tag failed: ' + e.message));
+}
+
+function startAddTag(tagDiv, noteTitle) {
+  if (tagDiv.querySelector('.tag-add-input')) return;
+  const input = document.createElement('input');
+  input.className = 'tag-add-input';
+  input.placeholder = 'tag…';
+  const addBtn = tagDiv.querySelector('.tag-add-btn');
+  tagDiv.insertBefore(input, addBtn);
+  input.focus();
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && input.value.trim()) {
+      addTag(noteTitle, input.value.trim());
+    } else if (e.key === 'Escape') {
+      input.remove();
+    }
+  });
+  input.addEventListener('blur', () => input.remove());
+}
+
+// --- Line-level quick edit ---
+
+// Inject insert icon into every element with data-line in a container.
+// Clicking the text itself starts edit mode.
+function injectLineIcons(container, noteTitle) {
+  container.querySelectorAll('[data-line]').forEach(el => {
+    if (el.querySelector('.line-icons')) return;
+    const icons = document.createElement('span');
+    icons.className = 'line-icons';
+    const insertBtn = document.createElement('button');
+    insertBtn.innerHTML = '<i class="bi bi-chevron-down"></i>';
+    insertBtn.title = 'Insert line below';
+    insertBtn.onclick = (e) => { e.stopPropagation(); startLineEdit(el, noteTitle, true); };
+    icons.appendChild(insertBtn);
+    el.prepend(icons);
+    // Click on text starts edit mode.
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.line-icons') || e.target.closest('.line-edit-input')) return;
+      startLineEdit(el, noteTitle, false);
+    });
+  });
+}
+
+// Start inline editing for an element with data-line.
+function startLineEdit(el, noteTitle, isInsert) {
+  if (el.querySelector('.line-edit-input')) return;
+
+  const lineNum = parseInt(el.dataset.line);
+  const input = document.createElement('input');
+  input.className = 'line-edit-input';
+  input.type = 'text';
+
+  if (isInsert) {
+    // Fetch source line to detect bullet prefix for matching.
+    fetchSourceLine(noteTitle, lineNum).then(srcLine => {
+      const m = srcLine.match(/^(\s*(?:[-*+]|\d+\.)\s)/);
+      if (m) {
+        // Preserve bullet style, increment number if numbered.
+        let prefix = m[1];
+        const numMatch = prefix.match(/^(\s*)(\d+)(\.\s)$/);
+        if (numMatch) {
+          prefix = numMatch[1] + (parseInt(numMatch[2]) + 1) + numMatch[3];
+        }
+        input.value = prefix;
+      } else if (el.tagName === 'BLOCKQUOTE' || el.closest('blockquote')) {
+        input.value = '> ';
+      }
+      input.placeholder = 'New line…';
+      const wrapper = document.createElement(el.tagName === 'LI' ? 'li' : 'div');
+      wrapper.appendChild(input);
+      el.after(wrapper);
+      input.focus();
+      // Place cursor at end of prefill.
+      input.selectionStart = input.selectionEnd = input.value.length;
+    });
+  } else {
+    fetchSourceLine(noteTitle, lineNum).then(srcLine => {
+      input.value = srcLine;
+      const savedHTML = el.innerHTML;
+      el.innerHTML = '';
+      el.appendChild(input);
+      input.focus();
+      input.select();
+
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          el.innerHTML = savedHTML;
+          injectLineIcons(el.closest('.note-body'), noteTitle);
+        }
+      });
+    });
+  }
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const text = input.value;
+    submitLineEdit(noteTitle, lineNum, text, isInsert);
+  });
+}
+
+// Fetch the raw source text for a specific line from the note's .tid file.
+function fetchSourceLine(noteTitle, lineNum) {
+  return fetch(PREFIX + '/notes/' + encodeURIComponent(noteTitle))
+    .then(r => r.json())
+    .then(t => {
+      const lines = (t.text || '').split('\n');
+      // data-line is 1-based for the whole .tid file; the text field
+      // starts after the header block. We need to find the header
+      // line count. The server gives us "text" which is just the body,
+      // but data-line counts from line 1 of the body (as rendered by
+      // goldmark, which receives only the body text).
+      // So data-line N maps to body line N.
+      return lines[lineNum - 1] || '';
+    });
+}
+
+// Submit a line edit or insert to the server.
+function submitLineEdit(noteTitle, lineNum, text, isInsert) {
+  fetch(PREFIX + '/line-edit/' + encodeURIComponent(noteTitle), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ line: lineNum, text: text, insert: isInsert })
+  })
+  .then(r => {
+    if (!r.ok) return r.text().then(t => { throw new Error(t); });
+    return r.json();
+  })
+  .then(resp => {
+    // Re-render the whole note body with the new HTML.
+    const card = document.querySelector(`.note[data-title="${CSS.escape(noteTitle)}"]`);
+    if (card) {
+      const body = card.querySelector('.note-body');
+      body.innerHTML = linkifyWikiWords(resp.html || '');
+      injectLineIcons(body, noteTitle);
+      attachCodeBlockEditing(body, noteTitle);
+      card.dataset.revision = resp.revision;
+      knownRevisions[noteTitle] = resp.revision;
+    }
+  })
+  .catch(err => alert('Edit failed: ' + err.message));
+}
+// Attach click-to-edit handlers to <pre> code blocks.
+// On click, refetch the note with ?render=plain to get per-line
+// data-line attributes, swap the block, inject line icons.
+function attachCodeBlockEditing(container, noteTitle) {
+  container.querySelectorAll('pre').forEach(pre => {
+    if (pre.classList.contains('editing')) return;
+    pre.addEventListener('click', function handler() {
+      pre.removeEventListener('click', handler);
+      pre.classList.add('editing');
+      fetch(PREFIX + '/notes/' + encodeURIComponent(noteTitle) + '?render=plain')
+        .then(r => r.json())
+        .then(t => {
+          // Parse the plain HTML to extract just the <pre> that
+          // corresponds to this code block's position.
+          const tmp = document.createElement('div');
+          tmp.innerHTML = t.html || '';
+          const plainPres = tmp.querySelectorAll('pre');
+          const origPres = container.querySelectorAll('pre');
+          let idx = Array.from(origPres).indexOf(pre);
+          if (idx < 0) idx = 0;
+          const plainPre = plainPres[idx];
+          if (plainPre) {
+            pre.innerHTML = plainPre.innerHTML;
+            injectLineIcons(pre, noteTitle);
+          }
+        });
+    });
+  });
+}
+
+</script>
+</body>
+</html>
