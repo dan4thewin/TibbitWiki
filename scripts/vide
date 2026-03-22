@@ -1,0 +1,103 @@
+#!/bin/bash
+# vide — manage headless nvim + neovide GUI + file open
+#
+# Usage: vide <file>
+# Example: tibbitwiki --editor-cmd "vide %s"
+#
+# Three steps, each launching detached if needed:
+#   1. Ensure headless nvim is running on a fixed socket
+#   2. Ensure neovide GUI is connected to that socket
+#   3. Send the file to nvim via --remote
+#
+# Headless nvim persists across neovide restarts — buffers survive.
+# Neovide is a pure GUI frontend that reconnects on demand.
+#
+# For bash idioms used in this script, see https://aka.ms/bash4thewin
+#
+# shellcheck enable=all
+# shellcheck disable=SC2248,SC2250
+
+setup_bash() {
+	set -eu
+}
+
+setup_vars() {
+	prog=${0##*/}
+	local statedir=${XDG_STATE_HOME:-~/.local/state}/$prog
+	mkdir -p "$statedir"
+	sock=$statedir/nvim.sock
+	readonly prog sock
+}
+
+# Day-of-week log rotation with auto-cleanup.
+# Save original stderr on fd 3; redirect stdout and stderr to log.
+setup_log() {
+	local logdir=~/.log/$prog
+	log=$logdir/$(date +%a)
+	mkdir -p "$logdir"
+	find "$logdir" -name "$(date +%a)" -mtime +1 -delete 2>&- || :
+	exec 3>&2 1>>"$log" 2>&1
+}
+
+pr() {
+	echo "$prog: $*"
+}
+
+err() {
+	echo "$prog: $*"
+	echo "$prog: $*" >&3
+}
+
+# True when headless nvim is listening on $sock
+nvim_alive() {
+	[[ -S $sock ]] && nvim --server "$sock" --remote-expr 1 >&- 2>&-
+}
+
+# True when neovide has an open connection to $sock
+neovide_alive() {
+	lsof -Ua -c neovide -- "$sock" >&- 2>&-
+}
+
+start_nvim() {
+	rm -f "$sock"
+	pr "launching headless nvim on $sock"
+	nvim --headless --listen "$sock" </dev/null >>"$log" 2>&1 &
+	disown -h
+	local -i i
+	for (( i=0; i<20; i++ )); do
+		# shellcheck disable=SC2310 # predicate in && is intentional
+		nvim_alive && return
+		sleep 0.1
+	done
+	err "headless nvim did not start within 2s"
+	exit 1
+}
+
+start_neovide() {
+	pr "launching neovide GUI"
+	neovide --server "$sock" </dev/null >>"$log" 2>&1 &
+	disown -h
+}
+
+main() {
+	setup_bash
+	setup_vars
+
+	if (( ! $# )); then
+		echo "usage: $prog <file>" >&2
+		exit 1
+	fi
+	local file=$1
+
+	setup_log
+	pr "START file=$file"
+
+	# shellcheck disable=SC2310 # predicates in || are intentional
+	nvim_alive    || start_nvim
+	# shellcheck disable=SC2310
+	neovide_alive || start_neovide
+
+	nvim --server "$sock" --remote "$file"
+}
+
+(return 0 2>&-) || main "$@"

@@ -4,14 +4,14 @@ Everything needed to recreate this setup from zero.
 
 ## Prerequisites
 
-- macOS with Homebrew
 - Go 1.21+ (`brew install go`)
-- Neovide (`brew install --cask neovide`)
+- Neovide (`brew install --cask neovide` on macOS,
+  `brew install neovide` on Linux, or https://neovide.dev)
 - Git with SSH key configured for GitHub
-- RCS (`brew install rcs`)
-- Safari with Developer menu enabled
+- RCS (`brew install rcs` or `apt install rcs`)
+- ripgrep (`brew install ripgrep` or `apt install ripgrep`)
 
-### Safari settings for testing
+### Safari settings for testing (macOS only)
 
 Enable the Developer menu:
 **Safari → Settings → Advanced → Show features for web developers**
@@ -88,20 +88,45 @@ theme:
 ./tibbitwiki --wiki-path ~/notes
 ```
 
-Open http://127.0.0.1:8080/ in Safari. You'll see the wiki selector
+Open http://127.0.0.1:8080/ in your browser. You'll see the wiki selector
 listing your wiki subdirectories. Click one to open the dark-themed
 viewer with your notes in the recent sidebar.
 
-### Neovide wrapper (single-instance editing)
+### Neovide wrapper (`vide`)
 
 The default `neovide -- %s` spawns a new window per edit.
-Use `scripts/neovide-wrapper.sh %s` instead to reuse one window:
+Use `scripts/vide` instead for single-instance editing with a
+persistent headless nvim:
 
-- First edit: launches Neovide with a fixed Neovim socket
-  (`/tmp/nvim-tibbitwiki.sock`)
-- Subsequent edits: opens the file in the existing Neovide via
-  `nvim --server --remote`
-- Override socket path with `NVIM_LISTEN_ADDRESS` env var
+```yaml
+editor_cmd: "vide %s"
+```
+
+Three-step launch:
+1. **Headless nvim** — starts if not running; listens on
+   `~/.local/state/vide/nvim.sock`; persists across GUI restarts
+2. **Neovide GUI** — connects to the socket; launched on demand
+3. **`--remote` open** — sends the file to the running nvim
+
+The script returns immediately. All output goes to
+`~/.log/vide/<day-of-week>` (auto-cleaned weekly).
+
+Symlink `scripts/vide` into your PATH (e.g. `~/bin/vide`).
+
+### Server launcher (`tw-start`)
+
+`scripts/tw-start` launches tibbitwiki detached with day-of-week
+logging, similar to `vide`:
+
+```bash
+tw-start --wiki-path ~/notes
+```
+
+- Checks if tibbitwiki is already running (via `/status` endpoint)
+- Launches detached with `disown -h`
+- Waits up to 10 seconds for `/status` to respond
+- Logs to `~/.log/tw-start/<day-of-week>` (auto-cleaned weekly)
+- No auto-restart on crash — absence is the signal
 
 ### Editing workflow
 

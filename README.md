@@ -164,13 +164,13 @@ rcsdiff notes/MyNote.md
 co -r1.2 -p notes/MyNote.md
 ```
 
-Requires `rcs` (`brew install rcs` on macOS).
+Requires `rcs` (`brew install rcs` or `apt install rcs`).
 
 ## Search
 
 Full-text search uses ripgrep (`rg`) as the backend, searching `.md`
 files in the notes directory. Requires `rg` on PATH (`brew install
-ripgrep` on macOS).
+ripgrep` or `apt install ripgrep`).
 
 **Query syntax:**
 

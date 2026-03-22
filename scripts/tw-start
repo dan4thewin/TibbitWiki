@@ -1,0 +1,86 @@
+#!/bin/bash
+# tw-start — launch tibbitwiki detached with day-of-week logging
+#
+# Usage: tw-start [tibbitwiki args...]
+# Example: tw-start --config ~/notes/config.yaml
+#
+# Starts tibbitwiki in the background and returns immediately.
+# No auto-restart — a crash is visible by the server's absence.
+#
+# For bash idioms used in this script, see https://aka.ms/bash4thewin
+#
+# shellcheck enable=all
+# shellcheck disable=SC2248,SC2250
+
+setup_bash() {
+	set -eu
+}
+
+setup_vars() {
+	prog=${0##*/}
+	bin=$(command -v tibbitwiki) || {
+		echo "$prog: tibbitwiki not found on PATH" >&2
+		exit 1
+	}
+	readonly prog bin
+}
+
+# Day-of-week log rotation with auto-cleanup.
+# Save original stderr on fd 3; redirect stdout and stderr to log.
+setup_log() {
+	local logdir=~/.log/$prog
+	log=$logdir/$(date +%a)
+	mkdir -p "$logdir"
+	find "$logdir" -name "$(date +%a)" -mtime +1 -delete 2>&- || :
+	exec 3>&2 1>>"$log" 2>&1
+}
+
+pr() {
+	echo "$prog: $*"
+}
+
+err() {
+	echo "$prog: $*"
+	echo "$prog: $*" >&3
+}
+
+# True when tibbitwiki is already listening
+tw_alive() {
+	curl -sf http://localhost:8080/status >&- 2>&-
+}
+
+main() {
+	setup_bash
+	setup_vars
+	setup_log
+	pr "START ${*:+ARGV=$*}"
+
+	# shellcheck disable=SC2310 # predicate in if is intentional
+	if tw_alive; then
+		pr "tibbitwiki already running"
+		echo "$prog: tibbitwiki already running" >&3
+		return
+	fi
+
+	pr "launching $bin $*"
+	"$bin" "$@" >>"$log" 2>&1 &
+	disown -h
+
+	local -i i
+	for (( i=0; i<20; i++ )); do
+		# shellcheck disable=SC2310
+		tw_alive && break
+		sleep 0.5
+	done
+
+	# shellcheck disable=SC2310
+	if tw_alive; then
+		pr "tibbitwiki running, pid $!"
+		echo "$prog: tibbitwiki running, pid $!" >&3
+	else
+		err "tibbitwiki did not start within 10s"
+		exit 1
+	fi
+}
+
+(return 0 2>&-) || main "$@"
