@@ -11,13 +11,22 @@ and RCS version control.
   WikiWord auto-linking, syntax highlighting, full-text search, tag
   pills, tabbed sidebar, and line-level quick edit.
 - **REST API** — `/notes` CRUD plus line-edit, search, edit-external
-- **Filesystem watching** — edit `.tid` files in any editor (Neovide,
+- **Multi-wiki** — auto-discovers wiki subdirectories, routes at
+  `/{wiki}/notes/...`; wiki selector at `/`
+- **Filesystem watching** — edit `.md` files in any editor (Neovide,
   vim, etc.) and changes appear in the browser within 3 seconds
 - **External editor launch** — click "edit" in the browser to open
   a note in your configured editor
 - **RCS version control** — every note save is automatically
   checked into RCS; full revision history per file
-- **Simple configuration** — YAML config file with CLI flag overrides
+- **Config-driven theming** — all colors, fonts, and layout values
+  live in `config.yaml`; edit and save to see changes live
+- **Theme playground** — standalone HTML page for previewing theme
+  tweaks with color pickers and live preview
+- **LRU body cache** — bounded memory; metadata always in RAM,
+  note bodies cached with configurable size (default 200)
+- **Simple configuration** — YAML config file with CLI flag overrides;
+  auto-created on first run with commented defaults
 
 ## Quick start
 
@@ -25,26 +34,24 @@ and RCS version control.
 # Build
 go build -o tibbitwiki .
 
-# Run with the built-in minimal client
-./tibbitwiki \
-  --wiki-path ~/notes \
-  --listen 127.0.0.1:8080 \
-  --index-html exp/025-v3-integration/index.html \
-  --editor-cmd "neovide -- %s"
+# Run (auto-creates config.yaml in wiki path)
+./tibbitwiki --wiki-path ~/notes
 ```
 
 Then open http://127.0.0.1:8080 in your browser.
 
+The server auto-discovers wiki subdirectories under `--wiki-path`.
+Each subdirectory with `.md` files becomes a wiki at `/{name}/`.
+
 ## Browser client
 
-The browser client (`exp/025-v3-integration/index.html`) is a single
-self-contained HTML file with inline JS. No build step, no external
-dependencies — markdown rendering and syntax highlighting are handled
-server-side.
+The browser client is a single self-contained HTML file with inline
+JS (currently `exp/026-multi-wiki/index.html` — will be embedded in
+the binary in a future release). No build step — markdown rendering
+and syntax highlighting are handled server-side.
 
 **Features:**
-- Story river — multiple notes open in a scrollable column (new
-  content appended at bottom)
+- Story river — multiple notes open in a scrollable column
 - Server-side markdown rendering via goldmark
 - Syntax highlighting via chroma (OneDark theme, served as `/theme.css`)
 - CamelCase WikiWord auto-linking (blue for existing, red for missing)
@@ -52,13 +59,14 @@ server-side.
   a pseudo-note with clickable titles and matched lines
 - Tag pills — colored pills on notes, click to search by tag
 - Tabbed sidebar — Recent (non-journals), Journals, Tags with
-  per-tag groups; ellipsis to expand; limits via CSS custom properties
+  per-tag groups; ellipsis to expand
 - Line-level quick edit — hover ✏️/➕ icons on list items for
   inline edit and insert-below without leaving the browser
-- 3-second polling for external changes
+- Configurable poll interval (default 3s) for external changes
 - Edit button per note (launches neovim via server)
 - New note and Journal buttons
-- Dark theme
+- Gear icon to edit config.yaml in your editor
+- Live theme reloading — edit config.yaml, save, see changes
 
 **Non-features (by design):**
 - No full browser-based editing — line edits for list items only;
@@ -66,51 +74,81 @@ server-side.
 - No TiddlyWiki wikitext rendering — markdown only
 - No plugin system, no syncer, no complex widget tree
 
+## Theme playground
+
+`playground/index.html` is a standalone page for tweaking theme
+values with immediate visual feedback. No server integration —
+just open it in a browser (or serve it alongside the wiki).
+
+- Left panel: color pickers + text inputs for all theme variables
+- Right panel: pixel-perfect mock of the real wiki UI (rendered
+  DOM captured from a live instance)
+- **Copy YAML** button outputs a ready-to-paste `theme:` block
+- On load, fetches `/theme.css` to seed current values (falls back
+  to built-in defaults if opened standalone)
+
 ## Configuration
+
+All defaults live in `internal/config/defaults.yaml` (embedded in the
+binary). On first run, this file is copied to `{wiki_path}/config.yaml`
+so you have a commented config to edit. Priority: embedded defaults <
+config file < CLI flags.
 
 ### CLI flags
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--config` | | Path to YAML config file |
-| `--wiki-path` | `.` | Path to wiki folder containing `notes/` |
-| `--listen` | `127.0.0.1:8080` | Host:port to listen on |
-| `--editor-cmd` | `neovide -- %s` | Editor command (`%s` = file path) |
-| `--index-html` | | Path to HTML file served for GET / |
-| `--poll-interval` | `3s` | Browser poll interval (informational) |
+| Flag | Description |
+|------|-------------|
+| `--config` | Path to YAML config file |
+| `--wiki-path` | Path to wiki folder containing subdirs |
+| `--listen` | Host:port to listen on |
+| `--editor-cmd` | Editor command (`%s` = file path) |
+| `--index-html` | Path to HTML file served for GET / |
+| `--poll-interval` | Browser poll interval |
+| `--cache-size` | LRU body cache size per wiki |
 
-### YAML config file
+### config.yaml
 
 ```yaml
-wiki_path: ~/notes
+# These settings require a server restart:
+wiki_path: .
 listen: 127.0.0.1:8080
 editor_cmd: "neovide -- %s"
-index_html: exp/025-v3-integration/index.html
+poll_interval: 3s
+cache_size: 200
+
+# Theme applies live on save:
+theme:
+  bg:           "#1a1a2e"       # Page background
+  fg:           "#e0e0e0"       # Main text color
+  accent:       "#6cacee"       # Links, active tabs, focus rings
+  # ... 17 more keys (colors, typography, layout)
 ```
 
-CLI flags override YAML values.
+CLI flags override config file values.
 
 ## API endpoints
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/` | Serve browser client HTML |
-| GET | `/status` | Server status JSON |
-| GET | `/notes` | Skinny note list |
-| GET | `/notes/:title` | Full note JSON (with rendered HTML) |
-| PUT | `/notes/:title` | Create/save note |
-| DELETE | `/notes/:title` | Delete note |
-| POST | `/line-edit/:title` | Replace or insert a body line |
-| GET | `/search?q=...` | Full-text search (JSON) |
-| GET | `/theme.css` | Syntax highlighting CSS |
+| GET | `/` | Wiki selector (list of wikis) |
+| GET | `/{wiki}/` | Serve browser client HTML |
+| GET | `/{wiki}/status` | Server status JSON |
+| GET | `/{wiki}/notes` | Skinny note list (with theme/poll headers) |
+| GET | `/{wiki}/notes/{title}` | Full note JSON (with rendered HTML) |
+| PUT | `/{wiki}/notes/{title}` | Create/save note |
+| DELETE | `/{wiki}/notes/{title}` | Delete note |
+| POST | `/{wiki}/line-edit/{title}` | Replace or insert a body line |
+| GET | `/{wiki}/search?q=...` | Full-text search (JSON) |
+| GET | `/{wiki}/theme.css` | Theme CSS (custom properties + syntax) |
 | GET | `/favicon.ico` | Favicon |
-| POST | `/edit-external/:title` | Launch external editor |
+| POST | `/{wiki}/edit-external/{title}` | Launch external editor |
+| POST | `/{wiki}/edit-config` | Launch editor on config.yaml |
 
 ## Editing notes
 
 Two ways:
 
-1. **Direct file edit** — open any `.tid` file in your editor, save,
+1. **Direct file edit** — open any `.md` file in your editor, save,
    the server picks up changes via fsnotify within 3 seconds.
 2. **Browser button** — click "edit" in a note's toolbar to launch
    neovim via the server's edit-external endpoint.
@@ -121,16 +159,16 @@ Every note write creates/updates an RCS archive in an `RCS/`
 subdirectory alongside the notes. View history with:
 
 ```bash
-rlog notes/MyTiddler.tid
-rcsdiff notes/MyTiddler.tid
-co -r1.2 -p notes/MyTiddler.tid
+rlog notes/MyNote.md
+rcsdiff notes/MyNote.md
+co -r1.2 -p notes/MyNote.md
 ```
 
 Requires `rcs` (`brew install rcs` on macOS).
 
 ## Search
 
-Full-text search uses ripgrep (`rg`) as the backend, searching `.tid`
+Full-text search uses ripgrep (`rg`) as the backend, searching `.md`
 files in the notes directory. Requires `rg` on PATH (`brew install
 ripgrep` on macOS).
 
@@ -151,18 +189,20 @@ ripgrep` on macOS).
 
 ```
 internal/
-  config/   — YAML config + CLI flag parsing
-  tid/      — .tid file parser/serializer
+  wiki/     — Wiki type: goroutine event loop, Hub
+  config/   — YAML config + CLI flag parsing (embedded defaults)
+  tid/      — .md file parser/serializer (RFC822 headers + body)
   store/    — in-memory note store with revision tracking
   watcher/  — fsnotify file watcher with debounce
-  server/   — HTTP server implementing TiddlyWeb API
+  server/   — thin HTTP adapter delegating to wiki via Hub
   editor/   — external editor launcher
   rcs/      — RCS version control integration
   loader/   — startup file loader
-  render/   — goldmark + chroma markdown→HTML rendering
+  render/   — goldmark + chroma markdown→HTML, ThemeCSS generation
   search/   — query parser + rg wrapper for full-text search
-main.go     — wiring
-exp/        — browser client experiments (001–018)
+main.go     — wiring: config→Wiki→loader→watcher→Hub→Server
+exp/        — browser client experiments (001–027)
+playground/ — theme playground (standalone HTML)
 ```
 
 No database. All state is in-memory + filesystem.

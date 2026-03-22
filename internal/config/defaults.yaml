@@ -1,0 +1,34 @@
+# TibbitWiki configuration
+
+# These settings require a server restart:
+wiki_path: .
+listen: 127.0.0.1:8080
+editor_cmd: "neovide -- %s"
+poll_interval: 3s
+cache_size: 200
+
+# Theme applies live on save:
+theme:
+  # Colors
+  bg:           "#1a1a2e"       # Page background
+  fg:           "#e0e0e0"       # Main text color
+  note_bg:      "#16213e"       # Note card background
+  code_bg:      "#0d1117"       # Code and input backgrounds
+  accent:       "#6cacee"       # Links, active tabs, focus rings
+  accent_hover: "#8ecaff"       # Hovered links
+  danger:       "#e06060"       # Missing links, errors
+  button_bg:    "#2a2a4a"       # Button hover background
+  border:       "#333"          # Note outlines, sidebar edge
+  border_light: "#444"          # Input borders, tab underlines
+  muted:        "#666"          # Dim text, inactive tabs
+  muted_light:  "#aaa"          # Mid-tone text
+  # Typography
+  font_family:  "-apple-system, BlinkMacSystemFont, sans-serif"
+  font_size:    "16px"          # Base text size
+  code_font:    "SF Mono, Consolas, monospace"
+  line_height:  "1.6"           # Body line spacing
+  # Layout
+  note_radius:    "6px"         # Note card corner radius
+  sidebar_width:  "220px"       # Sidebar width
+  sidebar_limit:  "20"          # Notes shown before "and N more"
+  tag_limit:      "5"           # Tags shown per note

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -72,6 +74,85 @@ func TestThemeCSSContainsBackground(t *testing.T) {
 	css := ThemeCSS()
 	if !strings.Contains(css, "background") {
 		t.Errorf("expected background rule in theme CSS")
+	}
+}
+
+// TestGenerateThemeCSS verifies that GenerateThemeCSS produces CSS
+// custom properties on :root followed by chroma syntax CSS.
+func TestGenerateThemeCSS(t *testing.T) {
+	theme := map[string]string{
+		"bg":     "#111",
+		"fg":     "#eee",
+		"accent": "#0af",
+	}
+	css := GenerateThemeCSS(theme)
+
+	// Should have :root block with custom properties.
+	if !strings.Contains(css, ":root {") {
+		t.Error("expected :root block")
+	}
+	if !strings.Contains(css, "--tw-bg: #111;") {
+		t.Errorf("expected --tw-bg, got:\n%s", css[:200])
+	}
+	if !strings.Contains(css, "--tw-fg: #eee;") {
+		t.Errorf("expected --tw-fg, got:\n%s", css[:200])
+	}
+	if !strings.Contains(css, "--tw-accent: #0af;") {
+		t.Errorf("expected --tw-accent, got:\n%s", css[:200])
+	}
+
+	// Keys should be sorted: accent before bg before fg.
+	ai := strings.Index(css, "--tw-accent")
+	bi := strings.Index(css, "--tw-bg")
+	fi := strings.Index(css, "--tw-fg")
+	if !(ai < bi && bi < fi) {
+		t.Error("expected sorted keys: accent < bg < fg")
+	}
+
+	// Should also contain chroma syntax CSS.
+	if !strings.Contains(css, ".chroma") {
+		t.Error("expected chroma CSS after custom properties")
+	}
+}
+
+// TestGenerateThemeCSSEmpty verifies an empty theme still produces
+// a :root block and chroma CSS.
+func TestGenerateThemeCSSEmpty(t *testing.T) {
+	css := GenerateThemeCSS(map[string]string{})
+	if !strings.Contains(css, ":root {") {
+		t.Error("expected :root block for empty theme")
+	}
+	if !strings.Contains(css, ".chroma") {
+		t.Error("expected chroma CSS for empty theme")
+	}
+}
+
+// TestWriteThemeFile verifies WriteThemeFile writes CSS to disk.
+func TestWriteThemeFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "theme.css")
+	theme := map[string]string{"bg": "#000"}
+
+	if err := WriteThemeFile(theme, path); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	css := string(data)
+	if !strings.Contains(css, "--tw-bg: #000;") {
+		t.Errorf("expected --tw-bg in written file, got:\n%s", css[:200])
+	}
+}
+
+// TestWriteThemeFileBadPath verifies WriteThemeFile returns an error
+// for an invalid path.
+func TestWriteThemeFileBadPath(t *testing.T) {
+	err := WriteThemeFile(map[string]string{}, "/no/such/dir/theme.css")
+	if err == nil {
+		t.Error("expected error for bad path")
 	}
 }
 

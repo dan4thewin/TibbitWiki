@@ -2,6 +2,7 @@
 package config
 
 import (
+	_ "embed"
 	"flag"
 	"fmt"
 	"os"
@@ -9,6 +10,15 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
+
+// DefaultYAML is the embedded default configuration file.
+// It is the single source of truth for all default values.
+//
+//go:embed defaults.yaml
+var DefaultYAML []byte
+
+// Theme maps semantic names to CSS values (colors, fonts, sizes).
+type Theme map[string]string
 
 // Config holds all server configuration.
 type Config struct {
@@ -19,44 +29,87 @@ type Config struct {
 	TWCorePath   string        `yaml:"tw_core_path"`
 	IndexHTML    string        `yaml:"index_html"`
 	CacheSize    int           `yaml:"cache_size"`
+	Theme        Theme         `yaml:"theme"`
 }
 
-// Defaults returns a Config with sensible default values.
+// Defaults returns a Config parsed from the embedded defaults.yaml.
 func Defaults() Config {
-	return Config{
-		WikiPath:     ".",
-		Listen:       "127.0.0.1:8080",
-		EditorCmd:    "neovide -- %s",
-		PollInterval: 3 * time.Second,
-		TWCorePath:   "",
-		IndexHTML:    "",
-		CacheSize:    200,
+	var cfg Config
+	yaml.Unmarshal(DefaultYAML, &cfg)
+	return cfg
+}
+
+// DefaultTheme returns the theme from the embedded defaults.
+func DefaultTheme() Theme {
+	return Defaults().Theme
+}
+
+// cliFlags holds parsed CLI flag values for merging into Config.
+type cliFlags struct {
+	configFile   string
+	wikiPath     string
+	listen       string
+	editorCmd    string
+	pollInterval time.Duration
+	twCorePath   string
+	indexHTML    string
+	cacheSize    int
+}
+
+func parseFlags(args []string) (cliFlags, error) {
+	var f cliFlags
+	fs := flag.NewFlagSet("tibbitwiki", flag.ContinueOnError)
+	fs.StringVar(&f.configFile, "config", "", "path to YAML config file")
+	fs.StringVar(&f.wikiPath, "wiki-path", "", "path to wiki folder")
+	fs.StringVar(&f.listen, "listen", "", "host:port to listen on")
+	fs.StringVar(&f.editorCmd, "editor-cmd", "", "editor command (%s = file path)")
+	fs.DurationVar(&f.pollInterval, "poll-interval", 0, "browser poll interval")
+	fs.StringVar(&f.twCorePath, "tw-core-path", "", "path to TiddlyWiki core (legacy)")
+	fs.StringVar(&f.indexHTML, "index-html", "", "path to pre-rendered index.html")
+	fs.IntVar(&f.cacheSize, "cache-size", 0, "LRU body cache size per wiki")
+	if err := fs.Parse(args); err != nil {
+		return f, fmt.Errorf("parsing flags: %w", err)
+	}
+	return f, nil
+}
+
+func (f *cliFlags) applyTo(cfg *Config) {
+	if f.wikiPath != "" {
+		cfg.WikiPath = f.wikiPath
+	}
+	if f.listen != "" {
+		cfg.Listen = f.listen
+	}
+	if f.editorCmd != "" {
+		cfg.EditorCmd = f.editorCmd
+	}
+	if f.pollInterval != 0 {
+		cfg.PollInterval = f.pollInterval
+	}
+	if f.twCorePath != "" {
+		cfg.TWCorePath = f.twCorePath
+	}
+	if f.indexHTML != "" {
+		cfg.IndexHTML = f.indexHTML
+	}
+	if f.cacheSize > 0 {
+		cfg.CacheSize = f.cacheSize
 	}
 }
 
-// Load reads a YAML config file and merges CLI flags on top.
-// Flags take precedence over the file; the file takes precedence
-// over defaults.
+// Load parses the embedded defaults, merges an optional YAML config
+// file on top, then merges CLI flags on top. Priority:
+// embedded defaults < config file < CLI flags.
 func Load(args []string) (Config, error) {
 	cfg := Defaults()
 
-	fs := flag.NewFlagSet("tibbitwiki", flag.ContinueOnError)
-	configFile := fs.String("config", "", "path to YAML config file")
-	wikiPath := fs.String("wiki-path", "", "path to wiki folder")
-	listen := fs.String("listen", "", "host:port to listen on")
-	editorCmd := fs.String("editor-cmd", "", "editor command (%s = file path)")
-	pollInterval := fs.Duration("poll-interval", 0, "browser poll interval")
-	twCorePath := fs.String("tw-core-path", "", "path to TiddlyWiki core (legacy)")
-	indexHTML := fs.String("index-html", "", "path to pre-rendered index.html")
-	cacheSize := fs.Int("cache-size", 0, "LRU body cache size per wiki (default 200)")
-
-	if err := fs.Parse(args); err != nil {
-		return cfg, fmt.Errorf("parsing flags: %w", err)
+	f, err := parseFlags(args)
+	if err != nil {
+		return cfg, err
 	}
 
-	// Load YAML config file if specified.
-	if *configFile != "" {
-		data, err := os.ReadFile(*configFile)
+	if f.configFile != "" {
+		data, err := os.ReadFile(f.configFile)
 		if err != nil {
 			return cfg, fmt.Errorf("reading config: %w", err)
 		}
@@ -65,27 +118,18 @@ func Load(args []string) (Config, error) {
 		}
 	}
 
-	// CLI flags override config file values.
-	if *wikiPath != "" {
-		cfg.WikiPath = *wikiPath
-	}
-	if *listen != "" {
-		cfg.Listen = *listen
-	}
-	if *editorCmd != "" {
-		cfg.EditorCmd = *editorCmd
-	}
-	if *pollInterval != 0 {
-		cfg.PollInterval = *pollInterval
-	}
-	if *twCorePath != "" {
-		cfg.TWCorePath = *twCorePath
-	}
-	if *indexHTML != "" {
-		cfg.IndexHTML = *indexHTML
-	}
-	if *cacheSize > 0 {
-		cfg.CacheSize = *cacheSize
+	f.applyTo(&cfg)
+
+	// Fill missing theme keys from embedded defaults.
+	defaults := Defaults().Theme
+	if cfg.Theme == nil {
+		cfg.Theme = defaults
+	} else {
+		for k, v := range defaults {
+			if _, ok := cfg.Theme[k]; !ok {
+				cfg.Theme[k] = v
+			}
+		}
 	}
 
 	return cfg, nil

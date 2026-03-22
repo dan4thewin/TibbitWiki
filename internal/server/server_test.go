@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -54,8 +55,12 @@ func newTestServer(t *testing.T) (*Server, *wiki.Wiki) {
 	f.WriteString("<html><body>TibbitWiki</body></html>")
 	f.Close()
 
+	// Write a theme.css file for the test.
+	themePath := filepath.Join(dir, "theme.css")
+	os.WriteFile(themePath, []byte(":root{} .chroma{}"), 0644)
+
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, f.Name())
+	srv := New(hub, ed, new(atomic.Int64), 3000, f.Name(), themePath, "")
 	return srv, wk
 }
 
@@ -105,7 +110,7 @@ func TestHandleIndexNotConfigured(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
 	req := httptest.NewRequest("GET", "/test/", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -501,7 +506,7 @@ func TestHandleEditExternalNoEditor(t *testing.T) {
 	os.WriteFile(path, tid.Serialize(td), 0644)
 	wk.Store().PutWithPath(td, path)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
 
 	req := httptest.NewRequest("POST", "/test/edit-external/X", nil)
 	w := httptest.NewRecorder()
@@ -592,7 +597,7 @@ func TestPutNoteNoFilePathNoDir(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
 
 	body := `{"title":"NoFile","tags":"Mem","text":"In-memory only."}`
 	req := httptest.NewRequest("PUT", "/test/notes/NoFile",
@@ -665,7 +670,7 @@ func TestHandleEditExternalEditorFails(t *testing.T) {
 	wk.Store().PutWithPath(td, path)
 
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
 
 	req := httptest.NewRequest("POST", "/test/edit-external/FailEdit", nil)
 	w := httptest.NewRecorder()
@@ -858,8 +863,7 @@ func TestLineEditNoFile(t *testing.T) {
 	}
 }
 
-// TestHandleThemeCSS verifies GET /theme.css returns CSS containing
-// chroma syntax-highlighting styles.
+// TestHandleThemeCSS verifies GET /theme.css serves the theme CSS file.
 func TestHandleThemeCSS(t *testing.T) {
 	srv, _ := newTestServer(t)
 	req := httptest.NewRequest("GET", "/test/theme.css", nil)
@@ -869,8 +873,9 @@ func TestHandleThemeCSS(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
-	if ct := w.Header().Get("Content-Type"); ct != "text/css" {
-		t.Errorf("Content-Type = %q, want %q", ct, "text/css")
+	ct := w.Header().Get("Content-Type")
+	if !strings.Contains(ct, "text/css") {
+		t.Errorf("Content-Type = %q, want text/css", ct)
 	}
 	if !strings.Contains(w.Body.String(), "chroma") {
 		t.Error("theme.css should contain 'chroma'")
@@ -900,7 +905,7 @@ func TestHandleSearchNoNoteDir(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/search?q=hello", nil)
 	w := httptest.NewRecorder()
@@ -1414,9 +1419,104 @@ func TestHandleNewDraftError(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
 
 	req := httptest.NewRequest("POST", "/test/new-draft", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+// TestHandleEditConfig verifies POST /edit-config launches the editor.
+func TestHandleEditConfig(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	os.WriteFile(configPath, []byte("listen: :8080\n"), 0644)
+	ed := editor.New("echo %s")
+
+	wk := wiki.New("test", dir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, ed, new(atomic.Int64), 3000, "", "", configPath)
+
+	req := httptest.NewRequest("POST", "/test/edit-config", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+}
+
+// TestHandleEditConfigNoEditor verifies edit-config returns 500
+// when no editor is configured.
+func TestHandleEditConfigNoEditor(t *testing.T) {
+	wk := wiki.New("test", t.TempDir(), nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "/some/config.yaml")
+
+	req := httptest.NewRequest("POST", "/test/edit-config", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
+// TestHandleEditConfigNoPath verifies edit-config returns 404
+// when no config path was provided.
+func TestHandleEditConfigNoPath(t *testing.T) {
+	ed := editor.New("echo %s")
+	wk := wiki.New("test", t.TempDir(), nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, ed, new(atomic.Int64), 3000, "", "", "")
+
+	req := httptest.NewRequest("POST", "/test/edit-config", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+// TestHandleEditConfigMethodNotAllowed verifies edit-config rejects
+// non-POST methods.
+func TestHandleEditConfigMethodNotAllowed(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("GET", "/test/edit-config", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+// TestHandleEditConfigEditorError verifies edit-config returns 500
+// when the editor fails to start.
+func TestHandleEditConfigEditorError(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	os.WriteFile(configPath, []byte("listen: :8080\n"), 0644)
+
+	ed := editor.New("/nonexistent/editor %s")
+	wk := wiki.New("test", dir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, ed, new(atomic.Int64), 3000, "", "", configPath)
+
+	req := httptest.NewRequest("POST", "/test/edit-config", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 

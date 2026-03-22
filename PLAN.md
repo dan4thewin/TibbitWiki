@@ -19,7 +19,8 @@ internal/
   render/   — goldmark + chroma markdown→HTML, plain render mode
   search/   — query parser + rg wrapper
 main.go     — wiring: Wiki→loader→watcher→Hub→Server
-exp/        — browser client experiments (001–025)
+exp/        — browser client experiments (001–027)
+playground/ — theme playground (standalone HTML)
 ```
 
 ### REST API
@@ -193,3 +194,56 @@ etc. Root `/` shows wiki selector or redirects to a default.
 - 50K notes × 200B metadata = 10MB (always in memory)
 - 200 cached full notes × 5KB avg = 1MB (LRU)
 - Total: ~11MB — trivial even on 512MB
+
+---
+
+## v5: Theming + Config
+
+### Problem
+
+- Browser client has 14+ hardcoded hex color values — no way to
+  theme without editing HTML
+- No config.yaml auto-discovery — requires `--config` flag
+- Bootstrap Icons loaded from CDN — breaks offline use
+
+### Approach
+
+`config.yaml` with a `theme:` section drives CSS custom properties.
+Server generates `theme.css` from the theme map + chroma syntax CSS.
+Config file watcher detects saves, does RCS checkin, regenerates CSS.
+Client uses `var(--tw-*)` everywhere. Gear icon opens config in neovide.
+Poll-based theme revision avoids extra fetches.
+
+### Completed
+
+- [x] `Theme map[string]string` in Config with 20 semantic keys
+  (12 colors + 4 typography + 2 layout + 2 limits)
+- [x] Embedded `defaults.yaml` — single source of truth for all defaults
+- [x] Config loading: embedded defaults < config file < CLI flags
+- [x] `render.GenerateThemeCSS()` — `:root { --tw-*: ...; }` + chroma
+- [x] `render.WriteThemeFile()` — writes CSS to disk
+- [x] Server serves theme.css via `http.ServeFile`
+- [x] Client: all hardcoded values → `var(--tw-*)` CSS custom properties
+- [x] Config file watcher (fsnotify, debounce, RCS checkin)
+- [x] Theme revision via `X-Theme-Rev` header on `/notes`
+- [x] Client polls revision, fetches theme.css only on change
+- [x] `POST /edit-config` endpoint + gear icon in client
+- [x] Auto-create config.yaml from embedded defaults if absent
+- [x] Auto-load config.yaml from wiki path (no `--config` needed)
+- [x] `X-Poll-Interval` header — poll interval from config
+- [x] Theme playground (`playground/index.html`) — standalone page
+  with color pickers, font inputs, live preview using real wiki DOM
+- [x] Tests: config theme parsing, CSS generation, WriteThemeFile,
+  edit-config handler (all branches), 100% render coverage
+
+### Remaining
+
+- [ ] Vendor Bootstrap Icons (go:embed, remove CDN)
+
+### Future: Embed + Restart + Gear Dropdown
+
+- [ ] `go:embed` index.html into binary — zero-config startup
+  (`--index-html` becomes optional dev override)
+- [ ] `POST /restart` — `server.Shutdown()` then `syscall.Exec(self)`
+- [ ] Gear icon becomes dropdown: "Edit config" + "Restart server"
+- [ ] All config settings changeable without terminal access

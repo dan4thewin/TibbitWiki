@@ -7,7 +7,7 @@ without manual interaction.
 
 - Safari with **Developer → Allow JavaScript from Apple Events**
   enabled (see [SETUP.md](SETUP.md))
-- TibbitWiki built: `go build -o /tmp/TibbitWiki .`
+- TibbitWiki built: `go build -o tibbitwiki .`
 
 ## Unit tests
 
@@ -20,7 +20,7 @@ patches in watcher and editor tests.
 
 ### Statement coverage
 
-All 10 `internal/` packages are at 100% statement coverage.
+All 11 `internal/` packages are at 100% statement coverage.
 
 ```bash
 # Quick check (per-package percentages):
@@ -147,14 +147,12 @@ The marker lets you verify the full chain:
 
 ```bash
 # Build
-go build -o /tmp/TibbitWiki .
+go build -o tibbitwiki .
 
 # Start server (use a persistent shell — not background &)
-/tmp/TibbitWiki \
+./tibbitwiki \
   --wiki-path ~/notes \
-  --index-html exp/012-integration/index.html \
-  --editor-cmd "$PWD/exp/mock-editor.sh %s" \
-  --listen 127.0.0.1:8080
+  --editor-cmd "$PWD/exp/mock-editor.sh %s"
 ```
 
 **Important:** When running from a copilot session, start the server
@@ -201,7 +199,7 @@ tell application "Safari"
 end tell'
 
 # 4. Clean up test note
-rm ~/notes/notes/21st\ March\ 2026.tid
+rm ~/notes/personal/21st\ March\ 2026.md
 ```
 
 ### Edit existing note

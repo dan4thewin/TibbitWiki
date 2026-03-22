@@ -4,6 +4,8 @@ package render
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"sort"
 
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	"github.com/alecthomas/chroma/v2/styles"
@@ -175,4 +177,32 @@ func ThemeCSS() string {
 	var buf bytes.Buffer
 	formatter.WriteCSS(&buf, style)
 	return buf.String()
+}
+
+// GenerateThemeCSS produces a complete CSS file: custom properties
+// from the theme map on :root, followed by chroma syntax highlighting.
+func GenerateThemeCSS(theme map[string]string) string {
+	var buf bytes.Buffer
+	buf.WriteString(":root {\n")
+
+	// Sorted keys for deterministic output.
+	keys := make([]string, 0, len(theme))
+	for k := range theme {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		fmt.Fprintf(&buf, "  --tw-%s: %s;\n", k, theme[k])
+	}
+	buf.WriteString("}\n")
+
+	// Append chroma syntax highlighting CSS.
+	buf.WriteString(ThemeCSS())
+	return buf.String()
+}
+
+// WriteThemeFile generates theme CSS and writes it to path.
+func WriteThemeFile(theme map[string]string, path string) error {
+	return os.WriteFile(path, []byte(GenerateThemeCSS(theme)), 0644)
 }

@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"sync/atomic"
 
-	"github.com/dan4thewin/tibbitwiki/internal/render"
+	"github.com/dan4thewin/tibbitwiki/internal/editor"
 	"github.com/dan4thewin/tibbitwiki/internal/wiki"
 )
 
@@ -24,17 +26,28 @@ func wikiFrom(r *http.Request) *wiki.Wiki {
 
 // Server is the HTTP handler for the TibbitWiki API.
 type Server struct {
-	hub       *wiki.Hub
-	indexHTML string
-	mux       *http.ServeMux
+	hub          *wiki.Hub
+	editor       *editor.Editor
+	themeRev     *atomic.Int64
+	pollMS       int
+	indexHTML    string
+	themeCSSPath string
+	configPath   string
+	mux          *http.ServeMux
 }
 
 // New creates a Server backed by the given Hub.
-func New(hub *wiki.Hub, indexHTML string) *Server {
+// themeRev is bumped externally when theme.css is regenerated.
+func New(hub *wiki.Hub, ed *editor.Editor, themeRev *atomic.Int64, pollMS int, indexHTML, themeCSSPath, configPath string) *Server {
 	srv := &Server{
-		hub:       hub,
-		indexHTML: indexHTML,
-		mux:       http.NewServeMux(),
+		hub:          hub,
+		editor:       ed,
+		themeRev:     themeRev,
+		pollMS:       pollMS,
+		indexHTML:    indexHTML,
+		themeCSSPath: themeCSSPath,
+		configPath:   configPath,
+		mux:          http.NewServeMux(),
 	}
 	srv.routes()
 	return srv
@@ -49,6 +62,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/line-edit/", s.handleLineEdit)
 	s.mux.HandleFunc("/edit-external/", s.handleEditExternal)
 	s.mux.HandleFunc("/new-draft", s.handleNewDraft)
+	s.mux.HandleFunc("/edit-config", s.handleEditConfig)
 	s.mux.HandleFunc("/theme.css", s.handleThemeCSS)
 	s.mux.HandleFunc("/search", s.handleSearch)
 }
@@ -100,8 +114,7 @@ func (s *Server) handleWikiSelector(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleThemeCSS(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/css")
-	w.Write([]byte(render.ThemeCSS()))
+	http.ServeFile(w, r, s.themeCSSPath)
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -159,6 +172,8 @@ func (s *Server) handleFavicon(w http.ResponseWriter, r *http.Request) {
 // handleListNotes returns all notes without their text field.
 func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Theme-Rev", strconv.FormatInt(s.themeRev.Load(), 10))
+	w.Header().Set("X-Poll-Interval", strconv.Itoa(s.pollMS))
 	json.NewEncoder(w).Encode(wikiFrom(r).List())
 }
 
@@ -270,6 +285,27 @@ func (s *Server) handleNewDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := wikiFrom(r).NewDraft(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleEditConfig launches the editor on the config file.
+func (s *Server) handleEditConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.editor == nil {
+		http.Error(w, "editor not configured", http.StatusInternalServerError)
+		return
+	}
+	if s.configPath == "" {
+		http.Error(w, "no config file", http.StatusNotFound)
+		return
+	}
+	if err := s.editor.Open(s.configPath); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

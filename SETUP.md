@@ -24,13 +24,14 @@ tests. See [TESTING.md](TESTING.md) for details.
 
 ## Wiki directory setup
 
-Create or use an existing notes directory:
+Create or use an existing notes directory with wiki subdirectories:
 
 ```bash
-mkdir -p ~/notes/tiddlers
+mkdir -p ~/notes/personal
+mkdir -p ~/notes/work
 ```
 
-Notes are `.tid` files — RFC822-style headers, blank line, body:
+Notes are `.md` files — RFC822-style headers, blank line, markdown body:
 
 ```
 created: 20230710174528965
@@ -45,9 +46,9 @@ Body text goes here. Uses **markdown** formatting.
 
 | Note title             | Filename                              |
 |---------------------------|---------------------------------------|
-| `My Note`              | `My Note.tid`                      |
-| `$:/config/Something`     | `$__config_Something.tid`             |
-| Titles with `/`           | URL-encoded: `%2Fpath%2Fto%2F.tid`    |
+| `My Note`              | `My Note.md`                       |
+| `$:/config/Something`     | `$__config_Something.md`              |
+| Titles with `/`           | URL-encoded: `%2Fpath%2Fto%2F.md`     |
 
 Spaces in titles are literal spaces in filenames.
 
@@ -64,28 +65,32 @@ go build -o tibbitwiki .
 
 ### Configuration
 
-YAML config file (optional) or CLI flags:
+A `config.yaml` is auto-created in the wiki path on first run with
+commented defaults (colors, fonts, layout, poll interval, etc.).
+You can also specify a config file explicitly or use CLI flags:
 
 ```yaml
 wiki_path: ~/notes
 listen: 127.0.0.1:8080
 editor_cmd: "neovide -- %s"
 poll_interval: 3s
+cache_size: 200
+
+theme:
+  bg:     "#1a1a2e"
+  accent: "#6cacee"
+  # ... see config.yaml for all keys
 ```
 
 ### Run the server
 
 ```bash
-./tibbitwiki \
-  --wiki-path ~/notes \
-  --listen 127.0.0.1:8080 \
-  --index-html exp/017-tag-pills/index.html \
-  --editor-cmd "scripts/neovide-wrapper.sh %s"
+./tibbitwiki --wiki-path ~/notes
 ```
 
-Open http://127.0.0.1:8080/ in Safari. You'll see the dark-themed
-viewer with your notes in the recent sidebar. Click any note
-to open it, click "edit" to launch neovide.
+Open http://127.0.0.1:8080/ in Safari. You'll see the wiki selector
+listing your wiki subdirectories. Click one to open the dark-themed
+viewer with your notes in the recent sidebar.
 
 ### Neovide wrapper (single-instance editing)
 
@@ -100,12 +105,13 @@ Use `scripts/neovide-wrapper.sh %s` instead to reuse one window:
 
 ### Editing workflow
 
-1. Click "edit" on a note → neovide opens the `.tid` file
+1. Click "edit" on a note → neovide opens the `.md` file
    (or reuses the existing window)
 2. Edit in neovide, save
 3. Browser updates within 3 seconds (poll-based)
 4. Click "+ Journal" for a date-titled entry
 5. Click "+ New" for a custom-titled note
+6. Click ⚙ gear icon to edit config.yaml (theme changes apply live)
 
 ## RCS version control
 
@@ -113,9 +119,9 @@ Every note write (browser PUT or external file save) creates
 an RCS archive in an `RCS/` subdirectory:
 
 ```bash
-rlog notes/MyTiddler.tid
-rcsdiff notes/MyTiddler.tid
-co -r1.2 -p notes/MyTiddler.tid
+rlog notes/MyNote.md
+rcsdiff notes/MyNote.md
+co -r1.2 -p notes/MyNote.md
 ```
 
 Archives live in `RCS/` alongside the notes directory, not inside

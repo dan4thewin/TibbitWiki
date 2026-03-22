@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TibbitWiki Theme Playground</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+/* --- Playground chrome (not themed) --- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-family: system-ui, sans-serif; font-size: 14px; background: #111; color: #ccc; }
+.pg-wrap { display: flex; height: 100vh; }
+
+/* Left: controls */
+.pg-controls { width: 320px; flex-shrink: 0; overflow-y: auto; padding: 16px; border-right: 1px solid #333; background: #1a1a1a; }
+.pg-controls h2 { font-size: 15px; margin: 16px 0 8px; color: #8ecaff; }
+.pg-controls h2:first-child { margin-top: 0; }
+.pg-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.pg-row label { width: 110px; flex-shrink: 0; font-size: 12px; color: #aaa; }
+.pg-row input[type="color"] { width: 32px; height: 24px; border: 1px solid #444; border-radius: 3px; background: none; cursor: pointer; padding: 0; }
+.pg-row input[type="text"] { flex: 1; background: #0d1117; border: 1px solid #444; border-radius: 3px; color: #e0e0e0; padding: 3px 6px; font-size: 12px; font-family: monospace; }
+.pg-row .pg-hex { width: 72px; flex-shrink: 0; background: #0d1117; border: 1px solid #444; border-radius: 3px; color: #e0e0e0; padding: 3px 6px; font-size: 12px; font-family: monospace; }
+#copy-yaml { margin-top: 16px; width: 100%; padding: 8px; background: #2a2a4a; color: #8ecaff; border: 1px solid #444; border-radius: 4px; cursor: pointer; font-size: 13px; }
+#copy-yaml:hover { background: #3a3a5a; }
+#copy-msg { font-size: 11px; color: #6c6; margin-top: 4px; min-height: 1em; }
+
+/* Right: preview */
+.pg-preview { flex: 1; overflow-y: auto; padding: 20px; }
+
+/* --- Themed preview — real wiki CSS, scoped under .tw --- */
+.tw { display: flex; gap: 20px; font-family: var(--tw-font_family); font-size: var(--tw-font_size); color: var(--tw-fg); background: var(--tw-bg); border-radius: 8px; padding: 20px; min-height: 600px; position: relative; padding-bottom: 60px; }
+.tw h1 { margin-top: 0; color: var(--tw-fg); }
+.tw #main { flex: 1; min-width: 0; }
+.tw #sidebar { width: var(--tw-sidebar_width); flex-shrink: 0; }
+/* Tab headers */
+.tw #tab-headers { display: flex; gap: 0; margin-bottom: 8px; border-bottom: 1px solid var(--tw-border); }
+.tw #tab-headers .tab { padding: 6px 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--tw-muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tw #tab-headers .tab:hover { color: var(--tw-muted_light); }
+.tw #tab-headers .tab.active { color: var(--tw-accent); border-bottom-color: var(--tw-accent); }
+/* Tab panels */
+.tw .tab-panel { display: none; }
+.tw .tab-panel.active { display: block; }
+.tw .tab-panel ul { list-style: none; padding: 0; margin: 0; }
+.tw .tab-panel li { padding: 4px 0; cursor: pointer; color: var(--tw-accent); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tw .tab-panel li:hover { color: var(--tw-accent_hover); text-decoration: underline; }
+.tw .ellipsis-btn { display: block; padding: 6px 0; color: var(--tw-muted); font-size: 18px; cursor: pointer; text-align: center; letter-spacing: 3px; }
+.tw .ellipsis-btn:hover { color: var(--tw-muted_light); }
+/* Tag groups */
+.tw .tag-group-header { display: flex; align-items: center; margin: 10px 0 4px; }
+.tw .tag-group-header:first-child { margin-top: 0; }
+.tw .note { border: 1px solid var(--tw-border); border-radius: var(--tw-note_radius); padding: 16px; margin-bottom: 16px; background: var(--tw-note_bg); }
+.tw .note-header { display: flex; align-items: center; justify-content: space-between; }
+.tw .note-header h2 { margin: 0; color: var(--tw-fg); }
+.tw .note-date { margin-left: 12px; font-size: 13px; font-weight: 400; color: var(--tw-muted); }
+.tw .note-toolbar { display: flex; gap: 4px; }
+.tw .note-toolbar button { background: none; border: 1px solid var(--tw-border_light); border-radius: 4px; cursor: pointer; padding: 2px 8px; font-size: 16px; color: var(--tw-muted_light); }
+.tw .note-toolbar button:hover { background: var(--tw-button_bg); color: var(--tw-fg); }
+.tw .note-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.tw .tag-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 12px; font-size: 12px; cursor: pointer; font-weight: 500; }
+.tw .tag-pill:hover { filter: brightness(1.2); }
+.tw .tag-pill .tag-remove { font-size: 10px; opacity: 0; margin-left: 2px; cursor: pointer; }
+.tw .tag-pill:hover .tag-remove { opacity: 0.7; }
+.tw .tag-pill .tag-remove:hover { opacity: 1; }
+.tw .tag-add-btn { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 12px; font-size: 12px; cursor: pointer; background: var(--tw-button_bg); color: var(--tw-accent); border: 1px dashed var(--tw-border_light); }
+.tw .tag-add-btn:hover { background: var(--tw-border); border-color: var(--tw-accent); }
+.tw .tag-add-input { background: var(--tw-code_bg); border: 1px solid var(--tw-accent); border-radius: 12px; color: var(--tw-fg); font-size: 12px; padding: 2px 10px; outline: none; width: 100px; }
+.tw a.wikiword { color: var(--tw-accent); text-decoration: none; }
+.tw a.wikiword:hover { text-decoration: underline; color: var(--tw-accent_hover); }
+.tw a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
+.tw #top-bar { margin-bottom: 16px; display: flex; gap: 8px; }
+.tw #top-bar button { padding: 6px 14px; font-size: 14px; border: 1px solid var(--tw-border_light); border-radius: 4px; cursor: pointer; background: var(--tw-note_bg); color: var(--tw-fg); }
+.tw #top-bar button:hover { background: var(--tw-button_bg); }
+.tw .note-body { line-height: var(--tw-line_height); }
+.tw .note-body code { background: var(--tw-code_bg); padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+.tw .note-body pre { background: var(--tw-code_bg); padding: 12px; border-radius: var(--tw-note_radius); overflow-x: auto; position: relative; cursor: pointer; }
+.tw .note-body pre:hover::after { content: 'click to edit'; position: absolute; top: 4px; right: 8px; font-size: 11px; color: var(--tw-accent); opacity: 0.6; font-family: sans-serif; }
+.tw .note-body pre.editing { cursor: default; }
+.tw .note-body pre.editing:hover::after { display: none; }
+.tw .note-body pre code div[data-line] { padding-left: 24px; position: relative; min-height: 1.4em; cursor: pointer; }
+.tw .note-body pre code div[data-line]:hover { background: rgba(108,172,238,0.08); }
+.tw .note-body pre code div[data-line] > .line-icons { display: none; position: absolute; left: 0; top: 0; white-space: nowrap; }
+.tw .note-body pre code div[data-line]:hover > .line-icons { display: inline-flex; gap: 0; }
+.tw .note-body pre code { background: none; padding: 0; }
+.tw .note-body blockquote { border-left: 3px solid var(--tw-border_light); margin-left: 0; padding-left: 16px; color: var(--tw-muted_light); }
+.tw #search-bar { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--tw-code_bg); border-top: 1px solid var(--tw-border_light); padding: 8px 16px; z-index: 100; }
+.tw #search-bar.active { display: flex; align-items: center; gap: 8px; }
+.tw #search-bar label { color: var(--tw-accent); font-size: 16px; font-family: var(--tw-code_font); }
+.tw #search-bar input { flex: 1; background: var(--tw-bg); border: 1px solid var(--tw-border_light); border-radius: 4px; color: var(--tw-fg); font-size: 16px; font-family: var(--tw-code_font); padding: 6px 10px; outline: none; }
+.tw #search-bar input:focus { border-color: var(--tw-accent); }
+.tw #search-bar .hint { color: var(--tw-muted); font-size: 12px; }
+.tw .search-result { margin-bottom: 8px; }
+.tw .search-result-title { color: var(--tw-accent); cursor: pointer; font-weight: bold; font-size: 15px; }
+.tw .search-result-title:hover { text-decoration: underline; color: var(--tw-accent_hover); }
+.tw .search-result-lines { font-family: var(--tw-code_font); font-size: 13px; color: var(--tw-muted_light); margin: 2px 0 0 16px; white-space: pre-wrap; word-break: break-word; }
+/* Line-edit hover icons */
+.tw .note-body [data-line] { position: relative; }
+.tw .note-body [data-line]::before { content: ''; position: absolute; left: -2.5em; top: 0; bottom: 0; width: 2.5em; }
+.tw .note-body [data-line] > .line-icons { display: none; position: absolute; left: -2.5em; bottom: 0.25em; white-space: nowrap; }
+.tw .note-body [data-line]:hover > .line-icons { display: inline-flex; align-items: center; }
+.tw .line-icons button { background: none; border: none; cursor: pointer; font-size: 14px; padding: 0; margin: 0; opacity: 0.4; color: var(--tw-accent); line-height: 1; }
+.tw .line-icons button:hover { opacity: 1; }
+.tw .line-edit-input { width: 100%; background: var(--tw-code_bg); border: 1px solid var(--tw-accent); border-radius: 3px; color: var(--tw-fg); font-family: inherit; font-size: inherit; padding: 2px 6px; outline: none; box-sizing: border-box; }
+
+/* Playground overrides */
+.tw #search-bar { position: absolute; bottom: 0; left: 0; right: 0; border-radius: 0 0 8px 8px; display: flex; align-items: center; gap: 8px; }
+.tw #search-bar.active { position: absolute; }
+</style>
+</head>
+<body>
+<div class="pg-wrap">
+
+<!-- Controls panel -->
+<div class="pg-controls">
+<h2>🎨 Colors</h2>
+<div id="color-controls"></div>
+
+<h2>🔤 Typography</h2>
+<div id="typo-controls"></div>
+
+<h2>📐 Layout</h2>
+<div id="layout-controls"></div>
+
+<button id="copy-yaml">📋 Copy theme YAML</button>
+<div id="copy-msg"></div>
+</div>
+
+<!-- Preview panel -->
+<div class="pg-preview">
+<div class="tw" id="tw-preview">
+<div id="main">
+  <h1>TibbitWiki</h1>
+  <div id="top-bar">
+    <button><i class="bi bi-plus-lg"></i> New</button>
+    <button><i class="bi bi-journal-plus"></i> Journal</button>
+    <button title="Edit config"><i class="bi bi-gear"></i></button>
+  </div>
+  <div id="river"><div class="note" data-title="WikiSyntax" data-revision="1"><div class="note-header"><h2>WikiSyntax<span class="note-date">22 Mar 2026</span></h2><div class="note-toolbar"><button title="Edit in Neovim"><i class="bi bi-pencil"></i></button><button title="Close"><i class="bi bi-x-lg"></i></button></div></div><div class="note-tags"><span class="tag-pill" style="background: rgb(45, 61, 74); color: rgb(126, 184, 232);"><span>docs</span><i class="bi bi-x tag-remove" title="Remove tag"></i></span><span class="tag-pill" style="background: rgb(45, 74, 74); color: rgb(126, 232, 232);"><span>reference</span><i class="bi bi-x tag-remove" title="Remove tag"></i></span><span class="tag-pill" style="background: rgb(45, 74, 62); color: rgb(126, 232, 168);"><span>markup</span><i class="bi bi-x tag-remove" title="Remove tag"></i></span><span class="tag-add-btn" title="Add tag"><i class="bi bi-plus"></i></span></div><div class="note-body"><p><a href="#" class="wikiword missing" data-title="TibbitWiki">TibbitWiki</a> uses <a href="https://commonmark.org/">Markdown</a>  Links to other tiddlers use <a href="https://en.wikipedia.org/wiki/Camel_case">CamelCase</a> wikiwords. A link to <a href="#" class="wikiword missing" data-title="NonExistentPage">NonExistentPage</a> shows as missing.</p>
+<p>Inline code looks like <code>go test ./...</code> and blocks:</p>
+<pre class="chroma"><code><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">"hello <a href="#" class="wikiword missing" data-title="TibbitWiki">TibbitWiki</a>"</span><span class="p">)</span><span class="w">
+</span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
+</span></span></span></code></pre><blockquote data-line="11"><span class="line-icons"><button title="Insert line below"><i class="bi bi-chevron-down"></i></button></span>
+<p>This is a blockquote — used for callouts and asides.</p>
+</blockquote>
+</div></div><div class="note" data-title="GoTesting" data-revision="1"><div class="note-header"><h2>GoTesting<span class="note-date">22 Mar 2026</span></h2><div class="note-toolbar"><button title="Edit in Neovim"><i class="bi bi-pencil"></i></button><button title="Close"><i class="bi bi-x-lg"></i></button></div></div><div class="note-tags"><span class="tag-pill" style="background: rgb(74, 61, 45); color: rgb(232, 197, 126);"><span>golang</span><i class="bi bi-x tag-remove" title="Remove tag"></i></span><span class="tag-pill" style="background: rgb(45, 74, 62); color: rgb(126, 232, 168);"><span>testing</span><i class="bi bi-x tag-remove" title="Remove tag"></i></span><span class="tag-add-btn" title="Add tag"><i class="bi bi-plus"></i></span></div><div class="note-body"><p>Run tests with <code>go test -gcflags=all=-l -count=1 ./....</code> Use <a href="https://github.com/agiledragon/gomonkey">GoMonkey</a> for mocking. See also <a href="#" class="wikiword missing" data-title="CoverageGuide">CoverageGuide</a>.</p>
+</div></div></div>
+</div><div id="sidebar">
+  <div id="tab-headers">
+    <span class="tab active" data-tab="recent">Recent</span>
+    <span class="tab" data-tab="journals">Journals</span>
+    <span class="tab" data-tab="tags">Tags</span>
+  </div>
+  <div id="tab-recent" class="tab-panel active">
+    <ul id="recent-list"><li title="GoTesting">GoTesting</li><li title="WikiSyntax">WikiSyntax</li><li title="FooBar">FooBar</li><li title="ToDo">ToDo</li><li title="Space1999">Space1999</li><li title="HappyDays">HappyDays</li><li title="BookList">BookList</li></ul>
+  </div>
+  <div id="tab-journals" class="tab-panel">
+    <ul id="journal-list"><li title="GardenLog">GardenLog</li></ul>
+  </div>
+  <div id="tab-tags" class="tab-panel">
+    <div id="tag-groups"><div class="tag-group-header"><span class="tag-pill" style="background: rgb(74, 61, 45); color: rgb(232, 197, 126);">golang</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="GoTesting">GoTesting</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(45, 74, 62); color: rgb(126, 232, 168);">testing</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="GoTesting">GoTesting</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(45, 61, 74); color: rgb(126, 184, 232);">docs</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="WikiSyntax">WikiSyntax</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(45, 74, 74); color: rgb(126, 232, 232);">reference</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="WikiSyntax">WikiSyntax</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(45, 74, 62); color: rgb(126, 232, 168);">markup</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="WikiSyntax">WikiSyntax</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(74, 45, 61); color: rgb(232, 126, 174);">reading</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="BookList">BookList</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(74, 61, 45); color: rgb(232, 197, 126);">ping</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="BookList">BookList</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(45, 61, 74); color: rgb(126, 184, 232);">garden</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="GardenLog">GardenLog</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(61, 45, 74); color: rgb(196, 155, 235);">journal</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="GardenLog">GardenLog</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(74, 74, 45); color: rgb(212, 212, 126);">tasks</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="ToDo">ToDo</li></ul></div></div>
+  </div>
+</div><div id="search-bar" class="active">
+  <label>/</label>
+  <input id="search-input" type="text" placeholder="word !not #tag @title /regex/ m|regex|" autocomplete="off">
+  <span class="hint">Enter=search  Esc=close</span>
+</div>
+
+
+</div>
+</div>
+
+</div>
+
+<script>
+// Theme variable definitions — grouped for the control panel.
+const THEME = {
+  colors: [
+    ['bg',           '#1a1a2e', 'Page background'],
+    ['fg',           '#e0e0e0', 'Main text'],
+    ['note_bg',      '#16213e', 'Note background'],
+    ['code_bg',      '#0d1117', 'Code background'],
+    ['accent',       '#6cacee', 'Links, active tabs'],
+    ['accent_hover', '#8ecaff', 'Hovered links'],
+    ['danger',       '#e06060', 'Missing links, errors'],
+    ['button_bg',    '#2a2a4a', 'Button hover bg'],
+    ['border',       '#333333', 'Note outlines'],
+    ['border_light', '#444444', 'Input borders'],
+    ['muted',        '#666666', 'Dim text'],
+    ['muted_light',  '#aaaaaa', 'Mid-tone text'],
+  ],
+  typography: [
+    ['font_family', '-apple-system, BlinkMacSystemFont, sans-serif', 'Body font stack'],
+    ['font_size',   '16px',   'Base text size'],
+    ['code_font',   'SF Mono, Consolas, monospace', 'Monospace font'],
+    ['line_height', '1.6',    'Body line spacing'],
+  ],
+  layout: [
+    ['note_radius',   '6px',  'Card corner radius'],
+    ['sidebar_width', '220px', 'Sidebar width'],
+    ['sidebar_limit', '20',   'Notes before ellipsis'],
+    ['tag_limit',     '5',    'Tags per note'],
+  ],
+};
+
+const root = document.getElementById('tw-preview');
+const current = {};  // key → current value
+
+function applyVar(key, val) {
+  current[key] = val;
+  root.style.setProperty('--tw-' + key, val);
+}
+
+function isColor(val) {
+  return /^#[0-9a-fA-F]{3,8}$/.test(val);
+}
+
+// Normalize short hex (#abc) to full (#aabbcc) for color pickers.
+function normHex(hex) {
+  if (/^#[0-9a-fA-F]{3}$/.test(hex)) {
+    return '#' + hex[1]+hex[1] + hex[2]+hex[2] + hex[3]+hex[3];
+  }
+  return hex;
+}
+
+function buildColorRow(container, key, val, desc) {
+  val = normHex(val);
+  const row = document.createElement('div');
+  row.className = 'pg-row';
+
+  const label = document.createElement('label');
+  label.textContent = key;
+  label.title = desc;
+
+  const picker = document.createElement('input');
+  picker.type = 'color';
+  picker.value = val;
+
+  const hex = document.createElement('input');
+  hex.type = 'text';
+  hex.className = 'pg-hex';
+  hex.value = val;
+
+  picker.addEventListener('input', () => {
+    hex.value = picker.value;
+    applyVar(key, picker.value);
+  });
+  hex.addEventListener('input', () => {
+    if (isColor(hex.value)) {
+      picker.value = normHex(hex.value);
+      applyVar(key, hex.value);
+    }
+  });
+
+  row.append(label, picker, hex);
+  container.appendChild(row);
+  applyVar(key, val);
+}
+
+function buildTextRow(container, key, val, desc) {
+  const row = document.createElement('div');
+  row.className = 'pg-row';
+
+  const label = document.createElement('label');
+  label.textContent = key;
+  label.title = desc;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = val;
+  input.addEventListener('input', () => applyVar(key, input.value));
+
+  row.append(label, input);
+  container.appendChild(row);
+  applyVar(key, val);
+}
+
+// Try to load current theme.css from server (works when served by TibbitWiki).
+async function loadCurrentTheme() {
+  try {
+    const resp = await fetch('/theme.css');
+    if (!resp.ok) return;
+    const text = await resp.text();
+    // Parse --tw-key: value; lines
+    const re = /--tw-(\w+):\s*(.+?)\s*;/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const [, key, val] = m;
+      // Update THEME arrays with live values
+      for (const group of Object.values(THEME)) {
+        for (const entry of group) {
+          if (entry[0] === key) entry[1] = val;
+        }
+      }
+    }
+  } catch(e) { /* standalone mode — use built-in defaults */ }
+}
+
+function buildControls() {
+  const cc = document.getElementById('color-controls');
+  for (const [k, v, d] of THEME.colors) buildColorRow(cc, k, v, d);
+
+  const tc = document.getElementById('typo-controls');
+  for (const [k, v, d] of THEME.typography) buildTextRow(tc, k, v, d);
+
+  const lc = document.getElementById('layout-controls');
+  for (const [k, v, d] of THEME.layout) buildTextRow(lc, k, v, d);
+}
+
+document.getElementById('copy-yaml').addEventListener('click', () => {
+  const groups = [
+    ['# Colors', THEME.colors],
+    ['# Typography', THEME.typography],
+    ['# Layout', THEME.layout],
+  ];
+  let yaml = 'theme:\n';
+  for (const [header, entries] of groups) {
+    yaml += '  ' + header + '\n';
+    for (const [key, , desc] of entries) {
+      const val = current[key] || '';
+      const pad = Math.max(1, 14 - key.length);
+      yaml += '  ' + key + ':' + ' '.repeat(pad) + '"' + val + '"'
+            + ' '.repeat(Math.max(1, 24 - val.length))
+            + '# ' + desc + '\n';
+    }
+  }
+  navigator.clipboard.writeText(yaml).then(() => {
+    document.getElementById('copy-msg').textContent = '✓ Copied to clipboard';
+    setTimeout(() => document.getElementById('copy-msg').textContent = '', 2000);
+  });
+});
+
+// Boot: try loading live theme, then build controls.
+loadCurrentTheme().then(buildControls);
+</script>
+</body>
+</html>

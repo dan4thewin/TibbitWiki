@@ -181,6 +181,57 @@ func TestLoadNoArgs(t *testing.T) {
 	}
 }
 
+// TestLoadDefaultTheme verifies that Load with no args returns the
+// default theme with all expected keys.
+func TestLoadDefaultTheme(t *testing.T) {
+	cfg, err := Load([]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := DefaultTheme()
+	for k, v := range expected {
+		if cfg.Theme[k] != v {
+			t.Errorf("Theme[%q] = %q, want %q", k, cfg.Theme[k], v)
+		}
+	}
+}
+
+// TestLoadYAMLTheme verifies that a theme section in YAML overrides
+// defaults, and missing keys are filled from defaults.
+func TestLoadYAMLTheme(t *testing.T) {
+	content := `theme:
+  bg: "#000000"
+  accent: "#ff0000"
+`
+	f, err := os.CreateTemp("", "tibbitwiki-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString(content)
+	f.Close()
+
+	cfg, err := Load([]string{"--config", f.Name()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Overridden keys.
+	if cfg.Theme["bg"] != "#000000" {
+		t.Errorf("Theme[bg] = %q, want %q", cfg.Theme["bg"], "#000000")
+	}
+	if cfg.Theme["accent"] != "#ff0000" {
+		t.Errorf("Theme[accent] = %q, want %q", cfg.Theme["accent"], "#ff0000")
+	}
+	// Missing key should be filled from defaults.
+	defaults := DefaultTheme()
+	if cfg.Theme["fg"] != defaults["fg"] {
+		t.Errorf("Theme[fg] = %q, want default %q", cfg.Theme["fg"], defaults["fg"])
+	}
+	if cfg.Theme["border"] != defaults["border"] {
+		t.Errorf("Theme[border] = %q, want default %q", cfg.Theme["border"], defaults["border"])
+	}
+}
+
 // TestLoadTWCorePathAndIndexHTMLFlags verifies that the --tw-core-path
 // and --index-html flags override the config values.
 func TestLoadTWCorePathAndIndexHTMLFlags(t *testing.T) {
