@@ -83,15 +83,22 @@ func Serialize(t *Note) []byte {
 	var b strings.Builder
 
 	// Collect header keys (everything except "text"), sorted for
-	// deterministic output.
+	// deterministic output. Title and tags come first.
 	keys := make([]string, 0, len(t.Fields))
 	for k := range t.Fields {
-		if k != "text" {
+		if k != "text" && k != "title" && k != "tags" {
 			keys = append(keys, k)
 		}
 	}
 	sort.Strings(keys)
 
+	// Write title first, tags second, then the rest.
+	if v, ok := t.Fields["title"]; ok {
+		fmt.Fprintf(&b, "title: %s\n", v)
+	}
+	if v, ok := t.Fields["tags"]; ok {
+		fmt.Fprintf(&b, "tags: %s\n", v)
+	}
 	for _, k := range keys {
 		fmt.Fprintf(&b, "%s: %s\n", k, t.Fields[k])
 	}

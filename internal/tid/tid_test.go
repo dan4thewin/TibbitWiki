@@ -138,8 +138,8 @@ func TestSerializeRoundTrip(t *testing.T) {
 	}
 }
 
-// TestSerializeHeaderOrder verifies that headers are sorted
-// alphabetically for deterministic output.
+// TestSerializeHeaderOrder verifies that title comes first, then
+// tags, then remaining headers sorted alphabetically.
 func TestSerializeHeaderOrder(t *testing.T) {
 	td := &Note{Fields: map[string]string{
 		"title":   "Sorted",
@@ -148,13 +148,13 @@ func TestSerializeHeaderOrder(t *testing.T) {
 		"text":    "Body.",
 	}}
 	out := string(Serialize(td))
-	// Headers should appear in order: created, tags, title.
-	createdIdx := strings.Index(out, "created:")
-	tagsIdx := strings.Index(out, "tags:")
+	// Headers should appear in order: title, tags, created.
 	titleIdx := strings.Index(out, "title:")
-	if createdIdx > tagsIdx || tagsIdx > titleIdx {
-		t.Errorf("headers not sorted: created@%d tags@%d title@%d\noutput:\n%s",
-			createdIdx, tagsIdx, titleIdx, out)
+	tagsIdx := strings.Index(out, "tags:")
+	createdIdx := strings.Index(out, "created:")
+	if titleIdx > tagsIdx || tagsIdx > createdIdx {
+		t.Errorf("wrong header order: title@%d tags@%d created@%d\noutput:\n%s",
+			titleIdx, tagsIdx, createdIdx, out)
 	}
 }
 

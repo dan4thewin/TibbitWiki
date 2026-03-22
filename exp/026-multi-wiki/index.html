@@ -81,6 +81,7 @@ a.wikiword.missing { color: #e06060; font-style: italic; }
 
 /* Line-edit hover icons */
 .note-body [data-line] { position: relative; }
+.note-body [data-line]::before { content: ''; position: absolute; left: -2.5em; top: 0; bottom: 0; width: 2.5em; }
 .note-body [data-line] > .line-icons { display: none; position: absolute; left: -2.5em; bottom: 0.25em; white-space: nowrap; }
 .note-body [data-line]:hover > .line-icons { display: inline-flex; align-items: center; }
 .line-icons button { background: none; border: none; cursor: pointer; font-size: 14px; padding: 0; margin: 0; opacity: 0.4; color: #6cacee; line-height: 1; }
@@ -430,7 +431,7 @@ document.getElementById('tab-headers').addEventListener('click', e => {
 });
 
 function createNote(title, openEditor) {
-  const body = JSON.stringify({ title: title, text: '', type: 'text/markdown' });
+  const body = JSON.stringify({ title: title, tags: '', text: '', type: 'text/markdown' });
   fetch(PREFIX + '/notes/' + encodeURIComponent(title), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
