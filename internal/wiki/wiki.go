@@ -415,8 +415,10 @@ func (w *Wiki) reloadFile(path string) {
 			return
 		}
 		if td.Title() != "" {
-			w.symlinks[td.Title()] = owner
-			log.Printf("wiki %s: symlink %q → %s", w.Name, td.Title(), owner)
+			if w.symlinks[td.Title()] != owner {
+				w.symlinks[td.Title()] = owner
+				log.Printf("wiki %s: symlink %q → %s", w.Name, td.Title(), owner)
+			}
 		}
 		return
 	}
