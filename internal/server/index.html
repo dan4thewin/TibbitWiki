@@ -53,9 +53,17 @@ h1 { margin-top: 0; color: var(--tw-fg); }
 a.wikiword { color: var(--tw-accent); text-decoration: none; }
 a.wikiword:hover { text-decoration: underline; color: var(--tw-accent_hover); }
 a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
-#top-bar { margin-bottom: 16px; display: flex; gap: 8px; }
+#top-bar { margin-bottom: 16px; display: flex; gap: 8px; align-items: center; }
 #top-bar button { padding: 6px 14px; font-size: 14px; border: 1px solid var(--tw-border_light); border-radius: 4px; cursor: pointer; background: var(--tw-note_bg); color: var(--tw-fg); }
 #top-bar button:hover { background: var(--tw-button_bg); }
+.gear-dropdown { position: relative; }
+.gear-dropdown .gear-menu { display: none; position: absolute; top: 100%; right: 0; margin-top: 4px; background: var(--tw-note_bg); border: 1px solid var(--tw-border_light); border-radius: 4px; min-width: 160px; z-index: 50; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.gear-dropdown .gear-menu.open { display: block; }
+.gear-menu button { display: block; width: 100%; text-align: left; padding: 8px 12px; border: none; border-radius: 0; font-size: 14px; background: none; color: var(--tw-fg); cursor: pointer; }
+.gear-menu button:hover { background: var(--tw-button_bg); }
+.gear-menu button:first-child { border-radius: 4px 4px 0 0; }
+.gear-menu button:last-child { border-radius: 0 0 4px 4px; }
+#restart-toast { display: none; position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: var(--tw-accent); color: var(--tw-bg); padding: 8px 20px; border-radius: 4px; font-size: 14px; z-index: 200; }
 .note-body { line-height: var(--tw-line_height); }
 .note-body code { background: var(--tw-code_bg); padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
 .note-body pre { background: var(--tw-code_bg); padding: 12px; border-radius: var(--tw-note_radius); overflow-x: auto; position: relative; cursor: pointer; }
@@ -95,7 +103,13 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
   <div id="top-bar">
     <button onclick="newNote()"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2"/></svg> New</button>
     <button onclick="newJournal()"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 5.5a.5.5 0 0 1 .5.5v1.5H10a.5.5 0 0 1 0 1H8.5V10a.5.5 0 0 1-1 0V8.5H6a.5.5 0 0 1 0-1h1.5V6a.5.5 0 0 1 .5-.5"/><path d="M3 0h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-1h1v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v1H1V2a2 2 0 0 1 2-2"/><path d="M1 5v-.5a.5.5 0 0 1 1 0V5h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1zm0 3v-.5a.5.5 0 0 1 1 0V8h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1zm0 3v-.5a.5.5 0 0 1 1 0v.5h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1z"/></svg> Journal</button>
-    <button onclick="editConfig()" title="Edit config"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492M5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0"/><path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115z"/></svg></button>
+    <span class="gear-dropdown">
+      <button onclick="toggleGearMenu()" title="Settings"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492M5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0"/><path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115z"/></svg></button>
+      <div class="gear-menu" id="gear-menu">
+        <button onclick="editConfig()">Edit config</button>
+        <button onclick="restartServer()">Restart server</button>
+      </div>
+    </span>
   </div>
   <div id="river"></div>
 </div>
@@ -121,6 +135,7 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
   <input id="search-input" type="text" placeholder="word !not #tag @title /regex/ m|regex|" autocomplete="off">
   <span class="hint">Enter=search  Esc=close</span>
 </div>
+<div id="restart-toast">Restarting…</div>
 
 <script>
 // Inline SVG icons (replace Bootstrap Icons font dependency).
@@ -496,10 +511,40 @@ function newJournal() {
 }
 
 function editConfig() {
+  closeGearMenu();
   fetch(PREFIX + '/edit-config', { method: 'POST' })
     .then(r => { if (!r.ok) throw new Error(r.status); })
     .catch(e => alert('Edit config failed: ' + e.message));
 }
+
+function restartServer() {
+  closeGearMenu();
+  const toast = document.getElementById('restart-toast');
+  toast.style.display = 'block';
+  fetch(PREFIX + '/restart', { method: 'POST' })
+    .catch(() => {});
+  // Poll until the server comes back.
+  const check = () => {
+    fetch(PREFIX + '/status').then(r => {
+      if (r.ok) location.reload();
+      else setTimeout(check, 500);
+    }).catch(() => setTimeout(check, 500));
+  };
+  setTimeout(check, 1000);
+}
+
+function toggleGearMenu() {
+  document.getElementById('gear-menu').classList.toggle('open');
+}
+
+function closeGearMenu() {
+  document.getElementById('gear-menu').classList.remove('open');
+}
+
+// Close gear menu when clicking elsewhere.
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.gear-dropdown')) closeGearMenu();
+});
 
 fetch(PREFIX + '/notes')
   .then(r => r.json())

@@ -39,6 +39,7 @@ type Server struct {
 	indexHTML    string
 	themeCSSPath string
 	configPath   string
+	restartCh    chan struct{}
 	mux          *http.ServeMux
 }
 
@@ -53,10 +54,16 @@ func New(hub *wiki.Hub, ed *editor.Editor, themeRev *atomic.Int64, pollMS int, i
 		indexHTML:    indexHTML,
 		themeCSSPath: themeCSSPath,
 		configPath:   configPath,
+		restartCh:    make(chan struct{}, 1),
 		mux:          http.NewServeMux(),
 	}
 	srv.routes()
 	return srv
+}
+
+// RestartCh returns a channel that receives when a restart is requested.
+func (s *Server) RestartCh() <-chan struct{} {
+	return s.restartCh
 }
 
 func (s *Server) routes() {
@@ -69,6 +76,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/edit-external/", s.handleEditExternal)
 	s.mux.HandleFunc("/new-draft", s.handleNewDraft)
 	s.mux.HandleFunc("/edit-config", s.handleEditConfig)
+	s.mux.HandleFunc("/restart", s.handleRestart)
 	s.mux.HandleFunc("/theme.css", s.handleThemeCSS)
 	s.mux.HandleFunc("/search", s.handleSearch)
 }
@@ -344,7 +352,20 @@ func (s *Server) handleEditConfig(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleLineEdit replaces or inserts a line in a note's source text.
+// handleRestart signals main to gracefully shut down and re-exec.
+func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	select {
+	case s.restartCh <- struct{}{}:
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		// Already restarting.
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
 func (s *Server) handleLineEdit(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

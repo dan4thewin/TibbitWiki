@@ -1528,6 +1528,49 @@ func TestHandleEditConfigEditorError(t *testing.T) {
 	}
 }
 
+// TestHandleRestart verifies POST /restart signals the restart channel.
+func TestHandleRestart(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("POST", "/test/restart", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+	select {
+	case <-srv.RestartCh():
+		// Expected.
+	default:
+		t.Error("restart channel should have a signal")
+	}
+}
+
+// TestHandleRestartMethodNotAllowed verifies restart rejects GET.
+func TestHandleRestartMethodNotAllowed(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("GET", "/test/restart", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+// TestHandleRestartIdempotent verifies double restart doesn't block.
+func TestHandleRestartIdempotent(t *testing.T) {
+	srv, _ := newTestServer(t)
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest("POST", "/test/restart", nil)
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		if w.Code != http.StatusNoContent {
+			t.Errorf("call %d: status = %d, want %d", i, w.Code, http.StatusNoContent)
+		}
+	}
+}
+
 // TestServeAttachment verifies that files in note subdirectories
 // are served as static attachments.
 func TestServeAttachment(t *testing.T) {

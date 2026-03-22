@@ -27,16 +27,21 @@ playground/ — theme playground (standalone HTML)
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/` | Serve browser client HTML |
-| GET | `/status` | Server status JSON |
-| GET | `/notes` | Skinny note list (poll) |
-| GET | `/notes/{title}` | Full note JSON (?render=plain) |
-| PUT | `/notes/{title}` | Create/save note |
-| DELETE | `/notes/{title}` | Delete note |
-| POST | `/line-edit/{title}` | In-place line edit/insert |
-| POST | `/edit-external/{title}` | Launch external editor |
-| GET | `/search?q=...` | Full-text search (rg) |
-| GET | `/theme.css` | Syntax highlighting CSS |
+| GET | `/` | Wiki selector (list of links) |
+| GET | `/{wiki}/` | Serve browser client HTML |
+| GET | `/{wiki}/status` | Server status JSON |
+| GET | `/{wiki}/notes` | Skinny note list (poll) |
+| GET | `/{wiki}/notes/{title}` | Full note JSON (?render=plain) |
+| PUT | `/{wiki}/notes/{title}` | Create/save note |
+| DELETE | `/{wiki}/notes/{title}` | Delete note |
+| POST | `/{wiki}/line-edit/{title}` | In-place line edit/insert |
+| POST | `/{wiki}/edit-external/{title}` | Launch external editor |
+| POST | `/{wiki}/new-draft` | Create draft note |
+| POST | `/{wiki}/edit-config` | Launch editor on config.yaml |
+| POST | `/{wiki}/restart` | Graceful restart (re-exec) |
+| GET | `/{wiki}/search?q=...` | Full-text search (rg) |
+| GET | `/{wiki}/theme.css` | Generated CSS (theme + chroma) |
+| GET | `/{wiki}/Title/file.ext` | Static attachment from subdir |
 
 ### Design decisions
 
@@ -152,19 +157,18 @@ etc. Root `/` shows wiki selector or redirects to a default.
 
 ### Phase 3: Symlink delegation
 
-- [ ] At load time, detect symlinks with `os.Lstat` + `os.Readlink`
-- [ ] Resolve target path → identify owning wiki
-  - `hub.WikiForPath(absPath)` matches against wiki noteDirs
-- [ ] Wiki maintains `symlinks map[title]targetWiki` redirect table
-- [ ] On Get/Put/Delete of a symlinked title: forward request to
-  target wiki's channel, relay response back to caller
-- [ ] Listing includes symlinked titles (marked as symlink in metadata)
-- [ ] RCS: handled by owning wiki (correct by construction)
-- [ ] Watcher: owning wiki watches the real file; source wiki
-  doesn't watch the symlink (delegates on access)
-- [ ] Edge case: symlink target outside any wiki → skip with warning
-- [ ] Tests: symlink detection, delegation round-trip, cross-wiki
-  Get/Put, broken symlink handling
+- [x] At load time, detect symlinks with `os.Lstat` + `os.Readlink`
+  - `loader.SymlinkOwner()` resolves relative symlinks to owner wiki name
+  - `loader.Load()` returns symlinks map alongside note count
+- [x] Wiki maintains `symlinks map[title]ownerWiki` for read-time delegation
+  - Borrower's `List()` appends symlinked notes from owner wiki's store
+  - Client sees `owner` field, routes all ops to `/{owner}/...`
+  - No Get/Put/Delete delegation needed — client goes direct
+- [x] Watcher: reloadFile detects new/deleted symlinks at runtime
+  - Short-circuits known symlinks to avoid cross-wiki watcher noise
+- [x] Edge case: symlink target outside any wiki → skip with warning
+- [x] Tests: symlink detection, list delegation, missing owner,
+  new symlink, deleted symlink, reloadFile short-circuit
 
 ### Phase 4: Browser client updates
 
@@ -172,7 +176,7 @@ etc. Root `/` shows wiki selector or redirects to a default.
   - Client detects wiki prefix from `window.location.pathname`
   - All fetch calls prepend `PREFIX` (`/{wiki}`)
   - Wiki name shown in document title
-  - theme.css href patched via JS
+  - Relative `theme.css` URL (no JS rewrite, no FOUC)
 - [x] Wiki selector page (server-side: list of wiki names as links)
 
 ### Design notes
@@ -238,12 +242,20 @@ Poll-based theme revision avoids extra fetches.
 
 ### Remaining
 
-- [ ] Vendor Bootstrap Icons (go:embed, remove CDN)
+All v5 items complete.
 
-### Future: Embed + Restart + Gear Dropdown
+### Completed (post-theming)
 
-- [ ] `go:embed` index.html into binary — zero-config startup
+- [x] Vendor Bootstrap Icons — replaced CDN with inline SVGs (8 icons)
+- [x] `go:embed` index.html into binary — zero-config startup
   (`--index-html` becomes optional dev override)
-- [ ] `POST /restart` — `server.Shutdown()` then `syscall.Exec(self)`
-- [ ] Gear icon becomes dropdown: "Edit config" + "Restart server"
-- [ ] All config settings changeable without terminal access
+- [x] `POST /restart` — graceful `http.Server.Shutdown()` then
+  `syscall.Exec(self)` to re-exec with same args
+- [x] Gear icon becomes dropdown: "Edit config" + "Restart server"
+  - Click-outside-to-close, restart shows toast, polls until back
+- [x] Static file attachments from note subdirectories
+  (`/{wiki}/Title/file.pdf`)
+- [x] Raw HTML passthrough in goldmark (for `<embed>`, `<iframe>`)
+- [x] Search covers all text files, maps subdir hits to parent note
+- [x] Fix normalizeHitPath bug (top-level non-.md files dropped)
+- [x] Fix theme CSS FOUC (relative URL, no JS rewrite)

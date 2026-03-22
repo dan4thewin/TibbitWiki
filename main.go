@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -75,11 +77,29 @@ func main() {
 		wk.SetHub(hub)
 	}
 	srv := server.New(hub, ed, &themeRev, pollMS, cfg.IndexHTML, themeCSSPath, configPath)
+	httpSrv := &http.Server{Addr: cfg.Listen, Handler: srv}
 	log.Printf("listening on http://%s", cfg.Listen)
 	log.Printf("wikis: %v", hub.Names())
-	if err := http.ListenAndServe(cfg.Listen, srv); err != nil {
+
+	go func() {
+		<-srv.RestartCh()
+		log.Printf("restart requested — shutting down")
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		httpSrv.Shutdown(ctx)
+	}()
+
+	if err := httpSrv.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("server: %v", err)
 	}
+
+	// Re-exec the same binary with the same args.
+	exe, err := os.Executable()
+	if err != nil {
+		log.Fatalf("restart: %v", err)
+	}
+	log.Printf("restarting: %s %v", exe, os.Args[1:])
+	syscall.Exec(exe, os.Args, os.Environ())
 }
 
 // resolveConfigPath finds the --config flag value from args.
