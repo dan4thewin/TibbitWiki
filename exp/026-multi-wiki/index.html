@@ -447,9 +447,9 @@ function createNote(title, openEditor) {
 }
 
 function newNote() {
-  const title = prompt('New note title:');
-  if (!title) return;
-  createNote(title, true);
+  fetch(PREFIX + '/new-draft', { method: 'POST' })
+    .then(r => { if (!r.ok) throw new Error(r.status); })
+    .catch(e => alert('New draft failed: ' + e.message));
 }
 
 function newJournal() {

@@ -272,6 +272,34 @@ func (w *Wiki) EditExternal(title string) error {
 	return err
 }
 
+// NewDraft creates a Draft.md file and opens it in the editor.
+// If Draft.md already exists, it just opens the editor.
+// The file has no title; the watcher ignores it until the user
+// writes one, at which point rename-on-mismatch kicks in.
+func (w *Wiki) NewDraft() (string, error) {
+	var fp string
+	var err error
+	w.do(func() {
+		if w.editor == nil {
+			err = fmt.Errorf("editor not configured")
+			return
+		}
+		fp = filepath.Join(w.noteDir, "Draft.md")
+		if _, statErr := os.Stat(fp); statErr != nil {
+			td := &tid.Note{Fields: map[string]string{
+				"title": "",
+				"tags":  "",
+			}}
+			if writeErr := os.WriteFile(fp, tid.Serialize(td), 0644); writeErr != nil {
+				err = writeErr
+				return
+			}
+		}
+		err = w.editor.Open(fp)
+	})
+	return fp, err
+}
+
 // Reload handles a file change notification from the watcher.
 // Non-blocking: the operation is queued for the event loop.
 func (w *Wiki) Reload(path string) {
@@ -340,14 +368,16 @@ func (w *Wiki) reloadFile(path string) {
 		log.Printf("wiki %s: error parsing %s: %v", w.Name, path, err)
 		return
 	}
-	if existing := w.store.Get(td.Title()); existing != nil {
-		// Store has metadata only; compare metadata fields.
-		if metaFieldsEqual(existing.Fields, td.Fields) {
-			// Metadata matches — check if cached body also matches.
-			if cached, ok := w.body.Get(td.Title()); ok && cached == td.Text() {
-				return
-			}
-		}
+	if td.Title() == "" {
+		return
+	}
+	fileTitle := tid.FilenameToTitle(filepath.Base(path))
+	if td.Title() != fileTitle {
+		w.renameAndRescan(path, fileTitle, td.Title())
+		return
+	}
+	if w.isUnchanged(td) {
+		return
 	}
 	w.body.Add(td.Title(), td.Text())
 	w.store.PutWithPath(td, path)
@@ -355,6 +385,63 @@ func (w *Wiki) reloadFile(path string) {
 	if err := rcs.Checkin(path); err != nil {
 		log.Printf("wiki %s: rcs checkin %s: %v", w.Name, path, err)
 	}
+}
+
+func (w *Wiki) renameAndRescan(path, oldTitle, newTitle string) {
+	newPath := filepath.Join(filepath.Dir(path), tid.TitleToFilename(newTitle))
+	if err := os.Rename(path, newPath); err != nil {
+		log.Printf("wiki %s: rename %s → %s: %v", w.Name, path, newPath, err)
+		return
+	}
+	log.Printf("wiki %s: renamed %q → %q", w.Name, oldTitle, newTitle)
+	if err := rcs.Checkin(newPath); err != nil {
+		log.Printf("wiki %s: rcs checkin %s: %v", w.Name, newPath, err)
+	}
+	w.rescan()
+}
+
+func (w *Wiki) isUnchanged(td *tid.Note) bool {
+	existing := w.store.Get(td.Title())
+	if existing == nil {
+		return false
+	}
+	if !metaFieldsEqual(existing.Fields, td.Fields) {
+		return false
+	}
+	cached, ok := w.body.Get(td.Title())
+	return ok && cached == td.Text()
+}
+
+// rescan clears all state and re-reads every .md file from noteDir.
+func (w *Wiki) rescan() {
+	w.store.Clear()
+	w.body.Purge()
+	entries, err := os.ReadDir(w.noteDir)
+	if err != nil {
+		log.Printf("wiki %s: rescan readdir: %v", w.Name, err)
+		return
+	}
+	count := 0
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		path := filepath.Join(w.noteDir, entry.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			log.Printf("wiki %s: rescan skip %s: %v", w.Name, path, err)
+			continue
+		}
+		td, err := tid.Parse(data)
+		if err != nil {
+			log.Printf("wiki %s: rescan skip %s: %v", w.Name, path, err)
+			continue
+		}
+		w.store.PutWithPath(td, path)
+		w.body.Add(td.Title(), td.Text())
+		count++
+	}
+	log.Printf("wiki %s: rescan loaded %d notes", w.Name, count)
 }
 
 // fetchBody returns the body text for a note, checking the LRU

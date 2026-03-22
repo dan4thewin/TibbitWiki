@@ -48,6 +48,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/notes/", s.handleNote)
 	s.mux.HandleFunc("/line-edit/", s.handleLineEdit)
 	s.mux.HandleFunc("/edit-external/", s.handleEditExternal)
+	s.mux.HandleFunc("/new-draft", s.handleNewDraft)
 	s.mux.HandleFunc("/theme.css", s.handleThemeCSS)
 	s.mux.HandleFunc("/search", s.handleSearch)
 }
@@ -257,6 +258,19 @@ func (s *Server) handleEditExternal(w http.ResponseWriter, r *http.Request) {
 			status = http.StatusNotFound
 		}
 		http.Error(w, err.Error(), status)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleNewDraft creates a Draft.md and opens the editor.
+func (s *Server) handleNewDraft(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, err := wikiFrom(r).NewDraft(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

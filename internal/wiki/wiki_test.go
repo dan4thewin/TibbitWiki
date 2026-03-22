@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -984,4 +985,258 @@ func TestBodyCacheEviction(t *testing.T) {
 	if gotC["text"] != "body2" {
 		t.Errorf("C text = %q, want %q", gotC["text"], "body2")
 	}
+}
+
+// TestReloadSkipsEmptyTitle verifies that a file with an empty title
+// header is not added to the store.
+func TestReloadSkipsEmptyTitle(t *testing.T) {
+	wk := testWiki(t)
+	path := filepath.Join(wk.NoteDir(), "Draft.md")
+	os.WriteFile(path, []byte("title: \ntags: \n\n"), 0644)
+	wk.Reload(path)
+	wk.do(func() {})
+	// Should not appear in store
+	if wk.Store().Get("Draft") != nil {
+		t.Error("empty title should not be in store")
+	}
+	if wk.Store().Get("") != nil {
+		t.Error("empty string title should not be in store")
+	}
+}
+
+// TestReloadRenamesOnTitleMismatch verifies that when a file's title
+// header differs from the filename, the file is renamed and the store
+// is rescanned.
+func TestReloadRenamesOnTitleMismatch(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error { return nil })
+	defer patches.Reset()
+
+	wk := testWiki(t)
+	// Create a file named "OldName.md" but with title "NewName"
+	path := filepath.Join(wk.NoteDir(), "OldName.md")
+	os.WriteFile(path, []byte("title: NewName\ntags: test\n\nBody."), 0644)
+	wk.Reload(path)
+	wk.do(func() {})
+
+	// OldName.md should no longer exist
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Error("old file should be gone")
+	}
+	// NewName.md should exist
+	newPath := filepath.Join(wk.NoteDir(), "NewName.md")
+	if _, err := os.Stat(newPath); err != nil {
+		t.Error("new file should exist")
+	}
+	// Store should have NewName, not OldName
+	if wk.Store().Get("NewName") == nil {
+		t.Error("NewName should be in store")
+	}
+	if wk.Store().Get("OldName") != nil {
+		t.Error("OldName should not be in store")
+	}
+}
+
+// TestReloadRenameError verifies that a failed rename does not crash
+// the wiki; the original file remains on disk.
+func TestReloadRenameError(t *testing.T) {
+	wk := testWiki(t)
+	patches := gomonkey.ApplyFunc(os.Rename, func(old, new string) error {
+		return fmt.Errorf("permission denied")
+	})
+	defer patches.Reset()
+
+	path := filepath.Join(wk.NoteDir(), "Src.md")
+	os.WriteFile(path, []byte("title: Different\ntags: \n\nBody."), 0644)
+	wk.Reload(path)
+	wk.do(func() {})
+	// Should not crash; file still on disk
+	if _, err := os.Stat(path); err != nil {
+		t.Error("original file should still exist")
+	}
+}
+
+// TestReloadRenameRCSError verifies rename proceeds even when
+// rcs.Checkin fails after the rename.
+func TestReloadRenameRCSError(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error {
+		return fmt.Errorf("rcs failed")
+	})
+	defer patches.Reset()
+
+	wk := testWiki(t)
+	path := filepath.Join(wk.NoteDir(), "Before.md")
+	os.WriteFile(path, []byte("title: After\ntags: \n\nBody."), 0644)
+	wk.Reload(path)
+	wk.do(func() {})
+
+	// Rename should have happened despite RCS error.
+	newPath := filepath.Join(wk.NoteDir(), "After.md")
+	if _, err := os.Stat(newPath); err != nil {
+		t.Error("renamed file should exist")
+	}
+	if wk.Store().Get("After") == nil {
+		t.Error("After should be in store after rescan")
+	}
+}
+
+// TestRescan verifies that a title/filename mismatch triggers a
+// rescan that clears the store and reloads all files from disk.
+func TestRescan(t *testing.T) {
+	wk := testWiki(t)
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error { return nil })
+	defer patches.Reset()
+
+	// Add a note the normal way
+	writeNote(t, wk, "Alpha", "alpha body")
+	// Add another note directly to disk (not in store)
+	os.WriteFile(filepath.Join(wk.NoteDir(), "Beta.md"),
+		[]byte("title: Beta\ntags: \n\nBeta body."), 0644)
+
+	// Before rescan: Alpha in store, Beta not
+	if wk.Store().Get("Alpha") == nil {
+		t.Error("Alpha should be in store")
+	}
+	if wk.Store().Get("Beta") != nil {
+		t.Error("Beta should not be in store yet")
+	}
+
+	// Trigger rescan by creating a title/filename mismatch
+	mismatch := filepath.Join(wk.NoteDir(), "WrongName.md")
+	os.WriteFile(mismatch, []byte("title: RightName\ntags: \n\nBody."), 0644)
+	wk.Reload(mismatch)
+	wk.do(func() {})
+
+	// After rescan: both should be in store, plus RightName
+	if wk.Store().Get("Alpha") == nil {
+		t.Error("Alpha should survive rescan")
+	}
+	if wk.Store().Get("Beta") == nil {
+		t.Error("Beta should appear after rescan")
+	}
+	if wk.Store().Get("RightName") == nil {
+		t.Error("RightName should appear after rename+rescan")
+	}
+	if wk.Store().Get("WrongName") != nil {
+		t.Error("WrongName should not be in store")
+	}
+}
+
+// TestNewDraft verifies that NewDraft creates a Draft.md file and
+// returns its path.
+func TestNewDraft(t *testing.T) {
+	dir := t.TempDir()
+	ed := editor.New("echo %s")
+	wk := New("test", dir, ed, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+
+	fp, err := wk.NewDraft()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(fp, "Draft.md") {
+		t.Errorf("path = %q, want Draft.md suffix", fp)
+	}
+	// File should exist on disk
+	data, err := os.ReadFile(fp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "title:") {
+		t.Error("should contain title header")
+	}
+}
+
+// TestNewDraftAlreadyExists verifies that NewDraft does not overwrite
+// an existing Draft.md file.
+func TestNewDraftAlreadyExists(t *testing.T) {
+	dir := t.TempDir()
+	ed := editor.New("echo %s")
+	wk := New("test", dir, ed, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+
+	// Create an existing Draft.md with content
+	draftPath := filepath.Join(dir, "Draft.md")
+	os.WriteFile(draftPath, []byte("title: \ntags: \n\nwork in progress"), 0644)
+
+	fp, err := wk.NewDraft()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Should NOT overwrite
+	data, _ := os.ReadFile(fp)
+	if !strings.Contains(string(data), "work in progress") {
+		t.Error("should not overwrite existing Draft.md")
+	}
+}
+
+// TestNewDraftNoEditor verifies that NewDraft returns an error when
+// no editor is configured.
+func TestNewDraftNoEditor(t *testing.T) {
+	wk := testWiki(t) // testWiki uses nil editor
+	_, err := wk.NewDraft()
+	if err == nil {
+		t.Error("expected error when no editor")
+	}
+}
+
+// TestNewDraftWriteError verifies that NewDraft returns an error
+// when the file cannot be written.
+func TestNewDraftWriteError(t *testing.T) {
+	dir := t.TempDir()
+	os.Chmod(dir, 0555)
+	t.Cleanup(func() { os.Chmod(dir, 0755) })
+	ed := editor.New("echo %s")
+	wk := New("test", dir, ed, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+
+	_, err := wk.NewDraft()
+	if err == nil {
+		t.Error("expected error writing to read-only dir")
+	}
+}
+
+// TestRescanSkipsErrors verifies rescan handles unreadable and
+// unparseable files gracefully.
+func TestRescanSkipsErrors(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error { return nil })
+	defer patches.Reset()
+
+	wk := testWiki(t)
+	// Good file
+	writeNote(t, wk, "Good", "body")
+	// Unreadable file
+	unreadable := filepath.Join(wk.NoteDir(), "Unread.md")
+	os.WriteFile(unreadable, []byte("title: Unread\n\nbody"), 0000)
+	t.Cleanup(func() { os.Chmod(unreadable, 0644) })
+	// Unparseable file
+	os.WriteFile(filepath.Join(wk.NoteDir(), "Bad.md"), []byte("no headers"), 0644)
+	// Subdir (should be skipped)
+	os.Mkdir(filepath.Join(wk.NoteDir(), "subdir"), 0755)
+	// Non-md file
+	os.WriteFile(filepath.Join(wk.NoteDir(), "readme.txt"), []byte("skip"), 0644)
+
+	// Trigger rescan via rename mismatch
+	mismatch := filepath.Join(wk.NoteDir(), "Wrong.md")
+	os.WriteFile(mismatch, []byte("title: Right\ntags: \n\nBody."), 0644)
+	wk.Reload(mismatch)
+	wk.do(func() {})
+
+	if wk.Store().Get("Good") == nil {
+		t.Error("Good should survive rescan")
+	}
+	if wk.Store().Get("Right") == nil {
+		t.Error("Right should appear after rename+rescan")
+	}
+}
+
+// TestRescanReadDirError verifies rescan handles unreadable noteDir.
+func TestRescanReadDirError(t *testing.T) {
+	wk := New("test", "/no/such/dir", nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	// Direct call — rescan should log error but not panic.
+	wk.do(func() { wk.rescan() })
 }

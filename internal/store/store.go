@@ -28,6 +28,15 @@ func New() *Store {
 	}
 }
 
+// Clear removes all notes, revisions, and file paths.
+func (s *Store) Clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.notes = make(map[string]*tid.Note)
+	s.revisions = make(map[string]int)
+	s.filePaths = make(map[string]string)
+}
+
 // Put adds or updates a note and bumps its revision counter.
 // The text field is stripped; body storage is the caller's concern.
 func (s *Store) Put(t *tid.Note) {

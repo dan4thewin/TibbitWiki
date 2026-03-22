@@ -1384,6 +1384,47 @@ func TestSplitPrefix(t *testing.T) {
 	}
 }
 
+// TestHandleNewDraft verifies that POST /test/new-draft returns 204.
+func TestHandleNewDraft(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("POST", "/test/new-draft", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+}
+
+// TestHandleNewDraftMethodNotAllowed verifies that GET /test/new-draft
+// returns 405.
+func TestHandleNewDraftMethodNotAllowed(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("GET", "/test/new-draft", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+// TestHandleNewDraftError verifies that new-draft returns 500 when
+// the editor is not configured.
+func TestHandleNewDraftError(t *testing.T) {
+	wk := wiki.New("test", t.TempDir(), nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, "")
+
+	req := httptest.NewRequest("POST", "/test/new-draft", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
 // Keep unused imports from erroring.
 var _ = io.Discard
 var _ = (*store.Store)(nil)

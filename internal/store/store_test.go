@@ -229,3 +229,24 @@ func TestStripTextDoesNotMutateOriginal(t *testing.T) {
 		t.Errorf("original note mutated: text = %q", td.Text())
 	}
 }
+
+// TestClear verifies that Clear removes all notes, file paths,
+// and revisions from the store.
+func TestClear(t *testing.T) {
+	s := New()
+	s.PutWithPath(makeNote("A", "text"), "/a.md")
+	s.Put(makeNote("B", "text"))
+	s.Clear()
+	if s.Count() != 0 {
+		t.Errorf("count = %d, want 0", s.Count())
+	}
+	if s.Get("A") != nil {
+		t.Error("A should be gone")
+	}
+	if s.FilePath("A") != "" {
+		t.Error("file path should be gone")
+	}
+	if s.Revision("A") != 0 {
+		t.Error("revision should be gone")
+	}
+}
