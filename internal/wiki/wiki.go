@@ -391,6 +391,32 @@ func (w *Wiki) persistNote(td *tid.Note, title string) {
 }
 
 func (w *Wiki) reloadFile(path string) {
+	// Known symlink with unchanged owner — nothing to do.
+	// This avoids reading/parsing on every watcher fire caused by
+	// the owning wiki's touchAtime modifying the shared real file.
+	if owner := loader.SymlinkOwner(path); owner != "" {
+		title := tid.FilenameToTitle(filepath.Base(path))
+		if w.symlinks[title] == owner {
+			return
+		}
+		// New or changed symlink — parse to get the real title.
+		data, err := os.ReadFile(path)
+		if err != nil {
+			log.Printf("wiki %s: error reading symlink %s: %v", w.Name, path, err)
+			return
+		}
+		td, err := tid.Parse(data)
+		if err != nil {
+			log.Printf("wiki %s: error parsing symlink %s: %v", w.Name, path, err)
+			return
+		}
+		if td.Title() != "" {
+			w.symlinks[td.Title()] = owner
+			log.Printf("wiki %s: symlink %q → %s", w.Name, td.Title(), owner)
+		}
+		return
+	}
+
 	// Handle file deletion: clean up store, body cache, and symlinks.
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -403,23 +429,6 @@ func (w *Wiki) reloadFile(path string) {
 			return
 		}
 		log.Printf("wiki %s: error reading %s: %v", w.Name, path, err)
-		return
-	}
-
-	// If this is a symlink to a sibling wiki, track it in the
-	// symlinks map instead of loading into the store.
-	if owner := loader.SymlinkOwner(path); owner != "" {
-		td, err := tid.Parse(data)
-		if err != nil {
-			log.Printf("wiki %s: error parsing symlink %s: %v", w.Name, path, err)
-			return
-		}
-		if td.Title() != "" {
-			if w.symlinks[td.Title()] != owner {
-				w.symlinks[td.Title()] = owner
-				log.Printf("wiki %s: symlink %q → %s", w.Name, td.Title(), owner)
-			}
-		}
 		return
 	}
 
