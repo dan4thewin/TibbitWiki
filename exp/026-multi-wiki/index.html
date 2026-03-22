@@ -311,6 +311,7 @@ function poll() {
   fetch(PREFIX + '/notes')
     .then(r => r.json())
     .then(notes => {
+      const oldTitles = knownTitles;
       allNotes = notes;
       knownTitles = new Set(notes.map(t => t.title));
       updateSidebar(notes);
@@ -318,6 +319,9 @@ function poll() {
         const prev = knownRevisions[t.title];
         if (prev !== undefined && String(t.revision) !== String(prev)) {
           refreshNote(t.title);
+        }
+        if (!oldTitles.has(t.title) && oldTitles.size > 0) {
+          openNote(t.title);
         }
       });
     })

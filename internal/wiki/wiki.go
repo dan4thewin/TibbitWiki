@@ -286,9 +286,12 @@ func (w *Wiki) NewDraft() (string, error) {
 		}
 		fp = filepath.Join(w.noteDir, "Draft.md")
 		if _, statErr := os.Stat(fp); statErr != nil {
+			now := isoNow()
 			td := &tid.Note{Fields: map[string]string{
-				"title": "",
-				"tags":  "",
+				"title":    "",
+				"tags":     "",
+				"created":  now,
+				"modified": now,
 			}}
 			if writeErr := os.WriteFile(fp, tid.Serialize(td), 0644); writeErr != nil {
 				err = writeErr
