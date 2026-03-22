@@ -1,5 +1,10 @@
 GOFLAGS=-gcflags=all=-l
 
+all:V: tibbitwiki
+
+tibbitwiki: main.go
+	go build -o $target .
+
 build:V:
 	go build ./...
 
