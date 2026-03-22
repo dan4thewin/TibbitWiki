@@ -1552,13 +1552,13 @@ func TestServeAttachment(t *testing.T) {
 	}
 }
 
-// TestServeAttachmentRefusesMd verifies that .md files are not
-// served through the attachment handler.
-func TestServeAttachmentRefusesMd(t *testing.T) {
+// TestServeAttachmentMdInSubdir verifies that .md files inside
+// subdirectories are served (they're attachments, not notes).
+func TestServeAttachmentMdInSubdir(t *testing.T) {
 	dir := t.TempDir()
 	subdir := filepath.Join(dir, "Notes")
 	os.Mkdir(subdir, 0755)
-	os.WriteFile(filepath.Join(subdir, "secret.md"), []byte("title: Secret\n\nBody."), 0644)
+	os.WriteFile(filepath.Join(subdir, "readme.md"), []byte("# Hello"), 0644)
 
 	wk := wiki.New("test", dir, nil, 100)
 	wk.Start()
@@ -1566,12 +1566,15 @@ func TestServeAttachmentRefusesMd(t *testing.T) {
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
 	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
 
-	req := httptest.NewRequest("GET", "/test/Notes/secret.md", nil)
+	req := httptest.NewRequest("GET", "/test/Notes/readme.md", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
-	if w.Code != http.StatusNotFound {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusNotFound)
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if w.Body.String() != "# Hello" {
+		t.Errorf("body = %q, want %q", w.Body.String(), "# Hello")
 	}
 }
 

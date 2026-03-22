@@ -160,11 +160,6 @@ func (s *Server) serveAttachment(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	// Refuse .md files to avoid exposing note source.
-	if strings.HasSuffix(clean, ".md") {
-		http.NotFound(w, r)
-		return
-	}
 	fp := filepath.Join(wk.NoteDir(), clean)
 	// Ensure the resolved path stays within the note directory.
 	if !strings.HasPrefix(fp, wk.NoteDir()+string(filepath.Separator)) {

@@ -25,10 +25,32 @@ fi
 
 echo "=== pre-commit: complexity ==="
 max=12
-worst=$(gocyclo -top 1 . | awk '{print $1}')
-if [ -n "$worst" ] && [ "$worst" -gt "$max" ]; then
-	echo "FAIL: max cyclomatic complexity $worst > $max"
-	gocyclo -top 5 .
+whitelist="scripts/cc-whitelist"
+# gocyclo output: "CC package func file:line"
+# Filter out whitelisted functions that have their own higher max.
+violations=""
+while IFS= read -r line; do
+	[ -z "$line" ] && continue
+	cc=$(echo "$line" | awk '{print $1}')
+	func=$(echo "$line" | awk '{print $2 "." $3}')
+	# Check whitelist for a per-function max.
+	func_max=$max
+	if [ -f "$whitelist" ]; then
+		wl=$(grep -F "${func} " "$whitelist" 2>/dev/null || true)
+		if [ -n "$wl" ]; then
+			func_max=$(echo "$wl" | awk '{print $2}')
+		fi
+	fi
+	if [ "$cc" -gt "$func_max" ]; then
+		violations="${violations}${line}
+"
+	fi
+done <<EOF
+$(gocyclo -over $((max)) .)
+EOF
+if [ -n "$violations" ]; then
+	echo "FAIL: cyclomatic complexity exceeds threshold"
+	echo "$violations"
 	exit 1
 fi
 
