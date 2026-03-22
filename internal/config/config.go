@@ -84,8 +84,3 @@ func Load(args []string) (Config, error) {
 
 	return cfg, nil
 }
-
-// NotesPath returns the full path to the tiddlers subdirectory.
-func (c Config) NotesPath() string {
-	return c.WikiPath + "/tiddlers"
-}

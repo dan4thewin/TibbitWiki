@@ -2,6 +2,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,15 @@ import (
 	"github.com/dan4thewin/tibbitwiki/internal/render"
 	"github.com/dan4thewin/tibbitwiki/internal/wiki"
 )
+
+type contextKey string
+
+const wikiContextKey contextKey = "wiki"
+
+// wikiFrom extracts the Wiki from the request context.
+func wikiFrom(r *http.Request) *wiki.Wiki {
+	return r.Context().Value(wikiContextKey).(*wiki.Wiki)
+}
 
 // Server is the HTTP handler for the TibbitWiki API.
 type Server struct {
@@ -30,10 +40,6 @@ func New(hub *wiki.Hub, indexHTML string) *Server {
 	return srv
 }
 
-func (s *Server) wiki() *wiki.Wiki {
-	return s.hub.Default()
-}
-
 func (s *Server) routes() {
 	s.mux.HandleFunc("/", s.handleIndex)
 	s.mux.HandleFunc("/status", s.handleStatus)
@@ -46,10 +52,50 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/search", s.handleSearch)
 }
 
-// ServeHTTP delegates to the internal mux.
+// ServeHTTP extracts the wiki name from the first path segment,
+// injects the Wiki into the request context, and dispatches to
+// the internal mux with the prefix stripped.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	s.mux.ServeHTTP(w, r)
+
+	if r.URL.Path == "/" {
+		s.handleWikiSelector(w, r)
+		return
+	}
+
+	name, rest := splitPrefix(r.URL.Path)
+	wk := s.hub.Wiki(name)
+	if wk == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	r2 := r.Clone(context.WithValue(r.Context(), wikiContextKey, wk))
+	r2.URL.Path = rest
+	s.mux.ServeHTTP(w, r2)
+}
+
+// splitPrefix splits "/{name}/rest/path" into name and "/rest/path".
+// For "/{name}" with no trailing content, rest is "/".
+func splitPrefix(path string) (name, rest string) {
+	s := path[1:] // strip leading /
+	i := strings.IndexByte(s, '/')
+	if i == -1 {
+		return s, "/"
+	}
+	return s[:i], s[i:]
+}
+
+// handleWikiSelector lists available wikis as links.
+func (s *Server) handleWikiSelector(w http.ResponseWriter, r *http.Request) {
+	names := s.hub.Names()
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprint(w, "<!DOCTYPE html><html><head><title>TibbitWiki</title></head><body>")
+	fmt.Fprint(w, "<h1>TibbitWiki</h1><ul>")
+	for _, name := range names {
+		fmt.Fprintf(w, `<li><a href="/%s/">%s</a></li>`, name, name)
+	}
+	fmt.Fprint(w, "</ul></body></html>")
 }
 
 func (s *Server) handleThemeCSS(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +110,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("[]"))
 		return
 	}
-	results, err := s.wiki().Search(q)
+	results, err := wikiFrom(r).Search(q)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("search error: %v", err), http.StatusInternalServerError)
 		return
@@ -100,7 +146,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 // handleFavicon serves the favicon from the $:/favicon.ico note.
 func (s *Server) handleFavicon(w http.ResponseWriter, r *http.Request) {
-	fields := s.wiki().Get("$:/favicon.ico", false)
+	fields := wikiFrom(r).Get("$:/favicon.ico", false)
 	if fields == nil {
 		http.NotFound(w, r)
 		return
@@ -112,7 +158,7 @@ func (s *Server) handleFavicon(w http.ResponseWriter, r *http.Request) {
 // handleListNotes returns all notes without their text field.
 func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(s.wiki().List())
+	json.NewEncoder(w).Encode(wikiFrom(r).List())
 }
 
 // handleNote dispatches GET, PUT and DELETE for a single note.
@@ -128,7 +174,7 @@ func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPut:
 		s.putNote(w, r, title)
 	case http.MethodDelete:
-		s.deleteNote(w, title)
+		s.deleteNote(w, r, title)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -136,19 +182,21 @@ func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
 
 // getNote returns a single note as JSON with all fields.
 func (s *Server) getNote(w http.ResponseWriter, r *http.Request, title string) {
+	wk := wikiFrom(r)
 	renderPlain := r.URL.Query().Get("render") == "plain"
-	fields := s.wiki().Get(title, renderPlain)
+	fields := wk.Get(title, renderPlain)
 	if fields == nil {
 		http.NotFound(w, nil)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("ETag", fmt.Sprintf("\"default/%s/%s:\"", title, fields["revision"]))
+	w.Header().Set("ETag", fmt.Sprintf("\"%s/%s/%s:\"", wk.Name, title, fields["revision"]))
 	json.NewEncoder(w).Encode(fields)
 }
 
 // putNote saves a note from the request body.
 func (s *Server) putNote(w http.ResponseWriter, r *http.Request, title string) {
+	wk := wikiFrom(r)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "failed to read body", http.StatusBadRequest)
@@ -177,18 +225,18 @@ func (s *Server) putNote(w http.ResponseWriter, r *http.Request, title string) {
 	}
 	fields["title"] = title
 
-	rev, conflict := s.wiki().Put(title, fields, clientRev)
+	rev, conflict := wk.Put(title, fields, clientRev)
 	if conflict {
 		w.WriteHeader(http.StatusConflict)
 		return
 	}
-	w.Header().Set("ETag", fmt.Sprintf("\"default/%s/%d:\"", title, rev))
+	w.Header().Set("ETag", fmt.Sprintf("\"%s/%s/%d:\"", wk.Name, title, rev))
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // deleteNote removes a note.
-func (s *Server) deleteNote(w http.ResponseWriter, title string) {
-	s.wiki().Delete(title)
+func (s *Server) deleteNote(w http.ResponseWriter, r *http.Request, title string) {
+	wikiFrom(r).Delete(title)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -203,7 +251,7 @@ func (s *Server) handleEditExternal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing note title", http.StatusBadRequest)
 		return
 	}
-	if err := s.wiki().EditExternal(title); err != nil {
+	if err := wikiFrom(r).EditExternal(title); err != nil {
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "no file") {
 			status = http.StatusNotFound
@@ -238,7 +286,7 @@ func (s *Server) handleLineEdit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "line must be >= 1", http.StatusBadRequest)
 		return
 	}
-	html, rev, err := s.wiki().LineEdit(title, req.Line, req.Text, req.Insert)
+	html, rev, err := wikiFrom(r).LineEdit(title, req.Line, req.Text, req.Insert)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "out of range") {

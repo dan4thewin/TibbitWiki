@@ -53,7 +53,7 @@ func newTestServer(t *testing.T) (*Server, *wiki.Wiki) {
 	f.WriteString("<html><body>TibbitWiki</body></html>")
 	f.Close()
 
-	hub := wiki.NewSingleHub(wk)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
 	srv := New(hub, f.Name())
 	return srv, wk
 }
@@ -62,7 +62,7 @@ func newTestServer(t *testing.T) (*Server, *wiki.Wiki) {
 // JSON fields.
 func TestHandleStatus(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/status", nil)
+	req := httptest.NewRequest("GET", "/test/status", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -85,7 +85,7 @@ func TestHandleStatus(t *testing.T) {
 // TestHandleIndex verifies that GET / serves the index.html file.
 func TestHandleIndex(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest("GET", "/test/", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -103,9 +103,9 @@ func TestHandleIndexNotConfigured(t *testing.T) {
 	wk := wiki.New("test", t.TempDir(), nil)
 	wk.Start()
 	t.Cleanup(wk.Stop)
-	hub := wiki.NewSingleHub(wk)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
 	srv := New(hub, "")
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest("GET", "/test/", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -117,7 +117,7 @@ func TestHandleIndexNotConfigured(t *testing.T) {
 // TestHandleIndexNotFound verifies that non-root paths return 404.
 func TestHandleIndexNotFound(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/nonexistent", nil)
+	req := httptest.NewRequest("GET", "/test/nonexistent", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -130,7 +130,7 @@ func TestHandleIndexNotFound(t *testing.T) {
 // returns notes without text.
 func TestHandleListNotes(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/notes", nil)
+	req := httptest.NewRequest("GET", "/test/notes", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -161,7 +161,7 @@ func TestHandleListNotes(t *testing.T) {
 // JSON with all fields.
 func TestGetNote(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/notes/Hello", nil)
+	req := httptest.NewRequest("GET", "/test/notes/Hello", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -198,7 +198,7 @@ func TestGetNoteRenderPlain(t *testing.T) {
 	os.WriteFile(path, tid.Serialize(td), 0644)
 	wk.Store().PutWithPath(td, path)
 
-	req := httptest.NewRequest("GET", "/notes/CodeNote?render=plain", nil)
+	req := httptest.NewRequest("GET", "/test/notes/CodeNote?render=plain", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -223,7 +223,7 @@ func TestGetNoteRenderPlain(t *testing.T) {
 // TestGetNoteNotFound verifies GET for a missing note returns 404.
 func TestGetNoteNotFound(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/notes/NoSuch", nil)
+	req := httptest.NewRequest("GET", "/test/notes/NoSuch", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -236,7 +236,7 @@ func TestGetNoteNotFound(t *testing.T) {
 func TestPutNoteStampsModified(t *testing.T) {
 	srv, wk := newTestServer(t)
 	body := `{"title":"Stamped","text":"hi"}`
-	req := httptest.NewRequest("PUT", "/notes/Stamped",
+	req := httptest.NewRequest("PUT", "/test/notes/Stamped",
 		strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -262,7 +262,7 @@ func TestPutNoteStampsModified(t *testing.T) {
 
 	// Second PUT should not overwrite created.
 	body2 := `{"title":"Stamped","text":"updated"}`
-	req2 := httptest.NewRequest("PUT", "/notes/Stamped",
+	req2 := httptest.NewRequest("PUT", "/test/notes/Stamped",
 		strings.NewReader(body2))
 	w2 := httptest.NewRecorder()
 	srv.ServeHTTP(w2, req2)
@@ -285,7 +285,7 @@ func TestListNotesIncludesAccessed(t *testing.T) {
 	os.WriteFile(path, tid.Serialize(td), 0644)
 	wk.Store().PutWithPath(td, path)
 
-	req := httptest.NewRequest("GET", "/notes", nil)
+	req := httptest.NewRequest("GET", "/test/notes", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -307,7 +307,7 @@ func TestListNotesIncludesAccessed(t *testing.T) {
 func TestPutNote(t *testing.T) {
 	srv, wk := newTestServer(t)
 	body := `{"title":"NewOne","tags":"Test","text":"New body."}`
-	req := httptest.NewRequest("PUT", "/notes/NewOne",
+	req := httptest.NewRequest("PUT", "/test/notes/NewOne",
 		strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -335,7 +335,7 @@ func TestPutNewNoteWritesToDisk(t *testing.T) {
 	srv, wk := newTestServer(t)
 
 	body := `{"title":"DiskWrite","tags":"Test","text":"Written to disk."}`
-	req := httptest.NewRequest("PUT", "/notes/DiskWrite",
+	req := httptest.NewRequest("PUT", "/test/notes/DiskWrite",
 		strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -370,7 +370,7 @@ func TestPutNoteSkinny(t *testing.T) {
 	srv, wk := newTestServer(t)
 	// PUT with _is_skinny flag — should preserve existing text.
 	body := `{"title":"Hello","tags":"Updated","_is_skinny":"true"}`
-	req := httptest.NewRequest("PUT", "/notes/Hello",
+	req := httptest.NewRequest("PUT", "/test/notes/Hello",
 		strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -390,7 +390,7 @@ func TestPutNoteSkinny(t *testing.T) {
 // TestPutNoteBadJSON verifies that invalid JSON returns 400.
 func TestPutNoteBadJSON(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("PUT", "/notes/Bad",
+	req := httptest.NewRequest("PUT", "/test/notes/Bad",
 		strings.NewReader("not json"))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -403,7 +403,7 @@ func TestPutNoteBadJSON(t *testing.T) {
 // TestDeleteNote verifies DELETE removes a note and returns 204.
 func TestDeleteNote(t *testing.T) {
 	srv, wk := newTestServer(t)
-	req := httptest.NewRequest("DELETE", "/notes/Hello", nil)
+	req := httptest.NewRequest("DELETE", "/test/notes/Hello", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -418,7 +418,7 @@ func TestDeleteNote(t *testing.T) {
 // TestNoteMethodNotAllowed verifies unsupported methods return 405.
 func TestNoteMethodNotAllowed(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("PATCH", "/notes/Hello", nil)
+	req := httptest.NewRequest("PATCH", "/test/notes/Hello", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -431,7 +431,7 @@ func TestNoteMethodNotAllowed(t *testing.T) {
 // $:/favicon.ico note exists.
 func TestHandleFaviconNotFound(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/favicon.ico", nil)
+	req := httptest.NewRequest("GET", "/test/favicon.ico", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -449,7 +449,7 @@ func TestHandleFaviconExists(t *testing.T) {
 		"text":  "fake-icon-data",
 	}})
 
-	req := httptest.NewRequest("GET", "/favicon.ico", nil)
+	req := httptest.NewRequest("GET", "/test/favicon.ico", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -465,7 +465,7 @@ func TestHandleFaviconExists(t *testing.T) {
 // launches the editor.
 func TestHandleEditExternal(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("POST", "/edit-external/Hello", nil)
+	req := httptest.NewRequest("POST", "/test/edit-external/Hello", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -480,7 +480,7 @@ func TestHandleEditExternalNoPath(t *testing.T) {
 	srv, wk := newTestServer(t)
 	wk.Store().Put(&tid.Note{Fields: map[string]string{"title": "NoFile"}})
 
-	req := httptest.NewRequest("POST", "/edit-external/NoFile", nil)
+	req := httptest.NewRequest("POST", "/test/edit-external/NoFile", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -500,10 +500,10 @@ func TestHandleEditExternalNoEditor(t *testing.T) {
 	path := filepath.Join(dir, "X.md")
 	os.WriteFile(path, tid.Serialize(td), 0644)
 	wk.Store().PutWithPath(td, path)
-	hub := wiki.NewSingleHub(wk)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
 	srv := New(hub, "")
 
-	req := httptest.NewRequest("POST", "/edit-external/X", nil)
+	req := httptest.NewRequest("POST", "/test/edit-external/X", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -515,7 +515,7 @@ func TestHandleEditExternalNoEditor(t *testing.T) {
 // TestHandleEditExternalMethodNotAllowed verifies non-POST returns 405.
 func TestHandleEditExternalMethodNotAllowed(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/edit-external/Hello", nil)
+	req := httptest.NewRequest("GET", "/test/edit-external/Hello", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -528,7 +528,7 @@ func TestHandleEditExternalMethodNotAllowed(t *testing.T) {
 // return 400.
 func TestNoteMissingTitle(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/notes/", nil)
+	req := httptest.NewRequest("GET", "/test/notes/", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -540,7 +540,7 @@ func TestNoteMissingTitle(t *testing.T) {
 // TestDeleteMissingTitle verifies empty title on delete returns 400.
 func TestDeleteMissingTitle(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("DELETE", "/notes/", nil)
+	req := httptest.NewRequest("DELETE", "/test/notes/", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -552,7 +552,7 @@ func TestDeleteMissingTitle(t *testing.T) {
 // TestEditExternalMissingTitle verifies empty title returns 400.
 func TestEditExternalMissingTitle(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("POST", "/edit-external/", nil)
+	req := httptest.NewRequest("POST", "/test/edit-external/", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -566,7 +566,7 @@ func TestEditExternalMissingTitle(t *testing.T) {
 func TestPutNoteWithNestedFields(t *testing.T) {
 	srv, wk := newTestServer(t)
 	body := `{"title":"Nested","fields":{"custom_field":"value"},"text":"Body."}`
-	req := httptest.NewRequest("PUT", "/notes/Nested",
+	req := httptest.NewRequest("PUT", "/test/notes/Nested",
 		strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -591,11 +591,11 @@ func TestPutNoteNoFilePathNoDir(t *testing.T) {
 	wk := wiki.New("test", "", nil)
 	wk.Start()
 	t.Cleanup(wk.Stop)
-	hub := wiki.NewSingleHub(wk)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
 	srv := New(hub, "")
 
 	body := `{"title":"NoFile","tags":"Mem","text":"In-memory only."}`
-	req := httptest.NewRequest("PUT", "/notes/NoFile",
+	req := httptest.NewRequest("PUT", "/test/notes/NoFile",
 		strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -630,7 +630,7 @@ func TestDeleteNoteWithDiskFile(t *testing.T) {
 	os.WriteFile(path, tid.Serialize(td), 0644)
 	wk.Store().PutWithPath(td, path)
 
-	req := httptest.NewRequest("DELETE", "/notes/DiskDel", nil)
+	req := httptest.NewRequest("DELETE", "/test/notes/DiskDel", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -665,10 +665,10 @@ func TestHandleEditExternalEditorFails(t *testing.T) {
 	os.WriteFile(path, tid.Serialize(td), 0644)
 	wk.Store().PutWithPath(td, path)
 
-	hub := wiki.NewSingleHub(wk)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
 	srv := New(hub, "")
 
-	req := httptest.NewRequest("POST", "/edit-external/FailEdit", nil)
+	req := httptest.NewRequest("POST", "/test/edit-external/FailEdit", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -690,7 +690,7 @@ func TestPutNoteWriteFileError(t *testing.T) {
 	srv, wk := newTestServer(t)
 
 	body := `{"title":"WriteErr","text":"Body."}`
-	req := httptest.NewRequest("PUT", "/notes/WriteErr",
+	req := httptest.NewRequest("PUT", "/test/notes/WriteErr",
 		strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -715,7 +715,7 @@ func TestPutNoteRCSCheckinError(t *testing.T) {
 	srv, wk := newTestServer(t)
 
 	body := `{"title":"RCSErr","text":"Body."}`
-	req := httptest.NewRequest("PUT", "/notes/RCSErr",
+	req := httptest.NewRequest("PUT", "/test/notes/RCSErr",
 		strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -742,7 +742,7 @@ func TestDeleteNoteRemoveError(t *testing.T) {
 		"text":  "Body.",
 	}}, "/fake/RemErr.md")
 
-	req := httptest.NewRequest("DELETE", "/notes/RemErr", nil)
+	req := httptest.NewRequest("DELETE", "/test/notes/RemErr", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -767,7 +767,7 @@ func TestLineEditReplace(t *testing.T) {
 	wk.Store().PutWithPath(td, path)
 
 	body := `{"line":2,"text":"- BETA"}`
-	req := httptest.NewRequest("POST", "/line-edit/LineTest", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/LineTest", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -805,7 +805,7 @@ func TestLineEditInsert(t *testing.T) {
 	wk.Store().PutWithPath(td, path)
 
 	body := `{"line":1,"text":"- inserted","insert":true}`
-	req := httptest.NewRequest("POST", "/line-edit/InsTest", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/InsTest", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -835,7 +835,7 @@ func TestLineEditBadLine(t *testing.T) {
 	wk.Store().PutWithPath(td, path)
 
 	body := `{"line":99,"text":"nope"}`
-	req := httptest.NewRequest("POST", "/line-edit/Short", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/Short", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -849,7 +849,7 @@ func TestLineEditBadLine(t *testing.T) {
 func TestLineEditNoFile(t *testing.T) {
 	srv, _ := newTestServer(t)
 	body := `{"line":1,"text":"x"}`
-	req := httptest.NewRequest("POST", "/line-edit/NoSuch", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/NoSuch", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -863,7 +863,7 @@ func TestLineEditNoFile(t *testing.T) {
 // chroma syntax-highlighting styles.
 func TestHandleThemeCSS(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/theme.css", nil)
+	req := httptest.NewRequest("GET", "/test/theme.css", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -882,7 +882,7 @@ func TestHandleThemeCSS(t *testing.T) {
 // parameter returns an empty JSON array.
 func TestHandleSearchEmptyQuery(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/search", nil)
+	req := httptest.NewRequest("GET", "/test/search", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -900,10 +900,10 @@ func TestHandleSearchNoNoteDir(t *testing.T) {
 	wk := wiki.New("test", "", nil)
 	wk.Start()
 	t.Cleanup(wk.Stop)
-	hub := wiki.NewSingleHub(wk)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
 	srv := New(hub, "")
 
-	req := httptest.NewRequest("GET", "/search?q=hello", nil)
+	req := httptest.NewRequest("GET", "/test/search?q=hello", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -929,7 +929,7 @@ func TestHandleSearchWithResults(t *testing.T) {
 	td, _ := tid.Parse([]byte(content))
 	wk.Store().PutWithPath(td, path)
 
-	req := httptest.NewRequest("GET", "/search?q=searchable", nil)
+	req := httptest.NewRequest("GET", "/test/search?q=searchable", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -952,7 +952,7 @@ func TestHandleSearchWithResults(t *testing.T) {
 // returns 400.
 func TestLineEditInvalidJSON(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("POST", "/line-edit/Hello", strings.NewReader("not json"))
+	req := httptest.NewRequest("POST", "/test/line-edit/Hello", strings.NewReader("not json"))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -966,7 +966,7 @@ func TestLineEditInvalidJSON(t *testing.T) {
 // returns 405.
 func TestLineEditMethodNotAllowed(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/line-edit/Hello", nil)
+	req := httptest.NewRequest("GET", "/test/line-edit/Hello", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -979,7 +979,7 @@ func TestLineEditMethodNotAllowed(t *testing.T) {
 func TestLineEditLineLessThanOne(t *testing.T) {
 	srv, _ := newTestServer(t)
 	body := `{"line":0,"text":"bad"}`
-	req := httptest.NewRequest("POST", "/line-edit/Hello", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/Hello", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -1007,7 +1007,7 @@ func TestPutNoteRevisionConflict(t *testing.T) {
 
 	// PUT again to bump revision to 2.
 	body1 := `{"title":"Conflict","text":"Updated."}`
-	req1 := httptest.NewRequest("PUT", "/notes/Conflict", strings.NewReader(body1))
+	req1 := httptest.NewRequest("PUT", "/test/notes/Conflict", strings.NewReader(body1))
 	w1 := httptest.NewRecorder()
 	srv.ServeHTTP(w1, req1)
 	if w1.Code != http.StatusNoContent {
@@ -1016,7 +1016,7 @@ func TestPutNoteRevisionConflict(t *testing.T) {
 
 	// PUT with stale revision "1" — server revision is now > 1.
 	body2 := `{"title":"Conflict","text":"Stale.","revision":"1"}`
-	req2 := httptest.NewRequest("PUT", "/notes/Conflict", strings.NewReader(body2))
+	req2 := httptest.NewRequest("PUT", "/test/notes/Conflict", strings.NewReader(body2))
 	w2 := httptest.NewRecorder()
 	srv.ServeHTTP(w2, req2)
 
@@ -1042,7 +1042,7 @@ func TestPutNoteRevisionFieldSkipped(t *testing.T) {
 	// PUT with revision that matches current (1) — should succeed
 	// and the "revision" key should NOT appear in the stored fields.
 	body := `{"title":"RevSkip","text":"New.","revision":"1"}`
-	req := httptest.NewRequest("PUT", "/notes/RevSkip", strings.NewReader(body))
+	req := httptest.NewRequest("PUT", "/test/notes/RevSkip", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -1074,7 +1074,7 @@ func TestPutNoteRevisionNonString(t *testing.T) {
 
 	// PUT with revision as a number (JSON parses as float64).
 	body := `{"title":"RevNum","text":"New.","revision":999}`
-	req := httptest.NewRequest("PUT", "/notes/RevNum", strings.NewReader(body))
+	req := httptest.NewRequest("PUT", "/test/notes/RevNum", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -1089,7 +1089,7 @@ func TestPutNoteReadBodyError(t *testing.T) {
 	srv, _ := newTestServer(t)
 
 	// errReader always returns an error on Read.
-	req := httptest.NewRequest("PUT", "/notes/BadBody", &errReader{})
+	req := httptest.NewRequest("PUT", "/test/notes/BadBody", &errReader{})
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -1110,7 +1110,7 @@ func (e *errReader) Read(p []byte) (int, error) {
 func TestLineEditMissingTitle(t *testing.T) {
 	srv, _ := newTestServer(t)
 	body := `{"line":1,"text":"x"}`
-	req := httptest.NewRequest("POST", "/line-edit/", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -1140,7 +1140,7 @@ func TestLineEditReadFileError(t *testing.T) {
 	}}, "/fake/ReadErr.md")
 
 	body := `{"line":1,"text":"x"}`
-	req := httptest.NewRequest("POST", "/line-edit/ReadErr", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/ReadErr", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -1172,7 +1172,7 @@ func TestLineEditWriteFileError(t *testing.T) {
 	defer patches.Reset()
 
 	body := `{"line":1,"text":"- ALPHA"}`
-	req := httptest.NewRequest("POST", "/line-edit/WrErr", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/WrErr", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -1203,7 +1203,7 @@ func TestLineEditRCSCheckinError(t *testing.T) {
 	wk.Store().PutWithPath(td, path)
 
 	body := `{"line":1,"text":"- ALPHA"}`
-	req := httptest.NewRequest("POST", "/line-edit/RcsErr", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/RcsErr", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -1233,7 +1233,7 @@ func TestLineEditParseError(t *testing.T) {
 	defer patches.Reset()
 
 	body := `{"line":1,"text":"- ALPHA"}`
-	req := httptest.NewRequest("POST", "/line-edit/ParseErr", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/ParseErr", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -1255,7 +1255,7 @@ func TestHandleSearchError(t *testing.T) {
 	defer patches.Reset()
 
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/search?q=hello", nil)
+	req := httptest.NewRequest("GET", "/test/search?q=hello", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -1280,7 +1280,7 @@ func TestHandleSearchNilLines(t *testing.T) {
 	defer patches.Reset()
 
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/search?q=Test", nil)
+	req := httptest.NewRequest("GET", "/test/search?q=Test", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -1319,7 +1319,7 @@ func TestHandleSearchNilResults(t *testing.T) {
 	defer patches.Reset()
 
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/search?q=missing", nil)
+	req := httptest.NewRequest("GET", "/test/search?q=missing", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -1332,6 +1332,56 @@ func TestHandleSearchNilResults(t *testing.T) {
 	body := strings.TrimSpace(w.Body.String())
 	if body != "[]" {
 		t.Errorf("body = %q, want %q", body, "[]")
+	}
+}
+
+// TestWikiSelector verifies GET / returns HTML listing wiki names.
+func TestWikiSelector(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "test") {
+		t.Errorf("wiki selector should list 'test', got:\n%s", body)
+	}
+	if !strings.Contains(body, `href="/test/"`) {
+		t.Errorf("wiki selector should link to /test/, got:\n%s", body)
+	}
+}
+
+// TestUnknownWiki verifies that an unknown wiki prefix returns 404.
+func TestUnknownWiki(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("GET", "/nosuch/notes/Hello", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+// TestSplitPrefix verifies the splitPrefix helper.
+func TestSplitPrefix(t *testing.T) {
+	tests := []struct {
+		path, name, rest string
+	}{
+		{"/work/notes/Hello", "work", "/notes/Hello"},
+		{"/work/", "work", "/"},
+		{"/work", "work", "/"},
+		{"/a/b/c", "a", "/b/c"},
+	}
+	for _, tt := range tests {
+		name, rest := splitPrefix(tt.path)
+		if name != tt.name || rest != tt.rest {
+			t.Errorf("splitPrefix(%q) = (%q, %q), want (%q, %q)",
+				tt.path, name, rest, tt.name, tt.rest)
+		}
 	}
 }
 

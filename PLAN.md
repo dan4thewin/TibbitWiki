@@ -7,17 +7,18 @@ browser client, filesystem watching, and Neovide integration.
 
 ```
 internal/
+  wiki/     — Wiki type: goroutine event loop, domain logic, Hub
   config/   — YAML config + CLI flag parsing
   tid/      — .md file parser/serializer (RFC822 headers + body)
   store/    — in-memory note store with revision tracking
-  watcher/  — fsnotify file watcher with debounce
-  server/   — HTTP server implementing REST API
+  watcher/  — fsnotify file watcher with debounce, callback API
+  server/   — thin HTTP adapter delegating to wiki via Hub
   editor/   — external editor launcher
   rcs/      — RCS version control integration
   loader/   — startup file loader
   render/   — goldmark + chroma markdown→HTML, plain render mode
   search/   — query parser + rg wrapper
-main.go     — wiring
+main.go     — wiring: Wiki→loader→watcher→Hub→Server
 exp/        — browser client experiments (001–025)
 ```
 
@@ -46,6 +47,9 @@ exp/        — browser client experiments (001–025)
 - **RCS versioning** — `ci -l` on every write, `RCS/` subdir
 - **ISO 8601 timestamps** — created/modified in file,
   accessed via filesystem atime (touch -a on GET)
+- **No backwards compatibility obligation** — free to innovate and
+  break any existing API, file format, or config until a full
+  release. All content will be converted forward.
 
 ## Completed
 
@@ -87,47 +91,50 @@ goroutine. LRU cache keeps memory bounded.
     Meeting.md → ../work/Meeting.md   (symlink)
 ```
 
-Single-wiki backwards compat: if `--wiki-path` contains .md files
-directly (no subdirs with .md), treat it as a single wiki named
-"default" and serve at `/` (current URL scheme unchanged).
+Single-wiki: if `--wiki-path` contains .md files directly (no
+subdirs with .md), treat it as a single wiki named "default" and
+serve at `/` (current URL scheme unchanged).
 
 Multi-wiki: subdirs auto-discovered, served at `/{name}/notes/...`
 etc. Root `/` shows wiki selector or redirects to a default.
 
 ### URL routing
 
-| Mode | URL pattern | Behaviour |
-|------|-------------|-----------|
-| Single | `/notes/{title}` | Current API unchanged |
-| Multi | `/{wiki}/notes/{title}` | Prefix selects wiki |
-| Multi | `/` | Wiki selector page |
+| URL pattern | Behaviour |
+|-------------|-----------|
+| `/` | Wiki selector (list of links) |
+| `/{wiki}/` | Serve browser client HTML |
+| `/{wiki}/notes` | Skinny note list |
+| `/{wiki}/notes/{title}` | Get/put/delete note |
+| `/{wiki}/line-edit/{title}` | In-place line edit |
+| `/{wiki}/edit-external/{title}` | Launch editor |
+| `/{wiki}/search?q=...` | Full-text search |
+| `/{wiki}/theme.css` | Syntax highlighting CSS |
+| `/{wiki}/status` | Server status JSON |
 
 ### Phase 1: Wiki type + multi-wiki routing
 
-- [ ] New package `internal/wiki/wiki.go`
-  - `Wiki` struct: name, noteDir, store, watcher ref
-  - Goroutine event loop with typed request/response channels
-  - Operations: Get, Put, Delete, List, LineEdit, Search,
-    EditExternal, Reload (from watcher)
-  - Request types carry a response channel for the caller to block on
-- [ ] Refactor watcher to use callback instead of direct store ref
-  - `onChange func(path string, deleted bool)` parameter
-  - Wiki registers a callback that sends to its event channel
-  - Watcher still does debouncing; wiki goroutine does
-    parse + store update + RCS checkin
-- [ ] Refactor server to route through Wiki
-  - `Hub` struct: `map[string]*Wiki`, resolves wiki from URL prefix
-  - Single-wiki mode: one wiki named "default", no prefix
-  - Multi-wiki mode: prefix extraction middleware
-  - Server handlers call `hub.Wiki(name).Get(title)` etc.
-- [ ] Config changes
-  - `wiki-path` points to parent dir (multi) or note dir (single)
-  - Auto-detect mode: scan for subdirs containing .md files
-- [ ] Update main.go wiring
-  - Scan wiki-path, create Wiki per subdir (or one for single mode)
-  - Start each wiki's goroutine + watcher
-  - Create hub, pass to server
-- [ ] Tests: wiki event loop, hub routing, single/multi mode detection
+- [x] New package `internal/wiki/wiki.go`
+  - Wiki struct with goroutine event loop (ops channel)
+  - All domain logic: Get, Put, Delete, List, LineEdit, Search,
+    EditExternal, Reload, persistNote, timestamps, atime
+  - Hub maps wiki names to Wiki instances
+- [x] Refactor watcher to callback API `New(dir, func(string))`
+  - Wiki.Reload is the callback — fire-and-forget into event loop
+  - Watcher does debouncing; wiki goroutine does parse + store + RCS
+- [x] Refactor server to thin HTTP adapter
+  - `New(hub *wiki.Hub, indexHTML string)`
+  - All handlers delegate to `s.wiki()` via Hub
+- [x] Update main.go wiring: Wiki→loader→watcher→Hub→Server
+- [x] Tests: 100% coverage on wiki, server, watcher packages
+- [x] Config changes: removed legacy `tiddlers` subdir, WikiPath
+  is the parent dir containing wiki subdirs
+- [x] Multi-wiki hub routing
+  - `ServeHTTP` extracts wiki prefix, injects Wiki into context
+  - `splitPrefix` splits `/{wiki}/rest` into name + remaining path
+  - `handleWikiSelector` at `/` lists wikis as links
+  - No single-wiki special case — one subdir = one wiki
+  - `main.go` scans WikiPath for subdirs with .md files
 
 ### Phase 2: LRU cache
 

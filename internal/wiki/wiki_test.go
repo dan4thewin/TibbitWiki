@@ -564,35 +564,11 @@ func TestSpliceFileLineReadError(t *testing.T) {
 
 // --- Hub tests ---
 
-func TestNewSingleHub(t *testing.T) {
-	wk := New("default", t.TempDir(), nil)
-	hub := NewSingleHub(wk)
-
-	if hub.Default() != wk {
-		t.Error("Default() should return the wiki")
-	}
-	if hub.IsMulti() {
-		t.Error("single hub should not be multi")
-	}
-	if hub.Wiki("anything") != nil {
-		t.Error("single hub Wiki() should return nil")
-	}
-	if hub.Names() != nil {
-		t.Error("single hub Names() should return nil")
-	}
-}
-
-func TestNewMultiHub(t *testing.T) {
+func TestNewHub(t *testing.T) {
 	w1 := New("work", t.TempDir(), nil)
 	w2 := New("personal", t.TempDir(), nil)
-	hub := NewMultiHub(map[string]*Wiki{"work": w1, "personal": w2})
+	hub := NewHub(map[string]*Wiki{"work": w1, "personal": w2})
 
-	if !hub.IsMulti() {
-		t.Error("multi hub should be multi")
-	}
-	if hub.Default() != nil {
-		t.Error("multi hub Default() should return nil")
-	}
 	if hub.Wiki("work") != w1 {
 		t.Error("Wiki('work') should return w1")
 	}
@@ -605,6 +581,19 @@ func TestNewMultiHub(t *testing.T) {
 	names := hub.Names()
 	if len(names) != 2 || names[0] != "personal" || names[1] != "work" {
 		t.Errorf("Names() = %v, want [personal work]", names)
+	}
+}
+
+func TestNewHubSingle(t *testing.T) {
+	wk := New("solo", t.TempDir(), nil)
+	hub := NewHub(map[string]*Wiki{"solo": wk})
+
+	if hub.Wiki("solo") != wk {
+		t.Error("Wiki('solo') should return the wiki")
+	}
+	names := hub.Names()
+	if len(names) != 1 || names[0] != "solo" {
+		t.Errorf("Names() = %v, want [solo]", names)
 	}
 }
 
