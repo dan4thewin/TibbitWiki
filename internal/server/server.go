@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,6 +17,9 @@ import (
 	"github.com/dan4thewin/tibbitwiki/internal/editor"
 	"github.com/dan4thewin/tibbitwiki/internal/wiki"
 )
+
+//go:embed index.html
+var defaultIndexHTML []byte
 
 type contextKey string
 
@@ -139,11 +143,12 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 // note subdirectories (e.g. /Meeting/report.pdf).
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/" {
-		if s.indexHTML == "" {
-			http.Error(w, "index.html not configured", http.StatusInternalServerError)
+		if s.indexHTML != "" {
+			http.ServeFile(w, r, s.indexHTML)
 			return
 		}
-		http.ServeFile(w, r, s.indexHTML)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(defaultIndexHTML)
 		return
 	}
 	s.serveAttachment(w, r)

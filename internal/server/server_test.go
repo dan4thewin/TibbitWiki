@@ -103,9 +103,9 @@ func TestHandleIndex(t *testing.T) {
 	}
 }
 
-// TestHandleIndexNotConfigured verifies that GET / returns 500 if
-// no index.html is configured.
-func TestHandleIndexNotConfigured(t *testing.T) {
+// TestHandleIndexEmbedded verifies that GET / serves the embedded
+// index.html when no external path is configured.
+func TestHandleIndexEmbedded(t *testing.T) {
 	wk := wiki.New("test", t.TempDir(), nil, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
@@ -115,8 +115,11 @@ func TestHandleIndexNotConfigured(t *testing.T) {
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Errorf("content-type = %q, want text/html", ct)
 	}
 }
 
