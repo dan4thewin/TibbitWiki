@@ -1525,6 +1525,119 @@ func TestHandleEditConfigEditorError(t *testing.T) {
 	}
 }
 
+// TestServeAttachment verifies that files in note subdirectories
+// are served as static attachments.
+func TestServeAttachment(t *testing.T) {
+	dir := t.TempDir()
+	// Create a note subdir with a file.
+	subdir := filepath.Join(dir, "Meeting")
+	os.Mkdir(subdir, 0755)
+	os.WriteFile(filepath.Join(subdir, "report.pdf"), []byte("%PDF-fake"), 0644)
+
+	wk := wiki.New("test", dir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+
+	req := httptest.NewRequest("GET", "/test/Meeting/report.pdf", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if w.Body.String() != "%PDF-fake" {
+		t.Errorf("body = %q, want %%PDF-fake", w.Body.String())
+	}
+}
+
+// TestServeAttachmentRefusesMd verifies that .md files are not
+// served through the attachment handler.
+func TestServeAttachmentRefusesMd(t *testing.T) {
+	dir := t.TempDir()
+	subdir := filepath.Join(dir, "Notes")
+	os.Mkdir(subdir, 0755)
+	os.WriteFile(filepath.Join(subdir, "secret.md"), []byte("title: Secret\n\nBody."), 0644)
+
+	wk := wiki.New("test", dir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+
+	req := httptest.NewRequest("GET", "/test/Notes/secret.md", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+// TestServeAttachmentNoSubdir verifies that top-level files
+// (without a subdir) are not served as attachments.
+func TestServeAttachmentNoSubdir(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "loose.pdf"), []byte("data"), 0644)
+
+	wk := wiki.New("test", dir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+
+	req := httptest.NewRequest("GET", "/test/loose.pdf", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+// TestServeAttachmentTraversal verifies that path traversal
+// attempts are blocked (mux normalizes and redirects).
+func TestServeAttachmentTraversal(t *testing.T) {
+	dir := t.TempDir()
+	wk := wiki.New("test", dir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+
+	req := httptest.NewRequest("GET", "/test/../../../etc/passwd", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	// The Go mux cleans /../ paths. The result is a redirect or
+	// 404, never the requested file content.
+	if w.Code == http.StatusOK {
+		t.Error("traversal should not return 200")
+	}
+}
+
+// TestServeAttachmentMissing verifies 404 for a non-existent
+// file in a valid subdir path.
+func TestServeAttachmentMissing(t *testing.T) {
+	dir := t.TempDir()
+	os.Mkdir(filepath.Join(dir, "Meeting"), 0755)
+
+	wk := wiki.New("test", dir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+
+	req := httptest.NewRequest("GET", "/test/Meeting/nofile.pdf", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
 // Keep unused imports from erroring.
 var _ = io.Discard
 var _ = (*store.Store)(nil)

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -133,17 +135,47 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(results)
 }
 
-// handleIndex serves the index HTML page.
+// handleIndex serves the index HTML page, or static files from
+// note subdirectories (e.g. /Meeting/report.pdf).
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
+	if r.URL.Path == "/" {
+		if s.indexHTML == "" {
+			http.Error(w, "index.html not configured", http.StatusInternalServerError)
+			return
+		}
+		http.ServeFile(w, r, s.indexHTML)
+		return
+	}
+	s.serveAttachment(w, r)
+}
+
+// serveAttachment serves static files from note subdirectories.
+// A path like /Meeting/report.pdf maps to {noteDir}/Meeting/report.pdf.
+// Only files inside subdirectories are served; .md files are refused.
+func (s *Server) serveAttachment(w http.ResponseWriter, r *http.Request) {
+	wk := wikiFrom(r)
+	clean := filepath.Clean(r.URL.Path)
+	// Require at least one subdir component (e.g. /Meeting/file.pdf).
+	if !strings.Contains(clean[1:], string(filepath.Separator)) {
 		http.NotFound(w, r)
 		return
 	}
-	if s.indexHTML == "" {
-		http.Error(w, "index.html not configured", http.StatusInternalServerError)
+	// Refuse .md files to avoid exposing note source.
+	if strings.HasSuffix(clean, ".md") {
+		http.NotFound(w, r)
 		return
 	}
-	http.ServeFile(w, r, s.indexHTML)
+	fp := filepath.Join(wk.NoteDir(), clean)
+	// Ensure the resolved path stays within the note directory.
+	if !strings.HasPrefix(fp, wk.NoteDir()+string(filepath.Separator)) {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err := os.Stat(fp); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	http.ServeFile(w, r, fp)
 }
 
 // handleStatus returns server status as JSON.

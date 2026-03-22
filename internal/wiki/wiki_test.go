@@ -1240,3 +1240,136 @@ func TestRescanReadDirError(t *testing.T) {
 	// Direct call — rescan should log error but not panic.
 	wk.do(func() { wk.rescan() })
 }
+
+// TestListIncludesSymlinkedNotes verifies that List() merges local
+// notes with notes delegated from owner wikis via symlinks.
+func TestListIncludesSymlinkedNotes(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error { return nil })
+	defer patches.Reset()
+
+	// "work" wiki owns the real note.
+	work := testWiki(t)
+	writeNote(t, work, "Meeting", "meeting body")
+
+	// "evernote" wiki has a local note plus a symlink to work's Meeting.
+	evernote := testWiki(t)
+	writeNote(t, evernote, "Local", "local body")
+	evernote.SetSymlinks(map[string]string{"Meeting": "work"})
+
+	// Wire up the hub so evernote can delegate.
+	hub := NewHub(map[string]*Wiki{"work": work, "evernote": evernote})
+	evernote.SetHub(hub)
+
+	list := evernote.List()
+	titles := map[string]string{} // title → owner (or "")
+	for _, fields := range list {
+		titles[fields["title"]] = fields["owner"]
+	}
+
+	if _, ok := titles["Local"]; !ok {
+		t.Error("expected Local in list")
+	}
+	if titles["Local"] != "" {
+		t.Errorf("Local owner = %q, want empty", titles["Local"])
+	}
+	if titles["Meeting"] != "work" {
+		t.Errorf("Meeting owner = %q, want %q", titles["Meeting"], "work")
+	}
+	if len(list) != 2 {
+		t.Errorf("list len = %d, want 2", len(list))
+	}
+}
+
+// TestListSkipsMissingOwnerWiki verifies that a symlink pointing
+// to a non-existent wiki is silently skipped in List().
+func TestListSkipsMissingOwnerWiki(t *testing.T) {
+	wk := testWiki(t)
+	wk.SetSymlinks(map[string]string{"Ghost": "nonexistent"})
+	hub := NewHub(map[string]*Wiki{"test": wk})
+	wk.SetHub(hub)
+
+	list := wk.List()
+	for _, fields := range list {
+		if fields["title"] == "Ghost" {
+			t.Error("Ghost should not appear (owner wiki missing)")
+		}
+	}
+}
+
+// TestReloadFileDetectsNewSymlink verifies that when a symlink
+// appears at runtime, reloadFile adds it to the symlinks map
+// instead of loading it into the store.
+func TestReloadFileDetectsNewSymlink(t *testing.T) {
+	parent := t.TempDir()
+	workDir := filepath.Join(parent, "work")
+	evernoteDir := filepath.Join(parent, "evernote")
+	os.Mkdir(workDir, 0755)
+	os.Mkdir(evernoteDir, 0755)
+
+	// Create the real note in work.
+	writeFile := func(dir, name, content string) {
+		os.WriteFile(filepath.Join(dir, name), []byte(content), 0644)
+	}
+	writeFile(workDir, "Shared.md", "title: Shared\ntags: Work\n\nShared body.")
+
+	// Create evernote wiki with no symlinks initially.
+	evernote := New("evernote", evernoteDir, nil, 100)
+	evernote.Start()
+	t.Cleanup(evernote.Stop)
+
+	// Verify no symlinks yet.
+	if len(evernote.symlinks) != 0 {
+		t.Fatalf("expected no symlinks, got %v", evernote.symlinks)
+	}
+
+	// Create a symlink at runtime (simulating user adding it).
+	linkPath := filepath.Join(evernoteDir, "Shared.md")
+	os.Symlink("../work/Shared.md", linkPath)
+
+	// Trigger reload as the watcher would.
+	evernote.Reload(linkPath)
+	evernote.do(func() {}) // drain queue
+
+	// Symlink should be in the map, NOT the store.
+	if evernote.symlinks["Shared"] != "work" {
+		t.Errorf("symlinks[Shared] = %q, want %q", evernote.symlinks["Shared"], "work")
+	}
+	if evernote.store.Get("Shared") != nil {
+		t.Error("Shared should not be in store (symlink)")
+	}
+}
+
+// TestReloadFileDeletesSymlink verifies that when a symlink is
+// removed, reloadFile cleans up the symlinks map.
+func TestReloadFileDeletesSymlink(t *testing.T) {
+	parent := t.TempDir()
+	workDir := filepath.Join(parent, "work")
+	evernoteDir := filepath.Join(parent, "evernote")
+	os.Mkdir(workDir, 0755)
+	os.Mkdir(evernoteDir, 0755)
+
+	writeFile := func(dir, name, content string) {
+		os.WriteFile(filepath.Join(dir, name), []byte(content), 0644)
+	}
+	writeFile(workDir, "Shared.md", "title: Shared\n\nBody.")
+
+	// Create symlink and load it.
+	linkPath := filepath.Join(evernoteDir, "Shared.md")
+	os.Symlink("../work/Shared.md", linkPath)
+
+	evernote := New("evernote", evernoteDir, nil, 100)
+	evernote.symlinks["Shared"] = "work"
+	evernote.Start()
+	t.Cleanup(evernote.Stop)
+
+	// Delete the symlink.
+	os.Remove(linkPath)
+
+	// Trigger reload for the deleted path.
+	evernote.Reload(linkPath)
+	evernote.do(func() {}) // drain queue
+
+	if _, ok := evernote.symlinks["Shared"]; ok {
+		t.Error("Shared should be removed from symlinks map")
+	}
+}

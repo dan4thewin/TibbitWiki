@@ -21,7 +21,7 @@ func TestLoadValidDirectory(t *testing.T) {
 	writeFile(t, dir, "notes.txt", "not a note")
 
 	s := store.New()
-	n, err := Load(dir, s, nil)
+	n, _, err := Load(dir, s, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestLoadSkipsMalformed(t *testing.T) {
 	writeFile(t, dir, "Bad.md", "no title here\n\nOops.")
 
 	s := store.New()
-	n, err := Load(dir, s, nil)
+	n, _, err := Load(dir, s, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestLoadSystemNote(t *testing.T) {
 	writeFile(t, dir, "$__config_Test.md", "title: $:/config/Test\n\nvalue")
 
 	s := store.New()
-	n, err := Load(dir, s, nil)
+	n, _, err := Load(dir, s, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestLoadSystemNote(t *testing.T) {
 func TestLoadEmptyDirectory(t *testing.T) {
 	dir := t.TempDir()
 	s := store.New()
-	n, err := Load(dir, s, nil)
+	n, _, err := Load(dir, s, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestLoadEmptyDirectory(t *testing.T) {
 // an error.
 func TestLoadBadDirectory(t *testing.T) {
 	s := store.New()
-	_, err := Load("/no/such/directory", s, nil)
+	_, _, err := Load("/no/such/directory", s, nil)
 	if err == nil {
 		t.Fatal("expected error for bad directory, got nil")
 	}
@@ -111,7 +111,7 @@ func TestLoadSkipsSubdirectories(t *testing.T) {
 	os.Mkdir(filepath.Join(dir, "subdir"), 0755)
 
 	s := store.New()
-	n, err := Load(dir, s, nil)
+	n, _, err := Load(dir, s, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestLoadSkipsUnreadableFile(t *testing.T) {
 	t.Cleanup(func() { os.Chmod(unreadable, 0644) })
 
 	s := store.New()
-	n, err := Load(dir, s, nil)
+	n, _, err := Load(dir, s, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestLoadWithSeeder(t *testing.T) {
 
 	s := store.New()
 	seeded := make(map[string]string)
-	n, err := Load(dir, s, &testSeeder{bodies: seeded})
+	n, _, err := Load(dir, s, &testSeeder{bodies: seeded})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,5 +181,84 @@ func writeFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestLoadSymlinkReturnsInMap verifies that a symlinked .md file
+// is NOT loaded into the store, but appears in the symlinks map.
+func TestLoadSymlinkReturnsInMap(t *testing.T) {
+	// Create two sibling directories simulating wikis.
+	parent := t.TempDir()
+	work := filepath.Join(parent, "work")
+	evernote := filepath.Join(parent, "evernote")
+	os.Mkdir(work, 0755)
+	os.Mkdir(evernote, 0755)
+
+	// Put a real note in work.
+	writeFile(t, work, "Meeting.md", "title: Meeting\ntags: Work\n\nMeeting notes.")
+
+	// Symlink it from evernote, plus a local note.
+	os.Symlink("../work/Meeting.md", filepath.Join(evernote, "Meeting.md"))
+	writeFile(t, evernote, "Local.md", "title: Local\n\nLocal body.")
+
+	s := store.New()
+	n, sym, err := Load(evernote, s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only the local note is loaded into the store.
+	if n != 1 {
+		t.Errorf("loaded %d, want 1", n)
+	}
+	if s.Get("Local") == nil {
+		t.Error("expected Local in store")
+	}
+	// Symlinked note is NOT in the store.
+	if s.Get("Meeting") != nil {
+		t.Error("Meeting should not be in store (symlink)")
+	}
+	// But it appears in the symlinks map.
+	if sym["Meeting"] != "work" {
+		t.Errorf("symlinks[Meeting] = %q, want %q", sym["Meeting"], "work")
+	}
+}
+
+// TestLoadRegularFileNoSymlinks verifies that a directory with no
+// symlinks returns an empty symlinks map.
+func TestLoadRegularFileNoSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "Note.md", "title: Note\n\nBody.")
+
+	s := store.New()
+	_, sym, _ := Load(dir, s, nil)
+	if len(sym) != 0 {
+		t.Errorf("symlinks = %v, want empty", sym)
+	}
+}
+
+// TestSymlinkOwnerNonRelative verifies that an absolute symlink
+// is loaded normally (not treated as delegation target).
+func TestSymlinkOwnerNonRelative(t *testing.T) {
+	parent := t.TempDir()
+	target := filepath.Join(parent, "target")
+	os.Mkdir(target, 0755)
+	writeFile(t, target, "Note.md", "title: Note\n\nBody.")
+
+	// Create a symlink using absolute path.
+	src := filepath.Join(parent, "src")
+	os.Mkdir(src, 0755)
+	os.Symlink(filepath.Join(target, "Note.md"), filepath.Join(src, "Note.md"))
+
+	s := store.New()
+	n, sym, _ := Load(src, s, nil)
+	// Absolute symlink is loaded as a normal note (ReadFile follows it).
+	if n != 1 {
+		t.Errorf("loaded %d, want 1", n)
+	}
+	if s.Get("Note") == nil {
+		t.Error("expected Note in store")
+	}
+	if len(sym) != 0 {
+		t.Errorf("symlinks = %v, want empty", sym)
 	}
 }

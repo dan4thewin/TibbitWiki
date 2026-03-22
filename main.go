@@ -71,6 +71,9 @@ func main() {
 
 	pollMS := int(cfg.PollInterval.Milliseconds())
 	hub := wiki.NewHub(wikis)
+	for _, wk := range wikis {
+		wk.SetHub(hub)
+	}
 	srv := server.New(hub, ed, &themeRev, pollMS, cfg.IndexHTML, themeCSSPath, configPath)
 	log.Printf("listening on http://%s", cfg.Listen)
 	log.Printf("wikis: %v", hub.Names())
@@ -212,9 +215,13 @@ func discoverWikis(dir string, ed *editor.Editor, cacheSize int) map[string]*wik
 		}
 		name := entry.Name()
 		wk := wiki.New(name, subdir, ed, cacheSize)
-		n, err := loader.Load(subdir, wk.Store(), wk)
+		n, sym, err := loader.Load(subdir, wk.Store(), wk)
 		if err != nil {
 			log.Fatalf("wiki %s: loading: %v", name, err)
+		}
+		if len(sym) > 0 {
+			wk.SetSymlinks(sym)
+			log.Printf("wiki %s: %d symlinked notes", name, len(sym))
 		}
 		log.Printf("wiki %s: loaded %d notes from %s", name, n, subdir)
 		wk.Start()

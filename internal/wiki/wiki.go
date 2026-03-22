@@ -13,6 +13,7 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 
 	"github.com/dan4thewin/tibbitwiki/internal/editor"
+	"github.com/dan4thewin/tibbitwiki/internal/loader"
 	"github.com/dan4thewin/tibbitwiki/internal/rcs"
 	"github.com/dan4thewin/tibbitwiki/internal/render"
 	"github.com/dan4thewin/tibbitwiki/internal/search"
@@ -29,13 +30,15 @@ func isoNow() string {
 
 // Wiki manages notes in a directory with a serialized event loop.
 type Wiki struct {
-	Name    string
-	noteDir string
-	store   *store.Store
-	editor  *editor.Editor
-	body    *lru.Cache[string, string]
-	ops     chan func()
-	done    chan struct{}
+	Name     string
+	noteDir  string
+	store    *store.Store
+	editor   *editor.Editor
+	body     *lru.Cache[string, string]
+	ops      chan func()
+	done     chan struct{}
+	symlinks map[string]string // title → owner wiki name
+	hub      *Hub
 }
 
 // New creates a Wiki for the given directory.
@@ -43,13 +46,14 @@ type Wiki struct {
 func New(name, noteDir string, ed *editor.Editor, cacheSize int) *Wiki {
 	cache, _ := lru.New[string, string](cacheSize)
 	return &Wiki{
-		Name:    name,
-		noteDir: noteDir,
-		store:   store.New(),
-		editor:  ed,
-		body:    cache,
-		ops:     make(chan func(), 64),
-		done:    make(chan struct{}),
+		Name:     name,
+		noteDir:  noteDir,
+		store:    store.New(),
+		editor:   ed,
+		body:     cache,
+		ops:      make(chan func(), 64),
+		done:     make(chan struct{}),
+		symlinks: map[string]string{},
 	}
 }
 
@@ -61,6 +65,14 @@ func (w *Wiki) NoteDir() string { return w.noteDir }
 
 // SeedBody populates the body cache for a title (test/loader use).
 func (w *Wiki) SeedBody(title, text string) { w.body.Add(title, text) }
+
+// SetSymlinks records which titles are symlinks to other wikis.
+// Called once after loading, before Start.
+func (w *Wiki) SetSymlinks(m map[string]string) { w.symlinks = m }
+
+// SetHub gives this wiki access to the hub for symlink delegation.
+// Called once after all wikis are created.
+func (w *Wiki) SetHub(h *Hub) { w.hub = h }
 
 // Start launches the event loop goroutine.
 func (w *Wiki) Start() { go w.loop() }
@@ -78,6 +90,10 @@ func (w *Wiki) loop() {
 		}
 	}
 }
+
+// Do sends an operation to the event loop and blocks until complete.
+// Exported for cross-package synchronization in tests.
+func (w *Wiki) Do(fn func()) { w.do(fn) }
 
 // do sends an operation to the event loop and blocks until complete.
 func (w *Wiki) do(fn func()) {
@@ -156,11 +172,12 @@ func (w *Wiki) Delete(title string) {
 }
 
 // List returns skinny fields for all notes including access times.
+// Symlinked notes are fetched live from their owning wikis.
 func (w *Wiki) List() []map[string]string {
 	var result []map[string]string
 	w.do(func() {
 		all := w.store.All()
-		result = make([]map[string]string, 0, len(all))
+		result = make([]map[string]string, 0, len(all)+len(w.symlinks))
 		for _, td := range all {
 			fields := td.SkinnyFields()
 			fields["revision"] = fmt.Sprintf("%d", w.store.Revision(td.Title()))
@@ -172,6 +189,26 @@ func (w *Wiki) List() []map[string]string {
 			result = append(result, fields)
 		}
 	})
+	// Append symlinked notes from owner wikis.
+	for title, owner := range w.symlinks {
+		ow := w.hub.Wiki(owner)
+		if ow == nil {
+			continue
+		}
+		td := ow.Store().Get(title)
+		if td == nil {
+			continue
+		}
+		fields := td.SkinnyFields()
+		fields["revision"] = fmt.Sprintf("%d", ow.Store().Revision(title))
+		fields["owner"] = owner
+		if fp := ow.Store().FilePath(title); fp != "" {
+			if at := fileAtime(fp); at != "" {
+				fields["accessed"] = at
+			}
+		}
+		result = append(result, fields)
+	}
 	return result
 }
 
@@ -354,18 +391,36 @@ func (w *Wiki) persistNote(td *tid.Note, title string) {
 }
 
 func (w *Wiki) reloadFile(path string) {
+	// Handle file deletion: clean up store, body cache, and symlinks.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			title := tid.FilenameToTitle(filepath.Base(path))
 			w.store.Delete(title)
 			w.body.Remove(title)
+			delete(w.symlinks, title)
 			log.Printf("wiki %s: removed %q", w.Name, title)
 			return
 		}
 		log.Printf("wiki %s: error reading %s: %v", w.Name, path, err)
 		return
 	}
+
+	// If this is a symlink to a sibling wiki, track it in the
+	// symlinks map instead of loading into the store.
+	if owner := loader.SymlinkOwner(path); owner != "" {
+		td, err := tid.Parse(data)
+		if err != nil {
+			log.Printf("wiki %s: error parsing symlink %s: %v", w.Name, path, err)
+			return
+		}
+		if td.Title() != "" {
+			w.symlinks[td.Title()] = owner
+			log.Printf("wiki %s: symlink %q → %s", w.Name, td.Title(), owner)
+		}
+		return
+	}
+
 	td, err := tid.Parse(data)
 	if err != nil {
 		log.Printf("wiki %s: error parsing %s: %v", w.Name, path, err)
