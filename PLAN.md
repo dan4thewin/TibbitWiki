@@ -138,25 +138,16 @@ etc. Root `/` shows wiki selector or redirects to a default.
 
 ### Phase 2: LRU cache
 
-- [ ] Add `github.com/hashicorp/golang-lru/v2` dependency
-- [ ] Split store into metadata index + body cache
-  - Metadata (`title`, `tags`, `created`, `modified`, `type`,
-    `revision`, `filePath`): always in memory, ~200 bytes/note
-  - Full note (with `text`): LRU cache, configurable size
-    (default 200 entries, flag `--cache-size`)
-  - `Get()`: check LRU → miss → read .md from disk → parse → cache
-  - `Put()`: write-through (update cache + disk, like today)
-  - `Delete()`: evict from cache + remove metadata
-  - `All()` / listing: served from metadata index (no body needed)
-- [ ] Loader becomes optional warm-up
-  - Always load metadata; body loaded into LRU up to capacity
-  - Could skip body for huge wikis (lazy load on demand)
-- [ ] Watcher invalidates cache entry (not full reload)
-  - On file change: evict from LRU, update metadata from headers
-  - Next Get() re-reads full note from disk
-- [ ] Config: `--cache-size N` (default 200)
-- [ ] Tests: cache hit/miss/eviction, metadata-only listing,
-  disk fallback, warm-up vs lazy load
+- [x] Add `github.com/hashicorp/golang-lru/v2` dependency
+- [x] Split store into metadata index + body cache
+  - Store.Put/PutWithPath strip "text" field (metadata-only)
+  - Wiki.fetchBody: check LRU → miss → read .md from disk → cache
+  - Wiki.SeedBody for loader/test seeding
+- [x] Loader seeds body cache via BodySeeder interface
+- [x] Watcher invalidates cache via metaFieldsEqual + body check
+- [x] Config: `--cache-size N` (default 200)
+- [x] Tests: cache hit/miss/eviction, read error, parse error,
+  metadata-only listing, disk fallback. 100% coverage.
 
 ### Phase 3: Symlink delegation
 
