@@ -15,6 +15,7 @@ func makeNote(title, text string) *tid.Note {
 }
 
 // TestPutAndGet verifies that a note can be stored and retrieved.
+// Store strips text; only metadata is returned.
 func TestPutAndGet(t *testing.T) {
 	s := New()
 	td := makeNote("Hello", "World")
@@ -27,8 +28,8 @@ func TestPutAndGet(t *testing.T) {
 	if got.Title() != "Hello" {
 		t.Errorf("title = %q, want %q", got.Title(), "Hello")
 	}
-	if got.Text() != "World" {
-		t.Errorf("text = %q, want %q", got.Text(), "World")
+	if got.Text() != "" {
+		t.Errorf("text = %q, want empty (store strips text)", got.Text())
 	}
 }
 
@@ -190,5 +191,62 @@ func TestCount(t *testing.T) {
 	s.Delete("A")
 	if s.Count() != 1 {
 		t.Errorf("count after delete = %d, want 1", s.Count())
+	}
+}
+
+// TestStripTextPreservesMetadata verifies that Put strips text
+// but preserves all other fields.
+func TestStripTextPreservesMetadata(t *testing.T) {
+	s := New()
+	td := &tid.Note{Fields: map[string]string{
+		"title":   "Meta",
+		"tags":    "Test",
+		"text":    "body content",
+		"created": "2024-01-01T00:00:00Z",
+	}}
+	s.Put(td)
+
+	got := s.Get("Meta")
+	if got.Text() != "" {
+		t.Errorf("text should be stripped, got %q", got.Text())
+	}
+	if got.Fields["tags"] != "Test" {
+		t.Errorf("tags = %q, want %q", got.Fields["tags"], "Test")
+	}
+	if got.Fields["created"] != "2024-01-01T00:00:00Z" {
+		t.Errorf("created = %q", got.Fields["created"])
+	}
+}
+
+// TestStripTextDoesNotMutateOriginal verifies that Put does not
+// modify the caller's note.
+func TestStripTextDoesNotMutateOriginal(t *testing.T) {
+	s := New()
+	td := makeNote("Orig", "keep me")
+	s.Put(td)
+
+	if td.Text() != "keep me" {
+		t.Errorf("original note mutated: text = %q", td.Text())
+	}
+}
+
+// TestClear verifies that Clear removes all notes, file paths,
+// and revisions from the store.
+func TestClear(t *testing.T) {
+	s := New()
+	s.PutWithPath(makeNote("A", "text"), "/a.md")
+	s.Put(makeNote("B", "text"))
+	s.Clear()
+	if s.Count() != 0 {
+		t.Errorf("count = %d, want 0", s.Count())
+	}
+	if s.Get("A") != nil {
+		t.Error("A should be gone")
+	}
+	if s.FilePath("A") != "" {
+		t.Error("file path should be gone")
+	}
+	if s.Revision("A") != 0 {
+		t.Error("revision should be gone")
 	}
 }

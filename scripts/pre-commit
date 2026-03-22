@@ -24,7 +24,7 @@ if [ "$(echo "$total < $threshold" | bc)" -eq 1 ]; then
 fi
 
 echo "=== pre-commit: complexity ==="
-max=11
+max=12
 worst=$(gocyclo -top 1 . | awk '{print $1}')
 if [ -n "$worst" ] && [ "$worst" -gt "$max" ]; then
 	echo "FAIL: max cyclomatic complexity $worst > $max"

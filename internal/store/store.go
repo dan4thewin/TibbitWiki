@@ -28,23 +28,45 @@ func New() *Store {
 	}
 }
 
+// Clear removes all notes, revisions, and file paths.
+func (s *Store) Clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.notes = make(map[string]*tid.Note)
+	s.revisions = make(map[string]int)
+	s.filePaths = make(map[string]string)
+}
+
 // Put adds or updates a note and bumps its revision counter.
+// The text field is stripped; body storage is the caller's concern.
 func (s *Store) Put(t *tid.Note) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	title := t.Title()
-	s.notes[title] = t
+	s.notes[title] = stripText(t)
 	s.revisions[title]++
 }
 
 // PutWithPath adds or updates a note and records its file path.
+// The text field is stripped; body storage is the caller's concern.
 func (s *Store) PutWithPath(t *tid.Note, path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	title := t.Title()
-	s.notes[title] = t
+	s.notes[title] = stripText(t)
 	s.revisions[title]++
 	s.filePaths[title] = path
+}
+
+// stripText returns a copy of the note with the text field removed.
+func stripText(t *tid.Note) *tid.Note {
+	meta := &tid.Note{Fields: make(map[string]string, len(t.Fields))}
+	for k, v := range t.Fields {
+		if k != "text" {
+			meta.Fields[k] = v
+		}
+	}
+	return meta
 }
 
 // Get returns a note by title, or nil if not found.

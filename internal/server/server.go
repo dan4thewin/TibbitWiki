@@ -2,74 +2,42 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/dan4thewin/tibbitwiki/internal/editor"
-	"github.com/dan4thewin/tibbitwiki/internal/rcs"
 	"github.com/dan4thewin/tibbitwiki/internal/render"
-	"github.com/dan4thewin/tibbitwiki/internal/search"
-	"github.com/dan4thewin/tibbitwiki/internal/store"
-	"github.com/dan4thewin/tibbitwiki/internal/tid"
+	"github.com/dan4thewin/tibbitwiki/internal/wiki"
 )
 
-// nowFunc returns the current time. Overridden in tests.
-var nowFunc = time.Now
+type contextKey string
 
-func isoNow() string {
-	return nowFunc().UTC().Format(time.RFC3339)
-}
+const wikiContextKey contextKey = "wiki"
 
-// touchAtime updates only the access time, preserving mtime.
-func touchAtime(path string) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return
-	}
-	_ = os.Chtimes(path, nowFunc(), info.ModTime())
-}
-
-// fileAtime returns the access time of a file as ISO 8601, or "".
-func fileAtime(path string) string {
-	info, err := os.Stat(path)
-	if err != nil {
-		return ""
-	}
-	return atime(info).UTC().Format(time.RFC3339)
+// wikiFrom extracts the Wiki from the request context.
+func wikiFrom(r *http.Request) *wiki.Wiki {
+	return r.Context().Value(wikiContextKey).(*wiki.Wiki)
 }
 
 // Server is the HTTP handler for the TibbitWiki API.
 type Server struct {
-	store     *store.Store
-	indexHTML string // path to pre-rendered index.html
-	editor    *editor.Editor
-	noteDir   string // directory for writing new .md files
+	hub       *wiki.Hub
+	indexHTML string
 	mux       *http.ServeMux
 }
 
-// New creates a Server with the given store, index HTML path, and
-// optional editor for external editing.
-func New(s *store.Store, indexHTML string, ed *editor.Editor) *Server {
+// New creates a Server backed by the given Hub.
+func New(hub *wiki.Hub, indexHTML string) *Server {
 	srv := &Server{
-		store:     s,
+		hub:       hub,
 		indexHTML: indexHTML,
-		editor:    ed,
 		mux:       http.NewServeMux(),
 	}
 	srv.routes()
 	return srv
-}
-
-// SetNoteDir sets the directory for writing new note files.
-func (s *Server) SetNoteDir(dir string) {
-	s.noteDir = dir
 }
 
 func (s *Server) routes() {
@@ -80,14 +48,55 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/notes/", s.handleNote)
 	s.mux.HandleFunc("/line-edit/", s.handleLineEdit)
 	s.mux.HandleFunc("/edit-external/", s.handleEditExternal)
+	s.mux.HandleFunc("/new-draft", s.handleNewDraft)
 	s.mux.HandleFunc("/theme.css", s.handleThemeCSS)
 	s.mux.HandleFunc("/search", s.handleSearch)
 }
 
-// ServeHTTP delegates to the internal mux.
+// ServeHTTP extracts the wiki name from the first path segment,
+// injects the Wiki into the request context, and dispatches to
+// the internal mux with the prefix stripped.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	s.mux.ServeHTTP(w, r)
+
+	if r.URL.Path == "/" {
+		s.handleWikiSelector(w, r)
+		return
+	}
+
+	name, rest := splitPrefix(r.URL.Path)
+	wk := s.hub.Wiki(name)
+	if wk == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	r2 := r.Clone(context.WithValue(r.Context(), wikiContextKey, wk))
+	r2.URL.Path = rest
+	s.mux.ServeHTTP(w, r2)
+}
+
+// splitPrefix splits "/{name}/rest/path" into name and "/rest/path".
+// For "/{name}" with no trailing content, rest is "/".
+func splitPrefix(path string) (name, rest string) {
+	s := path[1:] // strip leading /
+	i := strings.IndexByte(s, '/')
+	if i == -1 {
+		return s, "/"
+	}
+	return s[:i], s[i:]
+}
+
+// handleWikiSelector lists available wikis as links.
+func (s *Server) handleWikiSelector(w http.ResponseWriter, r *http.Request) {
+	names := s.hub.Names()
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprint(w, "<!DOCTYPE html><html><head><title>TibbitWiki</title></head><body>")
+	fmt.Fprint(w, "<h1>TibbitWiki</h1><ul>")
+	for _, name := range names {
+		fmt.Fprintf(w, `<li><a href="/%s/">%s</a></li>`, name, name)
+	}
+	fmt.Fprint(w, "</ul></body></html>")
 }
 
 func (s *Server) handleThemeCSS(w http.ResponseWriter, r *http.Request) {
@@ -102,36 +111,10 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("[]"))
 		return
 	}
-	if s.noteDir == "" {
-		http.Error(w, "search not available", http.StatusInternalServerError)
-		return
-	}
-	hits, err := search.Search(s.noteDir, q)
+	results, err := wikiFrom(r).Search(q)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("search error: %v", err), http.StatusInternalServerError)
 		return
-	}
-	type result struct {
-		Title   string   `json:"title"`
-		Matches []string `json:"matches"`
-	}
-	var results []result
-	for _, h := range hits {
-		name := search.FileToTitle(h.File)
-		td := s.store.Get(name)
-		if td != nil {
-			matches := h.Lines
-			if matches == nil {
-				matches = []string{}
-			}
-			results = append(results, result{
-				Title:   td.Fields["title"],
-				Matches: matches,
-			})
-		}
-	}
-	if results == nil {
-		results = []result{}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
@@ -164,32 +147,19 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 // handleFavicon serves the favicon from the $:/favicon.ico note.
 func (s *Server) handleFavicon(w http.ResponseWriter, r *http.Request) {
-	td := s.store.Get("$:/favicon.ico")
-	if td == nil {
+	fields := wikiFrom(r).Get("$:/favicon.ico", false)
+	if fields == nil {
 		http.NotFound(w, r)
 		return
 	}
 	w.Header().Set("Content-Type", "image/x-icon")
-	w.Write([]byte(td.Text()))
+	w.Write([]byte(fields["text"]))
 }
 
-// handleListNotes returns all notes without their text
-// field, used by the browser's polling sync.
+// handleListNotes returns all notes without their text field.
 func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
-	all := s.store.All()
-	skinny := make([]map[string]string, 0, len(all))
-	for _, td := range all {
-		fields := td.SkinnyFields()
-		fields["revision"] = fmt.Sprintf("%d", s.store.Revision(td.Title()))
-		if fp := s.store.FilePath(td.Title()); fp != "" {
-			if at := fileAtime(fp); at != "" {
-				fields["accessed"] = at
-			}
-		}
-		skinny = append(skinny, fields)
-	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(skinny)
+	json.NewEncoder(w).Encode(wikiFrom(r).List())
 }
 
 // handleNote dispatches GET, PUT and DELETE for a single note.
@@ -199,14 +169,13 @@ func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing note title", http.StatusBadRequest)
 		return
 	}
-
 	switch r.Method {
 	case http.MethodGet:
 		s.getNote(w, r, title)
 	case http.MethodPut:
 		s.putNote(w, r, title)
 	case http.MethodDelete:
-		s.deleteNote(w, title)
+		s.deleteNote(w, r, title)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -214,151 +183,61 @@ func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
 
 // getNote returns a single note as JSON with all fields.
 func (s *Server) getNote(w http.ResponseWriter, r *http.Request, title string) {
-	td := s.store.Get(title)
-	if td == nil {
+	wk := wikiFrom(r)
+	renderPlain := r.URL.Query().Get("render") == "plain"
+	fields := wk.Get(title, renderPlain)
+	if fields == nil {
 		http.NotFound(w, nil)
 		return
 	}
-	// Touch access time so sidebar can sort by recency.
-	if fp := s.store.FilePath(title); fp != "" {
-		touchAtime(fp)
-	}
-	fields := make(map[string]string, len(td.Fields))
-	for k, v := range td.Fields {
-		fields[k] = v
-	}
-	fields["revision"] = fmt.Sprintf("%d", s.store.Revision(title))
-	if text := fields["text"]; text != "" {
-		if r.URL.Query().Get("render") == "plain" {
-			fields["html"] = render.ToPlainHTML(text)
-		} else {
-			fields["html"] = render.ToHTML(text)
-		}
-	}
 	w.Header().Set("Content-Type", "application/json")
-	etag := fmt.Sprintf("\"default/%s/%d:\"", title, s.store.Revision(title))
-	w.Header().Set("ETag", etag)
+	w.Header().Set("ETag", fmt.Sprintf("\"%s/%s/%s:\"", wk.Name, title, fields["revision"]))
 	json.NewEncoder(w).Encode(fields)
 }
 
 // putNote saves a note from the request body.
 func (s *Server) putNote(w http.ResponseWriter, r *http.Request, title string) {
+	wk := wikiFrom(r)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "failed to read body", http.StatusBadRequest)
 		return
 	}
-
-	var fields map[string]interface{}
-	if err := json.Unmarshal(body, &fields); err != nil {
+	var raw map[string]interface{}
+	if err := json.Unmarshal(body, &raw); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-
-	// Flatten any nested "fields" object into top-level fields.
-	if nested, ok := fields["fields"].(map[string]interface{}); ok {
+	// Flatten any nested "fields" object.
+	if nested, ok := raw["fields"].(map[string]interface{}); ok {
 		for k, v := range nested {
-			fields[k] = v
+			raw[k] = v
 		}
-		delete(fields, "fields")
+		delete(raw, "fields")
 	}
-
-	if s.revisionConflict(title, fields) {
-		w.WriteHeader(http.StatusConflict)
-		return
-	}
-
-	// Build note fields as strings, skipping revision.
-	tFields := make(map[string]string)
-	for k, v := range fields {
+	clientRev, _ := raw["revision"].(string)
+	// Build string fields, skipping revision.
+	fields := make(map[string]string)
+	for k, v := range raw {
 		if k == "revision" {
 			continue
 		}
-		tFields[k] = fmt.Sprintf("%v", v)
+		fields[k] = fmt.Sprintf("%v", v)
 	}
-	tFields["title"] = title
+	fields["title"] = title
 
-	s.stampTimestamps(title, tFields)
-	s.applySkinny(title, tFields)
-
-	td := &tid.Note{Fields: tFields}
-	s.persistNote(td, title)
-
-	rev := s.store.Revision(title)
-	etag := fmt.Sprintf("\"default/%s/%d:\"", title, rev)
-	w.Header().Set("ETag", etag)
+	rev, conflict := wk.Put(title, fields, clientRev)
+	if conflict {
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	w.Header().Set("ETag", fmt.Sprintf("\"%s/%s/%d:\"", wk.Name, title, rev))
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// revisionConflict returns true when the client's revision is stale
-// relative to the store (meaning an external edit occurred).
-// stampTimestamps sets modified to now and preserves or initialises created.
-func (s *Server) stampTimestamps(title string, f map[string]string) {
-	now := isoNow()
-	f["modified"] = now
-	if existing := s.store.Get(title); existing != nil {
-		if c := existing.Fields["created"]; c != "" && f["created"] == "" {
-			f["created"] = c
-		}
-	} else {
-		f["created"] = now
-	}
-}
-
-// applySkinny preserves existing text when the incoming note is skinny.
-func (s *Server) applySkinny(title string, f map[string]string) {
-	if f["_is_skinny"] == "" {
-		return
-	}
-	delete(f, "_is_skinny")
-	if existing := s.store.Get(title); existing != nil {
-		if t := existing.Text(); t != "" {
-			f["text"] = t
-		}
-	}
-}
-
-func (s *Server) revisionConflict(title string, fields map[string]interface{}) bool {
-	revVal, ok := fields["revision"]
-	if !ok {
-		return false
-	}
-	clientRev, ok := revVal.(string)
-	if !ok {
-		return false
-	}
-	serverRev := s.store.Revision(title)
-	return serverRev > 0 && clientRev != fmt.Sprintf("%d", serverRev)
-}
-
-// persistNote writes a note to the store and, when a file path is
-// available, to disk with an RCS checkin.
-func (s *Server) persistNote(td *tid.Note, title string) {
-	filePath := s.store.FilePath(title)
-	if filePath == "" && s.noteDir != "" {
-		filePath = filepath.Join(s.noteDir, tid.TitleToFilename(title))
-	}
-	if filePath == "" {
-		s.store.Put(td)
-		return
-	}
-	if err := os.WriteFile(filePath, tid.Serialize(td), 0644); err != nil {
-		log.Printf("error writing note %q: %v", title, err)
-	} else if err := rcs.Checkin(filePath); err != nil {
-		log.Printf("rcs checkin %q: %v", title, err)
-	}
-	s.store.PutWithPath(td, filePath)
-}
-
-// deleteNote removes a note and its file on disk.
-func (s *Server) deleteNote(w http.ResponseWriter, title string) {
-	if filePath := s.store.FilePath(title); filePath != "" {
-		if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
-			log.Printf("error deleting file for %q: %v", title, err)
-		}
-	}
-
-	s.store.Delete(title)
+// deleteNote removes a note.
+func (s *Server) deleteNote(w http.ResponseWriter, r *http.Request, title string) {
+	wikiFrom(r).Delete(title)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -373,33 +252,31 @@ func (s *Server) handleEditExternal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing note title", http.StatusBadRequest)
 		return
 	}
-
-	filePath := s.store.FilePath(title)
-	if filePath == "" {
-		http.Error(w, "no file path for note", http.StatusNotFound)
+	if err := wikiFrom(r).EditExternal(title); err != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "no file") {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
+	w.WriteHeader(http.StatusNoContent)
+}
 
-	if s.editor == nil {
-		http.Error(w, "editor not configured", http.StatusInternalServerError)
+// handleNewDraft creates a Draft.md and opens the editor.
+func (s *Server) handleNewDraft(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
-	if err := s.editor.Open(filePath); err != nil {
-		http.Error(w, fmt.Sprintf("editor launch failed: %v", err), http.StatusInternalServerError)
+	if _, err := wikiFrom(r).NewDraft(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleLineEdit replaces or inserts a line in a note's source text.
-//
-//	POST /line-edit/:title with JSON body:
-//	  {"line": N, "text": "new content"}           — replace line N
-//	  {"line": N, "text": "new content", "insert": true} — insert after line N
-//
-// Returns the re-rendered HTML of the full note body.
 func (s *Server) handleLineEdit(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -410,7 +287,6 @@ func (s *Server) handleLineEdit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing note title", http.StatusBadRequest)
 		return
 	}
-
 	var req struct {
 		Line   int    `json:"line"`
 		Text   string `json:"text"`
@@ -424,87 +300,30 @@ func (s *Server) handleLineEdit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "line must be >= 1", http.StatusBadRequest)
 		return
 	}
-
-	filePath := s.store.FilePath(title)
-	if filePath == "" {
-		http.Error(w, "no file for note", http.StatusNotFound)
-		return
-	}
-
-	newData, err := spliceFileLine(filePath, req.Line, req.Text, req.Insert)
+	html, rev, err := wikiFrom(r).LineEdit(title, req.Line, req.Text, req.Insert)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "out of range") {
 			status = http.StatusBadRequest
+		} else if strings.Contains(err.Error(), "no file") {
+			status = http.StatusNotFound
 		}
 		http.Error(w, err.Error(), status)
 		return
 	}
-
-	if err := os.WriteFile(filePath, newData, 0644); err != nil {
-		http.Error(w, "writing file: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if err := rcs.Checkin(filePath); err != nil {
-		log.Printf("rcs checkin %q: %v", title, err)
-	}
-
-	td, err := tid.Parse(newData)
-	if err != nil {
-		http.Error(w, "parse error: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	td.Fields["modified"] = isoNow()
-	s.store.PutWithPath(td, filePath)
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"html":     render.ToHTML(td.Text()),
-		"revision": fmt.Sprintf("%d", s.store.Revision(title)),
+		"html":     html,
+		"revision": fmt.Sprintf("%d", rev),
 	})
 }
 
-// spliceFileLine reads a .md file, finds where the body starts
-// (after headers + blank line), and replaces or inserts a line.
-func spliceFileLine(filePath string, line int, text string, insert bool) ([]byte, error) {
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("reading file: %w", err)
-	}
-
-	lines := strings.Split(string(data), "\n")
-
-	bodyStart := 0
-	for i, l := range lines {
-		if l == "" {
-			bodyStart = i + 1
-			break
-		}
-	}
-	absLine := bodyStart + line
-	if absLine > len(lines) {
-		return nil, fmt.Errorf("line %d out of range", line)
-	}
-
-	if insert {
-		newLines := make([]string, 0, len(lines)+1)
-		newLines = append(newLines, lines[:absLine]...)
-		newLines = append(newLines, text)
-		newLines = append(newLines, lines[absLine:]...)
-		lines = newLines
-	} else {
-		lines[absLine-1] = text
-	}
-	return []byte(strings.Join(lines, "\n")), nil
-}
-
 // extractTitle pulls the note title from a URL path by removing
-// the given prefix and URL-decoding the remainder.
+// the given prefix.
 func extractTitle(path, prefix string) string {
 	raw := strings.TrimPrefix(path, prefix)
 	if raw == "" {
 		return ""
 	}
-	// The title may be URL-encoded in the request path.
 	return raw
 }

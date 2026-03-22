@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -19,22 +20,30 @@ import (
 	"github.com/dan4thewin/tibbitwiki/internal/search"
 	"github.com/dan4thewin/tibbitwiki/internal/store"
 	"github.com/dan4thewin/tibbitwiki/internal/tid"
+	"github.com/dan4thewin/tibbitwiki/internal/wiki"
 )
 
-// newTestServer creates a Server with a pre-populated store and a
-// temp index.html file for testing.
-func newTestServer(t *testing.T) (*Server, *store.Store) {
+// newTestServer creates a Server with a wiki containing a pre-populated
+// store and a temp index.html file for testing.
+func newTestServer(t *testing.T) (*Server, *wiki.Wiki) {
 	t.Helper()
-	s := store.New()
+	dir := t.TempDir()
+	ed := editor.New("echo %s")
+	wk := wiki.New("test", dir, ed, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
 
-	// Add a test note.
+	// Add a test note with a file on disk.
 	td := &tid.Note{Fields: map[string]string{
 		"title":   "Hello",
 		"tags":    "Test",
 		"text":    "Hello world.",
 		"created": "20230101000000000",
 	}}
-	s.PutWithPath(td, "/fake/Hello.md")
+	path := filepath.Join(dir, "Hello.md")
+	os.WriteFile(path, tid.Serialize(td), 0644)
+	wk.Store().PutWithPath(td, path)
+	wk.SeedBody("Hello", "Hello world.")
 
 	// Create a temp index.html.
 	f, err := os.CreateTemp("", "index-*.html")
@@ -45,16 +54,16 @@ func newTestServer(t *testing.T) (*Server, *store.Store) {
 	f.WriteString("<html><body>TibbitWiki</body></html>")
 	f.Close()
 
-	ed := editor.New("echo %s")
-	srv := New(s, f.Name(), ed)
-	return srv, s
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, f.Name())
+	return srv, wk
 }
 
 // TestHandleStatus verifies the /status endpoint returns expected
 // JSON fields.
 func TestHandleStatus(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/status", nil)
+	req := httptest.NewRequest("GET", "/test/status", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -77,7 +86,7 @@ func TestHandleStatus(t *testing.T) {
 // TestHandleIndex verifies that GET / serves the index.html file.
 func TestHandleIndex(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest("GET", "/test/", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -92,9 +101,12 @@ func TestHandleIndex(t *testing.T) {
 // TestHandleIndexNotConfigured verifies that GET / returns 500 if
 // no index.html is configured.
 func TestHandleIndexNotConfigured(t *testing.T) {
-	s := store.New()
-	srv := New(s, "", nil)
-	req := httptest.NewRequest("GET", "/", nil)
+	wk := wiki.New("test", t.TempDir(), nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, "")
+	req := httptest.NewRequest("GET", "/test/", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -106,7 +118,7 @@ func TestHandleIndexNotConfigured(t *testing.T) {
 // TestHandleIndexNotFound verifies that non-root paths return 404.
 func TestHandleIndexNotFound(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/nonexistent", nil)
+	req := httptest.NewRequest("GET", "/test/nonexistent", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -119,7 +131,7 @@ func TestHandleIndexNotFound(t *testing.T) {
 // returns notes without text.
 func TestHandleListNotes(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/notes", nil)
+	req := httptest.NewRequest("GET", "/test/notes", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -150,7 +162,7 @@ func TestHandleListNotes(t *testing.T) {
 // JSON with all fields.
 func TestGetNote(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/notes/Hello", nil)
+	req := httptest.NewRequest("GET", "/test/notes/Hello", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -176,16 +188,18 @@ func TestGetNote(t *testing.T) {
 // TestGetNoteRenderPlain verifies GET with ?render=plain uses the
 // plain renderer (no chroma, per-line data-line on code blocks).
 func TestGetNoteRenderPlain(t *testing.T) {
-	srv, s := newTestServer(t)
+	srv, wk := newTestServer(t)
 	// Add a note with a fenced code block.
 	td := &tid.Note{Fields: map[string]string{
 		"title": "CodeNote",
 		"text":  "```go\nfmt.Println()\n```",
 		"type":  "text/markdown",
 	}}
-	s.PutWithPath(td, "/fake/CodeNote.md")
+	path := filepath.Join(wk.NoteDir(), "CodeNote.md")
+	os.WriteFile(path, tid.Serialize(td), 0644)
+	wk.Store().PutWithPath(td, path)
 
-	req := httptest.NewRequest("GET", "/notes/CodeNote?render=plain", nil)
+	req := httptest.NewRequest("GET", "/test/notes/CodeNote?render=plain", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -210,7 +224,7 @@ func TestGetNoteRenderPlain(t *testing.T) {
 // TestGetNoteNotFound verifies GET for a missing note returns 404.
 func TestGetNoteNotFound(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/notes/NoSuch", nil)
+	req := httptest.NewRequest("GET", "/test/notes/NoSuch", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -219,121 +233,11 @@ func TestGetNoteNotFound(t *testing.T) {
 	}
 }
 
-// TestTouchAtimeUpdatesAccessTime verifies touchAtime changes atime
-// without changing mtime.
-func TestTouchAtimeUpdatesAccessTime(t *testing.T) {
-	f, err := os.CreateTemp("", "atime-*.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.WriteString("title: Test\n\nhi")
-	f.Close()
-	defer os.Remove(f.Name())
-
-	// Set mtime to the past.
-	past := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-	os.Chtimes(f.Name(), past, past)
-
-	touchAtime(f.Name())
-
-	info, _ := os.Stat(f.Name())
-	// mtime should still be in the past.
-	if info.ModTime().After(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)) {
-		t.Errorf("touchAtime changed mtime: %v", info.ModTime())
-	}
-}
-
-// TestTouchAtimeNonExistent verifies touchAtime silently ignores
-// a missing file.
-func TestTouchAtimeNonExistent(t *testing.T) {
-	touchAtime("/no/such/file.md") // should not panic
-}
-
-// TestFileAtimeNonExistent verifies fileAtime returns "" for
-// a missing file.
-func TestFileAtimeNonExistent(t *testing.T) {
-	got := fileAtime("/no/such/file.md")
-	if got != "" {
-		t.Errorf("fileAtime = %q, want empty", got)
-	}
-}
-
-// TestFileAtimeReturnsISO verifies fileAtime returns an ISO 8601
-// timestamp for an existing file.
-func TestFileAtimeReturnsISO(t *testing.T) {
-	f, err := os.CreateTemp("", "atime-*.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.Close()
-	defer os.Remove(f.Name())
-	got := fileAtime(f.Name())
-	if got == "" {
-		t.Fatal("fileAtime returned empty for existing file")
-	}
-	if _, err := time.Parse(time.RFC3339, got); err != nil {
-		t.Errorf("fileAtime not valid ISO 8601: %q", got)
-	}
-}
-
-// TestAtimeFunction verifies the platform atime extraction.
-func TestAtimeFunction(t *testing.T) {
-	f, err := os.CreateTemp("", "atime-*.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.Close()
-	defer os.Remove(f.Name())
-	info, _ := os.Stat(f.Name())
-	at := atime(info)
-	if at.IsZero() {
-		t.Error("atime returned zero time")
-	}
-}
-
-// TestGetNoteTouchesAtime verifies that GET /notes/:title updates
-// the file's access time.
-func TestGetNoteTouchesAtime(t *testing.T) {
-	srv, s := newTestServer(t)
-	// Create a real temp file for the note.
-	f, err := os.CreateTemp("", "note-*.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.WriteString("title: RealNote\n\nhello")
-	f.Close()
-	defer os.Remove(f.Name())
-
-	td := &tid.Note{Fields: map[string]string{
-		"title": "RealNote",
-		"text":  "hello",
-	}}
-	s.PutWithPath(td, f.Name())
-
-	// Set atime to the past.
-	past := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-	info, _ := os.Stat(f.Name())
-	os.Chtimes(f.Name(), past, info.ModTime())
-
-	req := httptest.NewRequest("GET", "/notes/RealNote", nil)
-	w := httptest.NewRecorder()
-	srv.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", w.Code)
-	}
-	at := fileAtime(f.Name())
-	atTime, _ := time.Parse(time.RFC3339, at)
-	if atTime.Before(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)) {
-		t.Errorf("atime not updated: %v", at)
-	}
-}
-
 // TestPutNoteStampsModified verifies PUT stamps modified and created.
 func TestPutNoteStampsModified(t *testing.T) {
-	srv, s := newTestServer(t)
+	srv, wk := newTestServer(t)
 	body := `{"title":"Stamped","text":"hi"}`
-	req := httptest.NewRequest("PUT", "/notes/Stamped",
+	req := httptest.NewRequest("PUT", "/test/notes/Stamped",
 		strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -341,7 +245,7 @@ func TestPutNoteStampsModified(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want 204", w.Code)
 	}
-	td := s.Get("Stamped")
+	td := wk.Store().Get("Stamped")
 	if td == nil {
 		t.Fatal("note not found after PUT")
 	}
@@ -359,11 +263,11 @@ func TestPutNoteStampsModified(t *testing.T) {
 
 	// Second PUT should not overwrite created.
 	body2 := `{"title":"Stamped","text":"updated"}`
-	req2 := httptest.NewRequest("PUT", "/notes/Stamped",
+	req2 := httptest.NewRequest("PUT", "/test/notes/Stamped",
 		strings.NewReader(body2))
 	w2 := httptest.NewRecorder()
 	srv.ServeHTTP(w2, req2)
-	td2 := s.Get("Stamped")
+	td2 := wk.Store().Get("Stamped")
 	if td2.Fields["created"] != created {
 		t.Errorf("created changed: %q -> %q", created, td2.Fields["created"])
 	}
@@ -372,23 +276,17 @@ func TestPutNoteStampsModified(t *testing.T) {
 // TestListNotesIncludesAccessed verifies the listing includes
 // accessed time from file atime.
 func TestListNotesIncludesAccessed(t *testing.T) {
-	srv, s := newTestServer(t)
-	// Create a real temp file.
-	f, err := os.CreateTemp("", "list-*.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.WriteString("title: Listed\n\nhi")
-	f.Close()
-	defer os.Remove(f.Name())
-
+	srv, wk := newTestServer(t)
+	// Create a real file in the wiki's noteDir.
 	td := &tid.Note{Fields: map[string]string{
 		"title": "Listed",
 		"text":  "hi",
 	}}
-	s.PutWithPath(td, f.Name())
+	path := filepath.Join(wk.NoteDir(), "Listed.md")
+	os.WriteFile(path, tid.Serialize(td), 0644)
+	wk.Store().PutWithPath(td, path)
 
-	req := httptest.NewRequest("GET", "/notes", nil)
+	req := httptest.NewRequest("GET", "/test/notes", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -408,9 +306,9 @@ func TestListNotesIncludesAccessed(t *testing.T) {
 // TestPutNote verifies PUT creates/updates a note and returns
 // 204 with ETag.
 func TestPutNote(t *testing.T) {
-	srv, s := newTestServer(t)
+	srv, wk := newTestServer(t)
 	body := `{"title":"NewOne","tags":"Test","text":"New body."}`
-	req := httptest.NewRequest("PUT", "/notes/NewOne",
+	req := httptest.NewRequest("PUT", "/test/notes/NewOne",
 		strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -423,24 +321,21 @@ func TestPutNote(t *testing.T) {
 	}
 
 	// Verify it's in the store.
-	got := s.Get("NewOne")
-	if got == nil {
+	if wk.Store().Get("NewOne") == nil {
 		t.Fatal("expected note in store")
 	}
-	if got.Text() != "New body." {
-		t.Errorf("text = %q, want %q", got.Text(), "New body.")
+	if text := wk.Get("NewOne", false)["text"]; text != "New body." {
+		t.Errorf("text = %q, want %q", text, "New body.")
 	}
 }
 
 // TestPutNewNoteWritesToDisk verifies that PUT for a new note
 // creates a .md file on disk when noteDir is configured.
 func TestPutNewNoteWritesToDisk(t *testing.T) {
-	srv, s := newTestServer(t)
-	dir := t.TempDir()
-	srv.SetNoteDir(dir)
+	srv, wk := newTestServer(t)
 
 	body := `{"title":"DiskWrite","tags":"Test","text":"Written to disk."}`
-	req := httptest.NewRequest("PUT", "/notes/DiskWrite",
+	req := httptest.NewRequest("PUT", "/test/notes/DiskWrite",
 		strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -450,11 +345,11 @@ func TestPutNewNoteWritesToDisk(t *testing.T) {
 	}
 
 	// Verify it's in the store with a file path.
-	got := s.Get("DiskWrite")
+	got := wk.Store().Get("DiskWrite")
 	if got == nil {
 		t.Fatal("expected note in store")
 	}
-	fp := s.FilePath("DiskWrite")
+	fp := wk.Store().FilePath("DiskWrite")
 	if fp == "" {
 		t.Fatal("expected file path to be set")
 	}
@@ -472,10 +367,10 @@ func TestPutNewNoteWritesToDisk(t *testing.T) {
 // TestPutNoteSkinny verifies that a skinny PUT preserves the
 // existing text.
 func TestPutNoteSkinny(t *testing.T) {
-	srv, s := newTestServer(t)
+	srv, wk := newTestServer(t)
 	// PUT with _is_skinny flag — should preserve existing text.
 	body := `{"title":"Hello","tags":"Updated","_is_skinny":"true"}`
-	req := httptest.NewRequest("PUT", "/notes/Hello",
+	req := httptest.NewRequest("PUT", "/test/notes/Hello",
 		strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -483,10 +378,10 @@ func TestPutNoteSkinny(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
 	}
-	got := s.Get("Hello")
-	if got.Text() != "Hello world." {
-		t.Errorf("text = %q, want %q (preserved)", got.Text(), "Hello world.")
+	if text := wk.Get("Hello", false)["text"]; text != "Hello world." {
+		t.Errorf("text = %q, want %q (preserved)", text, "Hello world.")
 	}
+	got := wk.Store().Get("Hello")
 	if got.Fields["tags"] != "Updated" {
 		t.Errorf("tags = %q, want %q", got.Fields["tags"], "Updated")
 	}
@@ -495,7 +390,7 @@ func TestPutNoteSkinny(t *testing.T) {
 // TestPutNoteBadJSON verifies that invalid JSON returns 400.
 func TestPutNoteBadJSON(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("PUT", "/notes/Bad",
+	req := httptest.NewRequest("PUT", "/test/notes/Bad",
 		strings.NewReader("not json"))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -507,15 +402,15 @@ func TestPutNoteBadJSON(t *testing.T) {
 
 // TestDeleteNote verifies DELETE removes a note and returns 204.
 func TestDeleteNote(t *testing.T) {
-	srv, s := newTestServer(t)
-	req := httptest.NewRequest("DELETE", "/notes/Hello", nil)
+	srv, wk := newTestServer(t)
+	req := httptest.NewRequest("DELETE", "/test/notes/Hello", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
 	}
-	if got := s.Get("Hello"); got != nil {
+	if got := wk.Store().Get("Hello"); got != nil {
 		t.Error("note should be deleted")
 	}
 }
@@ -523,7 +418,7 @@ func TestDeleteNote(t *testing.T) {
 // TestNoteMethodNotAllowed verifies unsupported methods return 405.
 func TestNoteMethodNotAllowed(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("PATCH", "/notes/Hello", nil)
+	req := httptest.NewRequest("PATCH", "/test/notes/Hello", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -536,7 +431,7 @@ func TestNoteMethodNotAllowed(t *testing.T) {
 // $:/favicon.ico note exists.
 func TestHandleFaviconNotFound(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/favicon.ico", nil)
+	req := httptest.NewRequest("GET", "/test/favicon.ico", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -548,13 +443,13 @@ func TestHandleFaviconNotFound(t *testing.T) {
 // TestHandleFaviconExists verifies favicon is served from the
 // $:/favicon.ico note.
 func TestHandleFaviconExists(t *testing.T) {
-	srv, s := newTestServer(t)
-	s.Put(&tid.Note{Fields: map[string]string{
+	srv, wk := newTestServer(t)
+	wk.Put("$:/favicon.ico", map[string]string{
 		"title": "$:/favicon.ico",
 		"text":  "fake-icon-data",
-	}})
+	}, "")
 
-	req := httptest.NewRequest("GET", "/favicon.ico", nil)
+	req := httptest.NewRequest("GET", "/test/favicon.ico", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -570,7 +465,7 @@ func TestHandleFaviconExists(t *testing.T) {
 // launches the editor.
 func TestHandleEditExternal(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("POST", "/edit-external/Hello", nil)
+	req := httptest.NewRequest("POST", "/test/edit-external/Hello", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -582,10 +477,10 @@ func TestHandleEditExternal(t *testing.T) {
 // TestHandleEditExternalNoPath verifies edit-external returns 404
 // for notes with no file path.
 func TestHandleEditExternalNoPath(t *testing.T) {
-	srv, s := newTestServer(t)
-	s.Put(&tid.Note{Fields: map[string]string{"title": "NoFile"}})
+	srv, wk := newTestServer(t)
+	wk.Store().Put(&tid.Note{Fields: map[string]string{"title": "NoFile"}})
 
-	req := httptest.NewRequest("POST", "/edit-external/NoFile", nil)
+	req := httptest.NewRequest("POST", "/test/edit-external/NoFile", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -597,11 +492,18 @@ func TestHandleEditExternalNoPath(t *testing.T) {
 // TestHandleEditExternalNoEditor verifies edit-external returns 500
 // when no editor is configured.
 func TestHandleEditExternalNoEditor(t *testing.T) {
-	s := store.New()
-	s.PutWithPath(&tid.Note{Fields: map[string]string{"title": "X"}}, "/x.md")
-	srv := New(s, "", nil)
+	dir := t.TempDir()
+	wk := wiki.New("test", dir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	td := &tid.Note{Fields: map[string]string{"title": "X"}}
+	path := filepath.Join(dir, "X.md")
+	os.WriteFile(path, tid.Serialize(td), 0644)
+	wk.Store().PutWithPath(td, path)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, "")
 
-	req := httptest.NewRequest("POST", "/edit-external/X", nil)
+	req := httptest.NewRequest("POST", "/test/edit-external/X", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -613,7 +515,7 @@ func TestHandleEditExternalNoEditor(t *testing.T) {
 // TestHandleEditExternalMethodNotAllowed verifies non-POST returns 405.
 func TestHandleEditExternalMethodNotAllowed(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/edit-external/Hello", nil)
+	req := httptest.NewRequest("GET", "/test/edit-external/Hello", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -626,7 +528,7 @@ func TestHandleEditExternalMethodNotAllowed(t *testing.T) {
 // return 400.
 func TestNoteMissingTitle(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/notes/", nil)
+	req := httptest.NewRequest("GET", "/test/notes/", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -638,7 +540,7 @@ func TestNoteMissingTitle(t *testing.T) {
 // TestDeleteMissingTitle verifies empty title on delete returns 400.
 func TestDeleteMissingTitle(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("DELETE", "/notes/", nil)
+	req := httptest.NewRequest("DELETE", "/test/notes/", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -650,7 +552,7 @@ func TestDeleteMissingTitle(t *testing.T) {
 // TestEditExternalMissingTitle verifies empty title returns 400.
 func TestEditExternalMissingTitle(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("POST", "/edit-external/", nil)
+	req := httptest.NewRequest("POST", "/test/edit-external/", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -662,9 +564,9 @@ func TestEditExternalMissingTitle(t *testing.T) {
 // TestPutNoteWithNestedFields verifies that nested "fields"
 // objects are flattened.
 func TestPutNoteWithNestedFields(t *testing.T) {
-	srv, s := newTestServer(t)
+	srv, wk := newTestServer(t)
 	body := `{"title":"Nested","fields":{"custom_field":"value"},"text":"Body."}`
-	req := httptest.NewRequest("PUT", "/notes/Nested",
+	req := httptest.NewRequest("PUT", "/test/notes/Nested",
 		strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -672,7 +574,7 @@ func TestPutNoteWithNestedFields(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
 	}
-	got := s.Get("Nested")
+	got := wk.Store().Get("Nested")
 	if got == nil {
 		t.Fatal("expected note in store")
 	}
@@ -685,10 +587,15 @@ func TestPutNoteWithNestedFields(t *testing.T) {
 // noteDir stores the note via Put (no disk write) when the
 // note has no existing file path.
 func TestPutNoteNoFilePathNoDir(t *testing.T) {
-	srv, s := newTestServer(t)
-	// newTestServer has no noteDir set, so new notes go through s.store.Put.
+	// Create a wiki with no noteDir.
+	wk := wiki.New("test", "", nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, "")
+
 	body := `{"title":"NoFile","tags":"Mem","text":"In-memory only."}`
-	req := httptest.NewRequest("PUT", "/notes/NoFile",
+	req := httptest.NewRequest("PUT", "/test/notes/NoFile",
 		strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -696,15 +603,14 @@ func TestPutNoteNoFilePathNoDir(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
 	}
-	got := s.Get("NoFile")
-	if got == nil {
+	if wk.Store().Get("NoFile") == nil {
 		t.Fatal("expected note in store")
 	}
-	if got.Text() != "In-memory only." {
-		t.Errorf("text = %q, want %q", got.Text(), "In-memory only.")
+	if text := wk.Get("NoFile", false)["text"]; text != "In-memory only." {
+		t.Errorf("text = %q, want %q", text, "In-memory only.")
 	}
 	// Should have no file path since there is no noteDir.
-	if fp := s.FilePath("NoFile"); fp != "" {
+	if fp := wk.Store().FilePath("NoFile"); fp != "" {
 		t.Errorf("file path = %q, want empty", fp)
 	}
 }
@@ -712,23 +618,18 @@ func TestPutNoteNoFilePathNoDir(t *testing.T) {
 // TestDeleteNoteWithDiskFile verifies that DELETE removes the
 // backing .md file from disk when the note has a file path.
 func TestDeleteNoteWithDiskFile(t *testing.T) {
-	srv, s := newTestServer(t)
+	srv, wk := newTestServer(t)
 
-	// Create a real temp file to act as the note's backing file.
-	f, err := os.CreateTemp("", "note-*.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.WriteString("title: DiskDel\n\nBody.")
-	f.Close()
-	t.Cleanup(func() { os.Remove(f.Name()) })
-
-	s.PutWithPath(&tid.Note{Fields: map[string]string{
+	// Create a real file in the wiki's noteDir.
+	td := &tid.Note{Fields: map[string]string{
 		"title": "DiskDel",
 		"text":  "Body.",
-	}}, f.Name())
+	}}
+	path := filepath.Join(wk.NoteDir(), "DiskDel.md")
+	os.WriteFile(path, tid.Serialize(td), 0644)
+	wk.Store().PutWithPath(td, path)
 
-	req := httptest.NewRequest("DELETE", "/notes/DiskDel", nil)
+	req := httptest.NewRequest("DELETE", "/test/notes/DiskDel", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -736,11 +637,11 @@ func TestDeleteNoteWithDiskFile(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
 	}
 	// Verify the file was removed from disk.
-	if _, err := os.Stat(f.Name()); !os.IsNotExist(err) {
-		t.Errorf("expected file %q to be deleted, err = %v", f.Name(), err)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("expected file %q to be deleted, err = %v", path, err)
 	}
 	// Verify the note is gone from the store.
-	if got := s.Get("DiskDel"); got != nil {
+	if got := wk.Store().Get("DiskDel"); got != nil {
 		t.Error("note should be deleted from store")
 	}
 }
@@ -748,17 +649,25 @@ func TestDeleteNoteWithDiskFile(t *testing.T) {
 // TestHandleEditExternalEditorFails verifies that edit-external returns
 // 500 when the editor command fails to start.
 func TestHandleEditExternalEditorFails(t *testing.T) {
-	s := store.New()
-	s.PutWithPath(&tid.Note{Fields: map[string]string{
-		"title": "FailEdit",
-		"text":  "Body.",
-	}}, "/tmp/FailEdit.md")
-
+	dir := t.TempDir()
 	// Use a nonexistent binary so exec.Command.Start returns an error.
 	ed := editor.New("/nonexistent/editor %s")
-	srv := New(s, "", ed)
+	wk := wiki.New("test", dir, ed, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
 
-	req := httptest.NewRequest("POST", "/edit-external/FailEdit", nil)
+	td := &tid.Note{Fields: map[string]string{
+		"title": "FailEdit",
+		"text":  "Body.",
+	}}
+	path := filepath.Join(dir, "FailEdit.md")
+	os.WriteFile(path, tid.Serialize(td), 0644)
+	wk.Store().PutWithPath(td, path)
+
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, "")
+
+	req := httptest.NewRequest("POST", "/test/edit-external/FailEdit", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -777,12 +686,10 @@ func TestPutNoteWriteFileError(t *testing.T) {
 	})
 	defer patches.Reset()
 
-	srv, s := newTestServer(t)
-	dir := t.TempDir()
-	srv.SetNoteDir(dir)
+	srv, wk := newTestServer(t)
 
 	body := `{"title":"WriteErr","text":"Body."}`
-	req := httptest.NewRequest("PUT", "/notes/WriteErr",
+	req := httptest.NewRequest("PUT", "/test/notes/WriteErr",
 		strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -791,7 +698,7 @@ func TestPutNoteWriteFileError(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
 	}
 	// Note should still be stored (PutWithPath is called after the error log).
-	if got := s.Get("WriteErr"); got == nil {
+	if got := wk.Store().Get("WriteErr"); got == nil {
 		t.Fatal("expected note in store despite WriteFile error")
 	}
 }
@@ -804,12 +711,10 @@ func TestPutNoteRCSCheckinError(t *testing.T) {
 	})
 	defer patches.Reset()
 
-	srv, s := newTestServer(t)
-	dir := t.TempDir()
-	srv.SetNoteDir(dir)
+	srv, wk := newTestServer(t)
 
 	body := `{"title":"RCSErr","text":"Body."}`
-	req := httptest.NewRequest("PUT", "/notes/RCSErr",
+	req := httptest.NewRequest("PUT", "/test/notes/RCSErr",
 		strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -817,7 +722,7 @@ func TestPutNoteRCSCheckinError(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
 	}
-	if got := s.Get("RCSErr"); got == nil {
+	if got := wk.Store().Get("RCSErr"); got == nil {
 		t.Fatal("expected note in store despite rcs.Checkin error")
 	}
 }
@@ -830,39 +735,38 @@ func TestDeleteNoteRemoveError(t *testing.T) {
 	})
 	defer patches.Reset()
 
-	srv, s := newTestServer(t)
-	s.PutWithPath(&tid.Note{Fields: map[string]string{
+	srv, wk := newTestServer(t)
+	wk.Store().PutWithPath(&tid.Note{Fields: map[string]string{
 		"title": "RemErr",
 		"text":  "Body.",
 	}}, "/fake/RemErr.md")
 
-	req := httptest.NewRequest("DELETE", "/notes/RemErr", nil)
+	req := httptest.NewRequest("DELETE", "/test/notes/RemErr", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
 	}
-	if got := s.Get("RemErr"); got != nil {
+	if got := wk.Store().Get("RemErr"); got != nil {
 		t.Error("note should be deleted from store")
 	}
 }
 
 // TestLineEditReplace verifies replacing a body line via /line-edit/.
 func TestLineEditReplace(t *testing.T) {
-	srv, s := newTestServer(t)
+	srv, wk := newTestServer(t)
 
 	// Create a .md file with headers and a list body.
-	dir := t.TempDir()
-	path := dir + "/LineTest.md"
+	dir := wk.NoteDir()
+	path := filepath.Join(dir, "LineTest.md")
 	content := "title: LineTest\n\n- alpha\n- beta\n- gamma\n"
 	os.WriteFile(path, []byte(content), 0644)
 	td, _ := tid.Parse([]byte(content))
-	s.PutWithPath(td, path)
-	srv.SetNoteDir(dir)
+	wk.Store().PutWithPath(td, path)
 
 	body := `{"line":2,"text":"- BETA"}`
-	req := httptest.NewRequest("POST", "/line-edit/LineTest", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/LineTest", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -890,18 +794,17 @@ func TestLineEditReplace(t *testing.T) {
 
 // TestLineEditInsert verifies inserting a line after line N.
 func TestLineEditInsert(t *testing.T) {
-	srv, s := newTestServer(t)
+	srv, wk := newTestServer(t)
 
-	dir := t.TempDir()
-	path := dir + "/InsTest.md"
+	dir := wk.NoteDir()
+	path := filepath.Join(dir, "InsTest.md")
 	content := "title: InsTest\n\n- first\n- second\n"
 	os.WriteFile(path, []byte(content), 0644)
 	td, _ := tid.Parse([]byte(content))
-	s.PutWithPath(td, path)
-	srv.SetNoteDir(dir)
+	wk.Store().PutWithPath(td, path)
 
 	body := `{"line":1,"text":"- inserted","insert":true}`
-	req := httptest.NewRequest("POST", "/line-edit/InsTest", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/InsTest", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -921,18 +824,17 @@ func TestLineEditInsert(t *testing.T) {
 
 // TestLineEditBadLine verifies out-of-range line returns 400.
 func TestLineEditBadLine(t *testing.T) {
-	srv, s := newTestServer(t)
+	srv, wk := newTestServer(t)
 
-	dir := t.TempDir()
-	path := dir + "/Short.md"
+	dir := wk.NoteDir()
+	path := filepath.Join(dir, "Short.md")
 	content := "title: Short\n\n- one\n"
 	os.WriteFile(path, []byte(content), 0644)
 	td, _ := tid.Parse([]byte(content))
-	s.PutWithPath(td, path)
-	srv.SetNoteDir(dir)
+	wk.Store().PutWithPath(td, path)
 
 	body := `{"line":99,"text":"nope"}`
-	req := httptest.NewRequest("POST", "/line-edit/Short", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/Short", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -946,7 +848,7 @@ func TestLineEditBadLine(t *testing.T) {
 func TestLineEditNoFile(t *testing.T) {
 	srv, _ := newTestServer(t)
 	body := `{"line":1,"text":"x"}`
-	req := httptest.NewRequest("POST", "/line-edit/NoSuch", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/NoSuch", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -960,7 +862,7 @@ func TestLineEditNoFile(t *testing.T) {
 // chroma syntax-highlighting styles.
 func TestHandleThemeCSS(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/theme.css", nil)
+	req := httptest.NewRequest("GET", "/test/theme.css", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -979,7 +881,7 @@ func TestHandleThemeCSS(t *testing.T) {
 // parameter returns an empty JSON array.
 func TestHandleSearchEmptyQuery(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/search", nil)
+	req := httptest.NewRequest("GET", "/test/search", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -994,9 +896,13 @@ func TestHandleSearchEmptyQuery(t *testing.T) {
 // TestHandleSearchNoNoteDir verifies search returns 500 when
 // noteDir is not configured.
 func TestHandleSearchNoNoteDir(t *testing.T) {
-	srv, _ := newTestServer(t)
-	// noteDir is empty by default in newTestServer.
-	req := httptest.NewRequest("GET", "/search?q=hello", nil)
+	wk := wiki.New("test", "", nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, "")
+
+	req := httptest.NewRequest("GET", "/test/search?q=hello", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -1012,18 +918,17 @@ func TestHandleSearchWithResults(t *testing.T) {
 		t.Skip("rg (ripgrep) not on PATH, skipping search test")
 	}
 
-	srv, s := newTestServer(t)
-	dir := t.TempDir()
-	srv.SetNoteDir(dir)
+	srv, wk := newTestServer(t)
+	dir := wk.NoteDir()
 
 	// Create a .md file with searchable content.
 	content := "title: SearchMe\ntags: Test\n\nUnique searchable content here.\n"
-	path := dir + "/SearchMe.md"
+	path := filepath.Join(dir, "SearchMe.md")
 	os.WriteFile(path, []byte(content), 0644)
 	td, _ := tid.Parse([]byte(content))
-	s.PutWithPath(td, path)
+	wk.Store().PutWithPath(td, path)
 
-	req := httptest.NewRequest("GET", "/search?q=searchable", nil)
+	req := httptest.NewRequest("GET", "/test/search?q=searchable", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -1046,7 +951,7 @@ func TestHandleSearchWithResults(t *testing.T) {
 // returns 400.
 func TestLineEditInvalidJSON(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("POST", "/line-edit/Hello", strings.NewReader("not json"))
+	req := httptest.NewRequest("POST", "/test/line-edit/Hello", strings.NewReader("not json"))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -1060,7 +965,7 @@ func TestLineEditInvalidJSON(t *testing.T) {
 // returns 405.
 func TestLineEditMethodNotAllowed(t *testing.T) {
 	srv, _ := newTestServer(t)
-	req := httptest.NewRequest("GET", "/line-edit/Hello", nil)
+	req := httptest.NewRequest("GET", "/test/line-edit/Hello", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -1073,7 +978,7 @@ func TestLineEditMethodNotAllowed(t *testing.T) {
 func TestLineEditLineLessThanOne(t *testing.T) {
 	srv, _ := newTestServer(t)
 	body := `{"line":0,"text":"bad"}`
-	req := httptest.NewRequest("POST", "/line-edit/Hello", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/Hello", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -1086,22 +991,22 @@ func TestLineEditLineLessThanOne(t *testing.T) {
 // --- Coverage gap tests ---
 
 // TestPutNoteRevisionConflict verifies that a PUT with a stale
-// revision returns 409 Conflict. This covers lines 231-237 (revision
-// conflict) of server.go.
+// revision returns 409 Conflict.
 func TestPutNoteRevisionConflict(t *testing.T) {
-	srv, s := newTestServer(t)
-	dir := t.TempDir()
-	srv.SetNoteDir(dir)
+	srv, wk := newTestServer(t)
 
 	// Create a note in the store — PutWithPath sets revision to 1.
-	s.PutWithPath(&tid.Note{Fields: map[string]string{
+	td := &tid.Note{Fields: map[string]string{
 		"title": "Conflict",
 		"text":  "Original.",
-	}}, dir+"/Conflict.md")
+	}}
+	path := filepath.Join(wk.NoteDir(), "Conflict.md")
+	os.WriteFile(path, tid.Serialize(td), 0644)
+	wk.Store().PutWithPath(td, path)
 
 	// PUT again to bump revision to 2.
 	body1 := `{"title":"Conflict","text":"Updated."}`
-	req1 := httptest.NewRequest("PUT", "/notes/Conflict", strings.NewReader(body1))
+	req1 := httptest.NewRequest("PUT", "/test/notes/Conflict", strings.NewReader(body1))
 	w1 := httptest.NewRecorder()
 	srv.ServeHTTP(w1, req1)
 	if w1.Code != http.StatusNoContent {
@@ -1110,7 +1015,7 @@ func TestPutNoteRevisionConflict(t *testing.T) {
 
 	// PUT with stale revision "1" — server revision is now > 1.
 	body2 := `{"title":"Conflict","text":"Stale.","revision":"1"}`
-	req2 := httptest.NewRequest("PUT", "/notes/Conflict", strings.NewReader(body2))
+	req2 := httptest.NewRequest("PUT", "/test/notes/Conflict", strings.NewReader(body2))
 	w2 := httptest.NewRecorder()
 	srv.ServeHTTP(w2, req2)
 
@@ -1121,22 +1026,22 @@ func TestPutNoteRevisionConflict(t *testing.T) {
 
 // TestPutNoteRevisionFieldSkipped verifies that a PUT with a
 // matching revision still skips the "revision" key in tFields.
-// This covers lines 244-245 of server.go.
 func TestPutNoteRevisionFieldSkipped(t *testing.T) {
-	srv, s := newTestServer(t)
-	dir := t.TempDir()
-	srv.SetNoteDir(dir)
+	srv, wk := newTestServer(t)
 
 	// Create note at revision 1.
-	s.PutWithPath(&tid.Note{Fields: map[string]string{
+	td := &tid.Note{Fields: map[string]string{
 		"title": "RevSkip",
 		"text":  "Original.",
-	}}, dir+"/RevSkip.md")
+	}}
+	path := filepath.Join(wk.NoteDir(), "RevSkip.md")
+	os.WriteFile(path, tid.Serialize(td), 0644)
+	wk.Store().PutWithPath(td, path)
 
 	// PUT with revision that matches current (1) — should succeed
 	// and the "revision" key should NOT appear in the stored fields.
 	body := `{"title":"RevSkip","text":"New.","revision":"1"}`
-	req := httptest.NewRequest("PUT", "/notes/RevSkip", strings.NewReader(body))
+	req := httptest.NewRequest("PUT", "/test/notes/RevSkip", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -1144,11 +1049,11 @@ func TestPutNoteRevisionFieldSkipped(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
 	}
 	// The stored note should not have a "revision" field.
-	td := s.Get("RevSkip")
-	if td == nil {
+	got := wk.Store().Get("RevSkip")
+	if got == nil {
 		t.Fatal("note not found in store")
 	}
-	if _, ok := td.Fields["revision"]; ok {
+	if _, ok := got.Fields["revision"]; ok {
 		t.Error("revision field should not be stored in note fields")
 	}
 }
@@ -1156,18 +1061,19 @@ func TestPutNoteRevisionFieldSkipped(t *testing.T) {
 // TestPutNoteRevisionNonString verifies that a numeric revision
 // value (not a string) is ignored — no conflict check occurs.
 func TestPutNoteRevisionNonString(t *testing.T) {
-	srv, s := newTestServer(t)
-	dir := t.TempDir()
-	srv.SetNoteDir(dir)
+	srv, wk := newTestServer(t)
 
-	s.PutWithPath(&tid.Note{Fields: map[string]string{
+	td := &tid.Note{Fields: map[string]string{
 		"title": "RevNum",
 		"text":  "Original.",
-	}}, dir+"/RevNum.md")
+	}}
+	path := filepath.Join(wk.NoteDir(), "RevNum.md")
+	os.WriteFile(path, tid.Serialize(td), 0644)
+	wk.Store().PutWithPath(td, path)
 
 	// PUT with revision as a number (JSON parses as float64).
 	body := `{"title":"RevNum","text":"New.","revision":999}`
-	req := httptest.NewRequest("PUT", "/notes/RevNum", strings.NewReader(body))
+	req := httptest.NewRequest("PUT", "/test/notes/RevNum", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -1176,12 +1082,13 @@ func TestPutNoteRevisionNonString(t *testing.T) {
 	}
 }
 
-// returns 400. This covers lines 209-212 of server.go.
+// TestPutNoteReadBodyError verifies that a body read error
+// returns 400.
 func TestPutNoteReadBodyError(t *testing.T) {
 	srv, _ := newTestServer(t)
 
 	// errReader always returns an error on Read.
-	req := httptest.NewRequest("PUT", "/notes/BadBody", &errReader{})
+	req := httptest.NewRequest("PUT", "/test/notes/BadBody", &errReader{})
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -1198,11 +1105,11 @@ func (e *errReader) Read(p []byte) (int, error) {
 }
 
 // TestLineEditMissingTitle verifies that POST /line-edit/ with no
-// title returns 400. This covers lines 345-348 of server.go.
+// title returns 400.
 func TestLineEditMissingTitle(t *testing.T) {
 	srv, _ := newTestServer(t)
 	body := `{"line":1,"text":"x"}`
-	req := httptest.NewRequest("POST", "/line-edit/", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -1216,23 +1123,23 @@ func TestLineEditMissingTitle(t *testing.T) {
 }
 
 // TestLineEditReadFileError verifies that an os.ReadFile failure
-// returns 500. This covers lines 371-374 of server.go.
+// returns 500.
 func TestLineEditReadFileError(t *testing.T) {
 	patches := gomonkey.ApplyFunc(os.ReadFile, func(name string) ([]byte, error) {
 		return nil, fmt.Errorf("disk error")
 	})
 	defer patches.Reset()
 
-	srv, s := newTestServer(t)
+	srv, wk := newTestServer(t)
 	// Note must be in store with a filePath so we get past the
 	// "no file for note" check.
-	s.PutWithPath(&tid.Note{Fields: map[string]string{
+	wk.Store().PutWithPath(&tid.Note{Fields: map[string]string{
 		"title": "ReadErr",
 		"text":  "Body.",
 	}}, "/fake/ReadErr.md")
 
 	body := `{"line":1,"text":"x"}`
-	req := httptest.NewRequest("POST", "/line-edit/ReadErr", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/ReadErr", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -1246,17 +1153,16 @@ func TestLineEditReadFileError(t *testing.T) {
 }
 
 // TestLineEditWriteFileError verifies that an os.WriteFile failure
-// during line-edit returns 500. This covers lines 404-407 of server.go.
+// during line-edit returns 500.
 func TestLineEditWriteFileError(t *testing.T) {
-	srv, s := newTestServer(t)
+	srv, wk := newTestServer(t)
 
-	dir := t.TempDir()
-	path := dir + "/WrErr.md"
+	dir := wk.NoteDir()
+	path := filepath.Join(dir, "WrErr.md")
 	content := "title: WrErr\n\n- alpha\n- beta\n"
 	os.WriteFile(path, []byte(content), 0644)
 	td, _ := tid.Parse([]byte(content))
-	s.PutWithPath(td, path)
-	srv.SetNoteDir(dir)
+	wk.Store().PutWithPath(td, path)
 
 	// Mock os.WriteFile to fail AFTER os.ReadFile succeeds.
 	patches := gomonkey.ApplyFunc(os.WriteFile, func(name string, data []byte, perm os.FileMode) error {
@@ -1265,7 +1171,7 @@ func TestLineEditWriteFileError(t *testing.T) {
 	defer patches.Reset()
 
 	body := `{"line":1,"text":"- ALPHA"}`
-	req := httptest.NewRequest("POST", "/line-edit/WrErr", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/WrErr", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -1280,25 +1186,23 @@ func TestLineEditWriteFileError(t *testing.T) {
 
 // TestLineEditRCSCheckinError verifies that an rcs.Checkin failure
 // during line-edit is logged but doesn't prevent completion.
-// This covers lines 408-410 of server.go.
 func TestLineEditRCSCheckinError(t *testing.T) {
 	patches := gomonkey.ApplyFunc(rcs.Checkin, func(path string) error {
 		return fmt.Errorf("rcs failed")
 	})
 	defer patches.Reset()
 
-	srv, s := newTestServer(t)
+	srv, wk := newTestServer(t)
 
-	dir := t.TempDir()
-	path := dir + "/RcsErr.md"
+	dir := wk.NoteDir()
+	path := filepath.Join(dir, "RcsErr.md")
 	content := "title: RcsErr\n\n- alpha\n- beta\n"
 	os.WriteFile(path, []byte(content), 0644)
 	td, _ := tid.Parse([]byte(content))
-	s.PutWithPath(td, path)
-	srv.SetNoteDir(dir)
+	wk.Store().PutWithPath(td, path)
 
 	body := `{"line":1,"text":"- ALPHA"}`
-	req := httptest.NewRequest("POST", "/line-edit/RcsErr", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/RcsErr", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -1310,17 +1214,16 @@ func TestLineEditRCSCheckinError(t *testing.T) {
 }
 
 // TestLineEditParseError verifies that a tid.Parse failure after
-// writing returns 500. This covers lines 414-417 of server.go.
+// writing returns 500.
 func TestLineEditParseError(t *testing.T) {
-	srv, s := newTestServer(t)
+	srv, wk := newTestServer(t)
 
-	dir := t.TempDir()
-	path := dir + "/ParseErr.md"
+	dir := wk.NoteDir()
+	path := filepath.Join(dir, "ParseErr.md")
 	content := "title: ParseErr\n\n- alpha\n- beta\n"
 	os.WriteFile(path, []byte(content), 0644)
 	td, _ := tid.Parse([]byte(content))
-	s.PutWithPath(td, path)
-	srv.SetNoteDir(dir)
+	wk.Store().PutWithPath(td, path)
 
 	// Mock tid.Parse to fail (called after WriteFile succeeds).
 	patches := gomonkey.ApplyFunc(tid.Parse, func(data []byte) (*tid.Note, error) {
@@ -1329,7 +1232,7 @@ func TestLineEditParseError(t *testing.T) {
 	defer patches.Reset()
 
 	body := `{"line":1,"text":"- ALPHA"}`
-	req := httptest.NewRequest("POST", "/line-edit/ParseErr", strings.NewReader(body))
+	req := httptest.NewRequest("POST", "/test/line-edit/ParseErr", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -1343,7 +1246,7 @@ func TestLineEditParseError(t *testing.T) {
 }
 
 // TestHandleSearchError verifies that a search.Search error returns
-// 500. This covers lines 85-88 of server.go.
+// 500.
 func TestHandleSearchError(t *testing.T) {
 	patches := gomonkey.ApplyFunc(search.Search, func(dir, query string) ([]search.Result, error) {
 		return nil, fmt.Errorf("rg exploded")
@@ -1351,8 +1254,7 @@ func TestHandleSearchError(t *testing.T) {
 	defer patches.Reset()
 
 	srv, _ := newTestServer(t)
-	srv.SetNoteDir("/tmp") // non-empty so we get past noteDir check
-	req := httptest.NewRequest("GET", "/search?q=hello", nil)
+	req := httptest.NewRequest("GET", "/test/search?q=hello", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -1365,7 +1267,7 @@ func TestHandleSearchError(t *testing.T) {
 }
 
 // TestHandleSearchNilLines verifies that a search hit with nil Lines
-// is coalesced to an empty slice. This covers lines 99-101 of server.go.
+// is coalesced to an empty slice.
 func TestHandleSearchNilLines(t *testing.T) {
 	// Return a hit with nil Lines (e.g. a tag-only match where
 	// all matched lines are header lines, filtered out by rg).
@@ -1377,8 +1279,7 @@ func TestHandleSearchNilLines(t *testing.T) {
 	defer patches.Reset()
 
 	srv, _ := newTestServer(t)
-	srv.SetNoteDir("/tmp")
-	req := httptest.NewRequest("GET", "/search?q=Test", nil)
+	req := httptest.NewRequest("GET", "/test/search?q=Test", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -1406,8 +1307,7 @@ func TestHandleSearchNilLines(t *testing.T) {
 }
 
 // TestHandleSearchNilResults verifies that when search hits don't
-// match any note in the store, results is coalesced to []. This
-// covers lines 108-110 of server.go.
+// match any note in the store, results is coalesced to [].
 func TestHandleSearchNilResults(t *testing.T) {
 	// Return a hit for a file whose title isn't in the store.
 	patches := gomonkey.ApplyFunc(search.Search, func(dir, query string) ([]search.Result, error) {
@@ -1418,8 +1318,7 @@ func TestHandleSearchNilResults(t *testing.T) {
 	defer patches.Reset()
 
 	srv, _ := newTestServer(t)
-	srv.SetNoteDir("/tmp")
-	req := httptest.NewRequest("GET", "/search?q=missing", nil)
+	req := httptest.NewRequest("GET", "/test/search?q=missing", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
@@ -1435,5 +1334,97 @@ func TestHandleSearchNilResults(t *testing.T) {
 	}
 }
 
+// TestWikiSelector verifies GET / returns HTML listing wiki names.
+func TestWikiSelector(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "test") {
+		t.Errorf("wiki selector should list 'test', got:\n%s", body)
+	}
+	if !strings.Contains(body, `href="/test/"`) {
+		t.Errorf("wiki selector should link to /test/, got:\n%s", body)
+	}
+}
+
+// TestUnknownWiki verifies that an unknown wiki prefix returns 404.
+func TestUnknownWiki(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("GET", "/nosuch/notes/Hello", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+// TestSplitPrefix verifies the splitPrefix helper.
+func TestSplitPrefix(t *testing.T) {
+	tests := []struct {
+		path, name, rest string
+	}{
+		{"/work/notes/Hello", "work", "/notes/Hello"},
+		{"/work/", "work", "/"},
+		{"/work", "work", "/"},
+		{"/a/b/c", "a", "/b/c"},
+	}
+	for _, tt := range tests {
+		name, rest := splitPrefix(tt.path)
+		if name != tt.name || rest != tt.rest {
+			t.Errorf("splitPrefix(%q) = (%q, %q), want (%q, %q)",
+				tt.path, name, rest, tt.name, tt.rest)
+		}
+	}
+}
+
+// TestHandleNewDraft verifies that POST /test/new-draft returns 204.
+func TestHandleNewDraft(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("POST", "/test/new-draft", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+}
+
+// TestHandleNewDraftMethodNotAllowed verifies that GET /test/new-draft
+// returns 405.
+func TestHandleNewDraftMethodNotAllowed(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("GET", "/test/new-draft", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+// TestHandleNewDraftError verifies that new-draft returns 500 when
+// the editor is not configured.
+func TestHandleNewDraftError(t *testing.T) {
+	wk := wiki.New("test", t.TempDir(), nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, "")
+
+	req := httptest.NewRequest("POST", "/test/new-draft", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+}
+
 // Keep unused imports from erroring.
 var _ = io.Discard
+var _ = (*store.Store)(nil)

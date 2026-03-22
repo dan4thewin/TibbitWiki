@@ -1,4 +1,4 @@
-package server
+package wiki
 
 import (
 	"os"
@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func atime(info os.FileInfo) time.Time {
-	stat := info.Sys().(*syscall.Stat_t)
+func atime(fi os.FileInfo) time.Time {
+	stat := fi.Sys().(*syscall.Stat_t)
 	return time.Unix(stat.Atimespec.Sec, stat.Atimespec.Nsec)
 }

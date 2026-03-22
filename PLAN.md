@@ -3,272 +3,193 @@
 A Go replacement for TiddlyWiki's Node.js server, with a minimal
 browser client, filesystem watching, and Neovide integration.
 
-## Problem
-
-TiddlyWiki's Node.js server has no filesystem watching — edits made
-outside the browser are invisible until restart. The browser client
-is deeply interconnected (~4.5MB of JS), making it hard to debug or
-extend. The syncer assumes the browser is authoritative, overwriting
-external edits with stale baked-in content.
-
-## Approach
-
-Reimplement the TiddlyWeb REST API (7 endpoints) in Go. Add
-fsnotify-based file watching. Replace TiddlyWiki's browser client
-entirely with a ~6KB HTML+JS viewer that uses markdown + CamelCase
-WikiWord links. The server is the single source of truth; the
-browser is view-only, polling every 3 seconds.
-
 ## Architecture
 
 ```
-┌──────────────┐     HTTP (3s poll)     ┌──────────────┐
-│   Browser    │ ◄──────────────────► │  TibbitWiki   │
-│  (view-only) │                        │   server     │
-└──────────────┘                        └──────┬───────┘
-                                               │
-                               ┌───────────────┼───────────────┐
-                               │               │               │
-                          fsnotify        .tid files      editor launch
-                          watcher      ~/notes/   (neovide)
-                                        notes/
-```
-
-### Package layout
-
-```
 internal/
+  wiki/     — Wiki type: goroutine event loop, domain logic, Hub
   config/   — YAML config + CLI flag parsing
-  tid/      — .tid file parser/serializer
+  tid/      — .md file parser/serializer (RFC822 headers + body)
   store/    — in-memory note store with revision tracking
-  watcher/  — fsnotify file watcher with debounce
-  server/   — HTTP server implementing TiddlyWeb API
+  watcher/  — fsnotify file watcher with debounce, callback API
+  server/   — thin HTTP adapter delegating to wiki via Hub
   editor/   — external editor launcher
   rcs/      — RCS version control integration
   loader/   — startup file loader
-  render/   — goldmark + chroma markdown→HTML rendering, ThemeCSS()
-  search/   — query parser + rg wrapper, returns file matches with matched lines
-main.go     — wiring
-exp/        — browser client experiments (001–018)
+  render/   — goldmark + chroma markdown→HTML, plain render mode
+  search/   — query parser + rg wrapper
+main.go     — wiring: Wiki→loader→watcher→Hub→Server
+exp/        — browser client experiments (001–025)
 ```
 
-### REST API (TiddlyWeb compatible)
+### REST API
 
-| Method   | Path                                | Purpose                    |
-|----------|-------------------------------------|----------------------------|
-| `GET`    | `/`                                 | Serve browser client HTML  |
-| `GET`    | `/status`                           | Server status + user info  |
-| `GET`    | `/notes`    | Skinny note list (poll) |
-| `GET`    | `/notes/:title`  | Full note as JSON       |
-| `PUT`    | `/notes/:title`  | Create/save note        |
-| `DELETE` | `/notes/:title`     | Delete note             |
-| `GET`    | `/search?q=...`                     | Full-text search (JSON)    |
-| `GET`    | `/theme.css`                        | Syntax highlighting CSS    |
-| `GET`    | `/favicon.ico`                      | Favicon                    |
-| `POST`   | `/edit-external/:title`             | Launch external editor     |
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/` | Serve browser client HTML |
+| GET | `/status` | Server status JSON |
+| GET | `/notes` | Skinny note list (poll) |
+| GET | `/notes/{title}` | Full note JSON (?render=plain) |
+| PUT | `/notes/{title}` | Create/save note |
+| DELETE | `/notes/{title}` | Delete note |
+| POST | `/line-edit/{title}` | In-place line edit/insert |
+| POST | `/edit-external/{title}` | Launch external editor |
+| GET | `/search?q=...` | Full-text search (rg) |
+| GET | `/theme.css` | Syntax highlighting CSS |
 
-### Browser client
-
-Single HTML file (`exp/017-tag-pills/index.html`).
-No build step, no TiddlyWiki code.
-
-- **Rendering:** server-side markdown via goldmark, syntax highlighting
-  via chroma (OneDark theme served as `/theme.css`), regex for CamelCase
-  WikiWord auto-linking
-- **Navigation:** story river (new content appended at bottom), recent
-  sidebar (top 20 by modified date), WikiWord click-to-open
-- **Search:** `/` opens vi-style search bar; results appear as a
-  pseudo-note in the story river with clickable titles and matched
-  lines. Rich query syntax (literal, NOT, tag, title, regex, OR, AND).
-- **Tag pills:** colored pills on notes, click to search by tag
-- **Polling:** GET notes.json every 3s, compare revisions, re-fetch
-  changed notes
-- **Actions:** edit (POST /edit-external), close, + New (prompt for
-  title, PUT), + Journal (auto date title, PUT + edit)
-- **Theme:** dark (navy background, styled cards/sidebar/code blocks)
-
-### File watching
-
-- fsnotify on the notes directory
-- Debounce for cloud drive quirks (OneDrive temp files, atomic
-  renames, rapid successive events)
-- On change: re-read `.tid` file, update in-memory store, bump
-  revision counter
-- Browser's 3-second poll picks up new revision naturally
-
-### RCS versioning
-
-Every write creates/updates an RCS archive in `RCS/` subdirectory
-(not inside `notes/` — avoids watcher treating archives as
-notes). Requires `rcs` command.
-
-### Editor integration
-
-Command template with `%s` placeholder (e.g. `neovide -- %s`).
-Template is split into args first, then `%s` is substituted — this
-keeps file paths with spaces as a single argument.
-
-## Design decisions
+### Design decisions
 
 - **No database** — all state in-memory + filesystem
-- **No TiddlyWiki browser code** — the syncer's "browser is
-  authoritative" assumption is fundamentally incompatible with
-  server-as-truth external editing
-- **Markdown over wikitext** — simpler, widely known, no lock-in
-- **Server-side rendering** — goldmark + chroma on the server avoids
-  CDN dependencies and keeps the browser client minimal
-- **rg for search** — ripgrep searches .tid files directly on disk;
-  no in-memory index to build or maintain, handles large wikis easily
-- **Polling over push** — 3s interval is trivial load for single
-  user; no WebSocket complexity
-- **View-only browser** — all editing via neovim; no textarea,
-  no contenteditable, no conflict resolution needed
-- **Config over constants** — listen address, wiki path, editor
-  command, poll interval all configurable
+- **.md files** — RFC822-style headers + blank line + markdown body
+- **Server-side rendering** — goldmark + chroma, no CDN deps
+- **rg for search** — ripgrep on disk, no index maintenance
+- **Polling over push** — 3s interval, trivial for single user
+- **RCS versioning** — `ci -l` on every write, `RCS/` subdir
+- **ISO 8601 timestamps** — created/modified in file,
+  accessed via filesystem atime (touch -a on GET)
+- **No backwards compatibility obligation** — free to innovate and
+  break any existing API, file format, or config until a full
+  release. All content will be converted forward.
 
-## Out of scope
+## Completed
 
-- Hugo integration
-- Auto-conversion of wikitext to markdown
-- Multiple simultaneous browser clients
+- **v1:** Browser client experiments (001–012)
+- **v2:** Server-side rendering, rg search, tag pills (013–018)
+- **v3:** Bootstrap Icons, tag add/remove, line-editing (lists,
+  blockquotes, code blocks), ISO timestamps, atime-based recent
+  sort, .tid→.md extension (019–025). 100% statement coverage.
 
 ---
 
-## v3 Plan
+## v4: Multi-Wiki + LRU Cache
 
-### Feature 1: Neovide Wrapper Script
+### Problem
 
-**Goal:** Reuse an existing Neovide instance instead of spawning a
-new window for every edit.
+- All-in-memory store doesn't scale for large collections
+  (target: Raspberry Pi Zero W, 512MB RAM)
+- Single wiki only — want multiple wikis under one server
+- Symlinked notes between wikis need correct RCS + cache behaviour
 
-**Approach:** Shell script used as `--editor-cmd`:
-- Check if a Neovide process is running
-- If yes: use `nvim --server` (Neovim's remote) to open the file
-  in the existing instance (`--remote` or `nvim --server <addr>
-  --remote <file>`)
-- If no: launch `neovide -- <file>` normally
-- Neovide connects to Neovim, so the server address is a socket
-  (look for `$NVIM_LISTEN_ADDRESS` or a known socket path)
+### Approach
 
-**Files:**
-- `scripts/neovide-wrapper.sh` — the script
-- Update SETUP.md with usage
+Introduce a **Wiki** type: one goroutine per wiki with a
+channel-based event loop. The wiki owns its store, watcher, and
+note directory. Symlinked notes delegate to the owning wiki's
+goroutine. LRU cache keeps memory bounded.
 
-**Complexity:** Low. One shell script, no Go changes.
+### Directory layout
 
----
-
-### Feature 2: Sidebar Tabs
-
-**Goal:** Three-tab sidebar replacing the current Recent list.
-
-#### Tab 1: Recent (non-journals)
-- Sorted by modified date (current behavior)
-- Show first `--sidebar-limit` items (default 20)
-- Ellipsis button at bottom expands to show ALL non-journal tibbits
-- "Non-journal" = does NOT have #Journal tag AND title doesn't
-  match date format (e.g. "21st March 2026")
-
-#### Tab 2: Journals
-- Sorted by modified date
-- Show first `--sidebar-limit` items
-- Ellipsis expands to all journals
-- "Journal" = has #Journal tag OR title matches date format
-
-#### Tab 3: Tags
-- Each tag is a collapsible group, sorted by most-recent tibbit
-  in that group
-- Show first `--tag-limit` tibbits per tag (default 5)
-- Ellipsis per tag expands that tag's full list
-- Skip system tags ($:/ prefix)
-
-#### Config (CSS custom properties)
-```css
-:root {
-  --sidebar-limit: 20;
-  --tag-limit: 5;
-}
 ```
-JS reads via `getComputedStyle`. Change one line, no recompile.
+/path/to/wikis/           ← --wiki-path
+  work/
+    *.md
+    RCS/
+  personal/
+    *.md
+    RCS/
+  evernote/
+    Meeting.md → ../work/Meeting.md   (symlink)
+```
 
-#### Naming
-Rename "notes" → "tibbits" throughout: UI text, Go types/vars,
-API endpoint paths, docs. This is a breaking rename of the REST API.
+Single-wiki: if `--wiki-path` contains .md files directly (no
+subdirs with .md), treat it as a single wiki named "default" and
+serve at `/` (current URL scheme unchanged).
 
-#### Implementation
-- Tab UI: three clickable tab headers at top of sidebar, one active
-  panel visible at a time
-- Journal detection: function in client JS that checks tag OR date
-  regex (`/^\d{1,2}(?:st|nd|rd|th) \w+ \d{4}$/`)
-- Server changes: notes.json already returns tags — no new
-  endpoint needed, client filters/groups locally
-- Rename: `notes` → `tibbits` across Go packages, API routes,
-  client JS, docs (big but mechanical)
+Multi-wiki: subdirs auto-discovered, served at `/{name}/notes/...`
+etc. Root `/` shows wiki selector or redirects to a default.
 
----
+### URL routing
 
-### Feature 3: Line-Level Quick Edit
+| URL pattern | Behaviour |
+|-------------|-----------|
+| `/` | Wiki selector (list of links) |
+| `/{wiki}/` | Serve browser client HTML |
+| `/{wiki}/notes` | Skinny note list |
+| `/{wiki}/notes/{title}` | Get/put/delete note |
+| `/{wiki}/line-edit/{title}` | In-place line edit |
+| `/{wiki}/edit-external/{title}` | Launch editor |
+| `/{wiki}/search?q=...` | Full-text search |
+| `/{wiki}/theme.css` | Syntax highlighting CSS |
+| `/{wiki}/status` | Server status JSON |
 
-**Goal:** Edit individual list items in-place without launching
-neovide. Hover a list item → icons appear → click to edit or
-insert below.
+### Phase 1: Wiki type + multi-wiki routing
 
-#### Render annotation
-- Extend `internal/render/render.go` to walk the goldmark AST
-- For each `ListItem` node, wrap the output `<li>` with
-  `data-line="N"` where N is the source line number
-- Only annotate list items (not paragraphs, headings, etc.)
+- [x] New package `internal/wiki/wiki.go`
+  - Wiki struct with goroutine event loop (ops channel)
+  - All domain logic: Get, Put, Delete, List, LineEdit, Search,
+    EditExternal, Reload, persistNote, timestamps, atime
+  - Hub maps wiki names to Wiki instances
+- [x] Refactor watcher to callback API `New(dir, func(string))`
+  - Wiki.Reload is the callback — fire-and-forget into event loop
+  - Watcher does debouncing; wiki goroutine does parse + store + RCS
+- [x] Refactor server to thin HTTP adapter
+  - `New(hub *wiki.Hub, indexHTML string)`
+  - All handlers delegate to `s.wiki()` via Hub
+- [x] Update main.go wiring: Wiki→loader→watcher→Hub→Server
+- [x] Tests: 100% coverage on wiki, server, watcher packages
+- [x] Config changes: removed legacy `tiddlers` subdir, WikiPath
+  is the parent dir containing wiki subdirs
+- [x] Multi-wiki hub routing
+  - `ServeHTTP` extracts wiki prefix, injects Wiki into context
+  - `splitPrefix` splits `/{wiki}/rest` into name + remaining path
+  - `handleWikiSelector` at `/` lists wikis as links
+  - No single-wiki special case — one subdir = one wiki
+  - `main.go` scans WikiPath for subdirs with .md files
 
-#### Client interaction
-- On hover over an `<li data-line>`, show two auto-hiding icons:
-  - ✏️ **Edit** — replace the `<li>` content with a single-line
-    `<input>` containing the raw source line. Enter = save,
-    Escape = cancel.
-  - ➕ **Insert below** — open an empty `<input>` below the
-    current `<li>`. Enter = save new line, Escape = cancel.
-- Icons are positioned to the left/right of the list item,
-  appear on hover, hidden otherwise
+### Phase 2: LRU cache
 
-#### Server endpoint
-- `PATCH /tibbits/:title/line/:n` — edit line N of the .tid body
-  - Body: `{"text": "new line content"}`
-  - Server reads the file, replaces line N, writes back, bumps
-    revision
-- `POST /tibbits/:title/line/:n/insert` — insert after line N
-  - Body: `{"text": "new line content"}`
-  - Server reads, inserts after line N, writes back
+- [x] Add `github.com/hashicorp/golang-lru/v2` dependency
+- [x] Split store into metadata index + body cache
+  - Store.Put/PutWithPath strip "text" field (metadata-only)
+  - Wiki.fetchBody: check LRU → miss → read .md from disk → cache
+  - Wiki.SeedBody for loader/test seeding
+- [x] Loader seeds body cache via BodySeeder interface
+- [x] Watcher invalidates cache via metaFieldsEqual + body check
+- [x] Config: `--cache-size N` (default 200)
+- [x] Tests: cache hit/miss/eviction, read error, parse error,
+  metadata-only listing, disk fallback. 100% coverage.
 
-#### Re-render
-- After PATCH/POST succeeds, client re-fetches the full tibbit
-  (same as existing `refreshNote`) — the whole tibbit body
-  re-renders with correct markdown context (list numbering, etc.)
+### Phase 3: Symlink delegation
 
-#### Scope limits
-- List items only (for now)
-- Paragraphs: skip or stretch goal (multi-line box, low priority)
-- No quick-edit for headings, code blocks, blockquotes
+- [ ] At load time, detect symlinks with `os.Lstat` + `os.Readlink`
+- [ ] Resolve target path → identify owning wiki
+  - `hub.WikiForPath(absPath)` matches against wiki noteDirs
+- [ ] Wiki maintains `symlinks map[title]targetWiki` redirect table
+- [ ] On Get/Put/Delete of a symlinked title: forward request to
+  target wiki's channel, relay response back to caller
+- [ ] Listing includes symlinked titles (marked as symlink in metadata)
+- [ ] RCS: handled by owning wiki (correct by construction)
+- [ ] Watcher: owning wiki watches the real file; source wiki
+  doesn't watch the symlink (delegates on access)
+- [ ] Edge case: symlink target outside any wiki → skip with warning
+- [ ] Tests: symlink detection, delegation round-trip, cross-wiki
+  Get/Put, broken symlink handling
 
----
+### Phase 4: Browser client updates
 
-### Experiment sequence
+- [x] Multi-wiki URL awareness
+  - Client detects wiki prefix from `window.location.pathname`
+  - All fetch calls prepend `PREFIX` (`/{wiki}`)
+  - Wiki name shown in document title
+  - theme.css href patched via JS
+- [x] Wiki selector page (server-side: list of wiki names as links)
 
-| # | Feature | Description |
-|---|---------|-------------|
-| 019 | Sidebar tabs | Recent (non-journal) + Journal tabs |
-| 020 | Tags tab | Tag groups with expand |
-| 021 | Rename | notes → tibbits everywhere |
-| 022 | Line annotation | data-line on `<li>` in rendered HTML |
-| 023 | Line edit | Hover icons + inline edit input |
-| 024 | Insert below | Add new list item inline |
-| 025 | v3 integration test | Full automated test |
+### Design notes
 
-Neovide wrapper is standalone (scripts/), no experiment needed.
+**Why goroutine per wiki (not shared mutex)?**
+- Symlink delegation = "send message to another wiki's channel"
+  — natural in the goroutine model, awkward with shared locks
+- No possibility of deadlock between wikis
+- Watcher events and HTTP requests serialized — no races
+- Single user, 3s poll — zero contention concern
 
-### Open questions
+**Why not a database?**
+- rg already handles search (fast, no index maintenance)
+- .md files are the source of truth (editable with nvim, git-friendly)
+- RCS provides version history on the filesystem
+- Adding SQLite would mean syncing two sources of truth
 
-- Rename timing: do the big rename (exp-021) before or after
-  line-edit? Before keeps the API consistent; after avoids
-  merge pain if we're iterating. Suggest: before.
-- PATCH endpoint: should it use line numbers (fragile if file
-  changes between render and edit) or content matching? Line
-  numbers are simpler; re-render on conflict handles staleness.
+**Cache sizing for Pi Zero W:**
+- 50K notes × 200B metadata = 10MB (always in memory)
+- 200 cached full notes × 5KB avg = 1MB (LRU)
+- Total: ~11MB — trivial even on 512MB
