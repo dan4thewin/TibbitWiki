@@ -3,7 +3,7 @@ tibbitwiki
 *.exe
 
 # Test/coverage
-cover.out
+*.out
 coverage.html
 *.test
 
@@ -21,4 +21,3 @@ output/
 # OS
 .DS_Store
 Thumbs.db
-cover_*.out
