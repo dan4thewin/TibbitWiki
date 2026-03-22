@@ -28,6 +28,7 @@ var md = goldmark.New(
 		),
 	),
 	goldmark.WithRendererOptions(
+		html.WithUnsafe(),
 		renderer.WithNodeRenderers(
 			util.Prioritized(&lineAnnotator{}, 200),
 		),
