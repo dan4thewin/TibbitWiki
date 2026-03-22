@@ -237,7 +237,7 @@ type rgText struct {
 }
 
 func rgSearch(dir, pattern string, caseInsensitive bool) ([]Result, error) {
-	args := []string{"--json", "--glob", "*.md"}
+	args := []string{"--json"}
 	if caseInsensitive {
 		args = append(args, "-i")
 	}
@@ -279,19 +279,32 @@ func parseRgJSON(out []byte) []Result {
 		if json.Unmarshal(m.Data, &d) != nil {
 			continue
 		}
-		filesSeen[d.Path.Text] = true
+		filePath := normalizeHitPath(d.Path.Text)
+		filesSeen[filePath] = true
 		text := strings.TrimRight(d.Lines.Text, "\n")
 		// Skip header lines (tags:, title:, etc.) — show body matches only.
 		if isHeaderLine(text) {
 			continue
 		}
-		byFile[d.Path.Text] = append(byFile[d.Path.Text], text)
+		byFile[filePath] = append(byFile[filePath], text)
 	}
 	results := make([]Result, 0, len(filesSeen))
 	for f := range filesSeen {
 		results = append(results, Result{File: f, Lines: byFile[f]})
 	}
 	return results
+}
+
+// normalizeHitPath maps attachment hits back to the parent note.
+// e.g. /path/GoTesting/spec.txt → /path/GoTesting.md
+// Regular .md files pass through unchanged.
+func normalizeHitPath(path string) string {
+	if strings.HasSuffix(path, ".md") {
+		return path
+	}
+	// Attachment in a subdir: dir/NoteTitle/file.txt → dir/NoteTitle.md
+	parent := filepath.Dir(path)
+	return parent + ".md"
 }
 
 // isHeaderLine returns true for .md metadata lines we don't want in results.
