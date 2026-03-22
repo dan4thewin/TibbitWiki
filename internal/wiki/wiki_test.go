@@ -19,7 +19,7 @@ import (
 func testWiki(t *testing.T) *Wiki {
 	t.Helper()
 	dir := t.TempDir()
-	wk := New("test", dir, nil)
+	wk := New("test", dir, nil, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	return wk
@@ -37,13 +37,14 @@ func writeNote(t *testing.T, wk *Wiki, title, text string) string {
 		t.Fatal(err)
 	}
 	wk.Store().PutWithPath(td, path)
+	wk.SeedBody(title, text)
 	return path
 }
 
 // --- Event loop tests ---
 
 func TestWikiStartStop(t *testing.T) {
-	wk := New("test", t.TempDir(), nil)
+	wk := New("test", t.TempDir(), nil, 100)
 	wk.Start()
 	wk.Stop()
 }
@@ -186,12 +187,13 @@ func TestWikiPutSkinny(t *testing.T) {
 		"_is_skinny": "yes",
 	}, "")
 
-	got := wk.Store().Get("Skinny")
-	if got.Text() != "original body" {
-		t.Errorf("text = %q, want %q", got.Text(), "original body")
+	text := wk.Get("Skinny", false)["text"]
+	if text != "original body" {
+		t.Errorf("text = %q, want %q", text, "original body")
 	}
-	if got.Fields["tags"] != "Updated" {
-		t.Errorf("tags = %q, want %q", got.Fields["tags"], "Updated")
+	meta := wk.Store().Get("Skinny")
+	if meta.Fields["tags"] != "Updated" {
+		t.Errorf("tags = %q, want %q", meta.Fields["tags"], "Updated")
 	}
 }
 
@@ -246,9 +248,9 @@ func TestWikiLineEdit(t *testing.T) {
 	if html == "" {
 		t.Error("expected rendered html")
 	}
-	got := wk.Store().Get("Edit")
-	if !contains(got.Text(), "replaced") {
-		t.Errorf("text = %q, should contain 'replaced'", got.Text())
+	text := wk.Get("Edit", false)["text"]
+	if !contains(text, "replaced") {
+		t.Errorf("text = %q, should contain 'replaced'", text)
 	}
 }
 
@@ -263,9 +265,9 @@ func TestWikiLineEditInsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := wk.Store().Get("Ins")
-	if !contains(got.Text(), "inserted") {
-		t.Errorf("text = %q, should contain 'inserted'", got.Text())
+	text := wk.Get("Ins", false)["text"]
+	if !contains(text, "inserted") {
+		t.Errorf("text = %q, should contain 'inserted'", text)
 	}
 }
 
@@ -330,12 +332,11 @@ func TestWikiReloadAddsNote(t *testing.T) {
 	wk.Reload(path)
 	wk.do(func() {}) // drain the queue
 
-	got := wk.Store().Get("Reloaded")
-	if got == nil {
+	if wk.Store().Get("Reloaded") == nil {
 		t.Fatal("expected note in store after reload")
 	}
-	if got.Text() != "Body here." {
-		t.Errorf("text = %q", got.Text())
+	if text := wk.Get("Reloaded", false)["text"]; text != "Body here." {
+		t.Errorf("text = %q", text)
 	}
 }
 
@@ -492,27 +493,36 @@ func TestAtimeFunction(t *testing.T) {
 
 // --- Helper tests ---
 
-func TestFieldsEqualDifferentLen(t *testing.T) {
-	a := map[string]string{"k": "v"}
-	b := map[string]string{"k": "v", "k2": "v2"}
-	if fieldsEqual(a, b) {
+func TestMetaFieldsEqualDifferentLen(t *testing.T) {
+	stored := map[string]string{"k": "v"}
+	parsed := map[string]string{"k": "v", "k2": "v2"}
+	if metaFieldsEqual(stored, parsed) {
 		t.Error("expected false for different-length maps")
 	}
 }
 
-func TestFieldsEqualDifferentValues(t *testing.T) {
-	a := map[string]string{"k": "v1"}
-	b := map[string]string{"k": "v2"}
-	if fieldsEqual(a, b) {
+func TestMetaFieldsEqualDifferentValues(t *testing.T) {
+	stored := map[string]string{"k": "v1"}
+	parsed := map[string]string{"k": "v2"}
+	if metaFieldsEqual(stored, parsed) {
 		t.Error("expected false for different values")
 	}
 }
 
-func TestFieldsEqualIdentical(t *testing.T) {
-	a := map[string]string{"k": "v"}
-	b := map[string]string{"k": "v"}
-	if !fieldsEqual(a, b) {
+func TestMetaFieldsEqualIdentical(t *testing.T) {
+	stored := map[string]string{"k": "v"}
+	parsed := map[string]string{"k": "v"}
+	if !metaFieldsEqual(stored, parsed) {
 		t.Error("expected true for identical maps")
+	}
+}
+
+func TestMetaFieldsEqualIgnoresText(t *testing.T) {
+	// stored has no text (stripped by store), parsed has text
+	stored := map[string]string{"title": "A", "tags": "x"}
+	parsed := map[string]string{"title": "A", "tags": "x", "text": "body"}
+	if !metaFieldsEqual(stored, parsed) {
+		t.Error("expected true: text field should be ignored")
 	}
 }
 
@@ -565,8 +575,8 @@ func TestSpliceFileLineReadError(t *testing.T) {
 // --- Hub tests ---
 
 func TestNewHub(t *testing.T) {
-	w1 := New("work", t.TempDir(), nil)
-	w2 := New("personal", t.TempDir(), nil)
+	w1 := New("work", t.TempDir(), nil, 100)
+	w2 := New("personal", t.TempDir(), nil, 100)
 	hub := NewHub(map[string]*Wiki{"work": w1, "personal": w2})
 
 	if hub.Wiki("work") != w1 {
@@ -585,7 +595,7 @@ func TestNewHub(t *testing.T) {
 }
 
 func TestNewHubSingle(t *testing.T) {
-	wk := New("solo", t.TempDir(), nil)
+	wk := New("solo", t.TempDir(), nil, 100)
 	hub := NewHub(map[string]*Wiki{"solo": wk})
 
 	if hub.Wiki("solo") != wk {
@@ -601,7 +611,7 @@ func TestNewHubSingle(t *testing.T) {
 
 func TestPersistNoteNoDir(t *testing.T) {
 	// Wiki with empty noteDir — Put should still work (store-only).
-	wk := New("test", "", nil)
+	wk := New("test", "", nil, 100)
 	wk.Start()
 	defer wk.Stop()
 
@@ -652,7 +662,7 @@ func TestWikiDeleteRemoveError(t *testing.T) {
 // TestWikiSearchEmptyDir verifies search returns error when
 // noteDir is empty.
 func TestWikiSearchEmptyDir(t *testing.T) {
-	wk := New("test", "", nil)
+	wk := New("test", "", nil, 100)
 	wk.Start()
 	defer wk.Stop()
 
@@ -816,7 +826,7 @@ func TestWikiLineEditParseError(t *testing.T) {
 func TestWikiEditExternalSuccess(t *testing.T) {
 	dir := t.TempDir()
 	ed := editor.New("echo %s")
-	wk := New("test", dir, ed)
+	wk := New("test", dir, ed, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
 
@@ -871,5 +881,107 @@ func TestWikiPutRCSError(t *testing.T) {
 
 	if wk.Store().Get("RCSErr") == nil {
 		t.Error("note should be in store despite RCS error")
+	}
+}
+
+// --- Body cache tests ---
+
+// TestFetchBodyCacheMiss verifies fetchBody reads from disk
+// when the body is not in the LRU cache.
+func TestFetchBodyCacheMiss(t *testing.T) {
+	wk := testWiki(t)
+	// Write file and store metadata, but do NOT seed body cache.
+	td := &tid.Note{Fields: map[string]string{
+		"title": "Disk",
+		"text":  "from disk",
+	}}
+	path := filepath.Join(wk.NoteDir(), "Disk.md")
+	os.WriteFile(path, tid.Serialize(td), 0644)
+	wk.Store().PutWithPath(td, path)
+
+	// Get should fetch body from disk on cache miss.
+	got := wk.Get("Disk", false)
+	if got["text"] != "from disk" {
+		t.Errorf("text = %q, want %q", got["text"], "from disk")
+	}
+}
+
+// TestFetchBodyNoFilePath verifies fetchBody returns "" when
+// the note has no file path (in-memory only, body evicted).
+func TestFetchBodyNoFilePath(t *testing.T) {
+	wk := testWiki(t)
+	// Put metadata only, no file path, no body cache.
+	wk.Store().Put(&tid.Note{Fields: map[string]string{
+		"title": "NoPath",
+	}})
+
+	got := wk.Get("NoPath", false)
+	if got["text"] != "" {
+		t.Errorf("text = %q, want empty", got["text"])
+	}
+}
+
+// TestFetchBodyReadError verifies fetchBody returns "" when the
+// file cannot be read.
+func TestFetchBodyReadError(t *testing.T) {
+	wk := testWiki(t)
+	path := filepath.Join(wk.NoteDir(), "Unread.md")
+	os.WriteFile(path, []byte("title: Unread\n\nbody"), 0644)
+	wk.Store().PutWithPath(&tid.Note{Fields: map[string]string{
+		"title": "Unread",
+	}}, path)
+	os.Chmod(path, 0000)
+	t.Cleanup(func() { os.Chmod(path, 0644) })
+
+	got := wk.Get("Unread", false)
+	if got["text"] != "" {
+		t.Errorf("text = %q, want empty on read error", got["text"])
+	}
+}
+
+// TestFetchBodyParseError verifies fetchBody returns "" when the
+// file has invalid format.
+func TestFetchBodyParseError(t *testing.T) {
+	wk := testWiki(t)
+	path := filepath.Join(wk.NoteDir(), "BadFmt.md")
+	os.WriteFile(path, []byte("no valid headers here"), 0644)
+	wk.Store().PutWithPath(&tid.Note{Fields: map[string]string{
+		"title": "BadFmt",
+	}}, path)
+
+	got := wk.Get("BadFmt", false)
+	if got["text"] != "" {
+		t.Errorf("text = %q, want empty on parse error", got["text"])
+	}
+}
+
+// TestBodyCacheEviction verifies that LRU eviction works: when
+// the cache is full, the oldest entry is evicted.
+func TestBodyCacheEviction(t *testing.T) {
+	dir := t.TempDir()
+	// Create a wiki with cache size 2.
+	wk := New("test", dir, nil, 2)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error { return nil })
+	defer patches.Reset()
+
+	// Put 3 notes — first one should be evicted from cache.
+	for i, name := range []string{"A", "B", "C"} {
+		wk.Put(name, map[string]string{
+			"title": name,
+			"text":  fmt.Sprintf("body%d", i),
+		}, "")
+	}
+
+	// A should be evicted, B and C should be cached.
+	// A's file is on disk, so fetchBody can reload it.
+	gotA := wk.Get("A", false)
+	if gotA["text"] != "body0" {
+		t.Errorf("A text = %q, want %q (should reload from disk)", gotA["text"], "body0")
+	}
+	gotC := wk.Get("C", false)
+	if gotC["text"] != "body2" {
+		t.Errorf("C text = %q, want %q", gotC["text"], "body2")
 	}
 }

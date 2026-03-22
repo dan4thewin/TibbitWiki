@@ -13,9 +13,15 @@ import (
 	"github.com/dan4thewin/tibbitwiki/internal/tid"
 )
 
+// BodySeeder populates the body cache during loading.
+type BodySeeder interface {
+	SeedBody(title, text string)
+}
+
 // Load reads all .md files from dir and populates the store.
+// If seeder is non-nil, note bodies are also cached.
 // Returns the number of notes loaded.
-func Load(dir string, s *store.Store) (int, error) {
+func Load(dir string, s *store.Store, seeder BodySeeder) (int, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return 0, fmt.Errorf("reading notes directory: %w", err)
@@ -44,6 +50,9 @@ func Load(dir string, s *store.Store) (int, error) {
 		}
 
 		s.PutWithPath(td, path)
+		if seeder != nil {
+			seeder.SeedBody(td.Title(), td.Text())
+		}
 		count++
 	}
 

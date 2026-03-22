@@ -21,6 +21,9 @@ func TestDefaults(t *testing.T) {
 	if cfg.PollInterval != 3*time.Second {
 		t.Errorf("PollInterval = %v, want %v", cfg.PollInterval, 3*time.Second)
 	}
+	if cfg.CacheSize != 200 {
+		t.Errorf("CacheSize = %d, want 200", cfg.CacheSize)
+	}
 }
 
 // TestLoadFlags verifies that CLI flags override defaults.
@@ -46,6 +49,17 @@ func TestLoadFlags(t *testing.T) {
 	}
 	if cfg.PollInterval != 5*time.Second {
 		t.Errorf("PollInterval = %v, want %v", cfg.PollInterval, 5*time.Second)
+	}
+}
+
+// TestLoadCacheSizeFlag verifies that --cache-size overrides default.
+func TestLoadCacheSizeFlag(t *testing.T) {
+	cfg, err := Load([]string{"--cache-size", "500"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CacheSize != 500 {
+		t.Errorf("CacheSize = %d, want 500", cfg.CacheSize)
 	}
 }
 

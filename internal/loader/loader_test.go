@@ -21,7 +21,7 @@ func TestLoadValidDirectory(t *testing.T) {
 	writeFile(t, dir, "notes.txt", "not a note")
 
 	s := store.New()
-	n, err := Load(dir, s)
+	n, err := Load(dir, s, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestLoadSkipsMalformed(t *testing.T) {
 	writeFile(t, dir, "Bad.md", "no title here\n\nOops.")
 
 	s := store.New()
-	n, err := Load(dir, s)
+	n, err := Load(dir, s, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestLoadSystemNote(t *testing.T) {
 	writeFile(t, dir, "$__config_Test.md", "title: $:/config/Test\n\nvalue")
 
 	s := store.New()
-	n, err := Load(dir, s)
+	n, err := Load(dir, s, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestLoadSystemNote(t *testing.T) {
 func TestLoadEmptyDirectory(t *testing.T) {
 	dir := t.TempDir()
 	s := store.New()
-	n, err := Load(dir, s)
+	n, err := Load(dir, s, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestLoadEmptyDirectory(t *testing.T) {
 // an error.
 func TestLoadBadDirectory(t *testing.T) {
 	s := store.New()
-	_, err := Load("/no/such/directory", s)
+	_, err := Load("/no/such/directory", s, nil)
 	if err == nil {
 		t.Fatal("expected error for bad directory, got nil")
 	}
@@ -111,7 +111,7 @@ func TestLoadSkipsSubdirectories(t *testing.T) {
 	os.Mkdir(filepath.Join(dir, "subdir"), 0755)
 
 	s := store.New()
-	n, err := Load(dir, s)
+	n, err := Load(dir, s, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestLoadSkipsUnreadableFile(t *testing.T) {
 	t.Cleanup(func() { os.Chmod(unreadable, 0644) })
 
 	s := store.New()
-	n, err := Load(dir, s)
+	n, err := Load(dir, s, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -152,6 +152,30 @@ func TestLoadSkipsUnreadableFile(t *testing.T) {
 		t.Error("Unreadable should have been skipped")
 	}
 }
+
+// TestLoadWithSeeder verifies that the body seeder callback is
+// invoked for each loaded note.
+func TestLoadWithSeeder(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "Note.md", "title: Note\n\nBody text.")
+
+	s := store.New()
+	seeded := make(map[string]string)
+	n, err := Load(dir, s, &testSeeder{bodies: seeded})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("loaded %d, want 1", n)
+	}
+	if seeded["Note"] != "Body text." {
+		t.Errorf("seeded body = %q, want %q", seeded["Note"], "Body text.")
+	}
+}
+
+type testSeeder struct{ bodies map[string]string }
+
+func (s *testSeeder) SeedBody(title, text string) { s.bodies[title] = text }
 
 func writeFile(t *testing.T, dir, name, content string) {
 	t.Helper()

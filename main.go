@@ -30,7 +30,7 @@ func main() {
 		log.Printf("editor: %s", cfg.EditorCmd)
 	}
 
-	wikis := discoverWikis(cfg.WikiPath, ed)
+	wikis := discoverWikis(cfg.WikiPath, ed, cfg.CacheSize)
 	if len(wikis) == 0 {
 		log.Fatalf("no wikis found in %s (need subdirs with .md files)", cfg.WikiPath)
 	}
@@ -46,7 +46,7 @@ func main() {
 
 // discoverWikis scans dir for subdirs containing .md files and
 // creates a Wiki with loader and watcher for each.
-func discoverWikis(dir string, ed *editor.Editor) map[string]*wiki.Wiki {
+func discoverWikis(dir string, ed *editor.Editor, cacheSize int) map[string]*wiki.Wiki {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		log.Fatalf("reading wiki path %s: %v", dir, err)
@@ -63,8 +63,8 @@ func discoverWikis(dir string, ed *editor.Editor) map[string]*wiki.Wiki {
 			continue
 		}
 		name := entry.Name()
-		wk := wiki.New(name, subdir, ed)
-		n, err := loader.Load(subdir, wk.Store())
+		wk := wiki.New(name, subdir, ed, cacheSize)
+		n, err := loader.Load(subdir, wk.Store(), wk)
 		if err != nil {
 			log.Fatalf("wiki %s: loading: %v", name, err)
 		}

@@ -18,6 +18,7 @@ type Config struct {
 	PollInterval time.Duration `yaml:"poll_interval"`
 	TWCorePath   string        `yaml:"tw_core_path"`
 	IndexHTML    string        `yaml:"index_html"`
+	CacheSize    int           `yaml:"cache_size"`
 }
 
 // Defaults returns a Config with sensible default values.
@@ -29,6 +30,7 @@ func Defaults() Config {
 		PollInterval: 3 * time.Second,
 		TWCorePath:   "",
 		IndexHTML:    "",
+		CacheSize:    200,
 	}
 }
 
@@ -46,6 +48,7 @@ func Load(args []string) (Config, error) {
 	pollInterval := fs.Duration("poll-interval", 0, "browser poll interval")
 	twCorePath := fs.String("tw-core-path", "", "path to TiddlyWiki core (legacy)")
 	indexHTML := fs.String("index-html", "", "path to pre-rendered index.html")
+	cacheSize := fs.Int("cache-size", 0, "LRU body cache size per wiki (default 200)")
 
 	if err := fs.Parse(args); err != nil {
 		return cfg, fmt.Errorf("parsing flags: %w", err)
@@ -80,6 +83,9 @@ func Load(args []string) (Config, error) {
 	}
 	if *indexHTML != "" {
 		cfg.IndexHTML = *indexHTML
+	}
+	if *cacheSize > 0 {
+		cfg.CacheSize = *cacheSize
 	}
 
 	return cfg, nil

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	lru "github.com/hashicorp/golang-lru/v2"
+
 	"github.com/dan4thewin/tibbitwiki/internal/editor"
 	"github.com/dan4thewin/tibbitwiki/internal/rcs"
 	"github.com/dan4thewin/tibbitwiki/internal/render"
@@ -31,17 +33,21 @@ type Wiki struct {
 	noteDir string
 	store   *store.Store
 	editor  *editor.Editor
+	body    *lru.Cache[string, string]
 	ops     chan func()
 	done    chan struct{}
 }
 
 // New creates a Wiki for the given directory.
-func New(name, noteDir string, ed *editor.Editor) *Wiki {
+// cacheSize sets the LRU body cache capacity (number of note bodies).
+func New(name, noteDir string, ed *editor.Editor, cacheSize int) *Wiki {
+	cache, _ := lru.New[string, string](cacheSize)
 	return &Wiki{
 		Name:    name,
 		noteDir: noteDir,
 		store:   store.New(),
 		editor:  ed,
+		body:    cache,
 		ops:     make(chan func(), 64),
 		done:    make(chan struct{}),
 	}
@@ -52,6 +58,9 @@ func (w *Wiki) Store() *store.Store { return w.store }
 
 // NoteDir returns the notes directory path.
 func (w *Wiki) NoteDir() string { return w.noteDir }
+
+// SeedBody populates the body cache for a title (test/loader use).
+func (w *Wiki) SeedBody(title, text string) { w.body.Add(title, text) }
 
 // Start launches the event loop goroutine.
 func (w *Wiki) Start() { go w.loop() }
@@ -81,6 +90,7 @@ func (w *Wiki) do(fn func()) {
 }
 
 // Get returns a note's fields with rendered HTML, or nil if not found.
+// Body is loaded from LRU cache or disk on miss.
 func (w *Wiki) Get(title string, renderPlain bool) map[string]string {
 	var result map[string]string
 	w.do(func() {
@@ -91,12 +101,14 @@ func (w *Wiki) Get(title string, renderPlain bool) map[string]string {
 		if fp := w.store.FilePath(title); fp != "" {
 			touchAtime(fp)
 		}
-		result = make(map[string]string, len(td.Fields)+2)
+		result = make(map[string]string, len(td.Fields)+3)
 		for k, v := range td.Fields {
 			result[k] = v
 		}
+		text := w.fetchBody(title)
+		result["text"] = text
 		result["revision"] = fmt.Sprintf("%d", w.store.Revision(title))
-		if text := result["text"]; text != "" {
+		if text != "" {
 			if renderPlain {
 				result["html"] = render.ToPlainHTML(text)
 			} else {
@@ -139,6 +151,7 @@ func (w *Wiki) Delete(title string) {
 			}
 		}
 		w.store.Delete(title)
+		w.body.Remove(title)
 	})
 }
 
@@ -232,8 +245,10 @@ func (w *Wiki) LineEdit(title string, line int, text string, insert bool) (strin
 			return
 		}
 		td.Fields["modified"] = isoNow()
+		bodyText := td.Text()
+		w.body.Add(title, bodyText)
 		w.store.PutWithPath(td, fp)
-		html = render.ToHTML(td.Text())
+		html = render.ToHTML(bodyText)
 		rev = w.store.Revision(title)
 	})
 	return html, rev, err
@@ -284,14 +299,13 @@ func (w *Wiki) applySkinny(title string, f map[string]string) {
 		return
 	}
 	delete(f, "_is_skinny")
-	if existing := w.store.Get(title); existing != nil {
-		if t := existing.Text(); t != "" {
-			f["text"] = t
-		}
+	if text := w.fetchBody(title); text != "" {
+		f["text"] = text
 	}
 }
 
 func (w *Wiki) persistNote(td *tid.Note, title string) {
+	w.body.Add(title, td.Text())
 	filePath := w.store.FilePath(title)
 	if filePath == "" && w.noteDir != "" {
 		filePath = filepath.Join(w.noteDir, tid.TitleToFilename(title))
@@ -314,6 +328,7 @@ func (w *Wiki) reloadFile(path string) {
 		if os.IsNotExist(err) {
 			title := tid.FilenameToTitle(filepath.Base(path))
 			w.store.Delete(title)
+			w.body.Remove(title)
 			log.Printf("wiki %s: removed %q", w.Name, title)
 			return
 		}
@@ -326,15 +341,45 @@ func (w *Wiki) reloadFile(path string) {
 		return
 	}
 	if existing := w.store.Get(td.Title()); existing != nil {
-		if fieldsEqual(existing.Fields, td.Fields) {
-			return
+		// Store has metadata only; compare metadata fields.
+		if metaFieldsEqual(existing.Fields, td.Fields) {
+			// Metadata matches — check if cached body also matches.
+			if cached, ok := w.body.Get(td.Title()); ok && cached == td.Text() {
+				return
+			}
 		}
 	}
+	w.body.Add(td.Title(), td.Text())
 	w.store.PutWithPath(td, path)
 	log.Printf("wiki %s: reloaded %q", w.Name, td.Title())
 	if err := rcs.Checkin(path); err != nil {
 		log.Printf("wiki %s: rcs checkin %s: %v", w.Name, path, err)
 	}
+}
+
+// fetchBody returns the body text for a note, checking the LRU
+// cache first and falling back to a disk read on miss.
+func (w *Wiki) fetchBody(title string) string {
+	if text, ok := w.body.Get(title); ok {
+		return text
+	}
+	fp := w.store.FilePath(title)
+	if fp == "" {
+		return ""
+	}
+	data, err := os.ReadFile(fp)
+	if err != nil {
+		log.Printf("wiki %s: reading body %q: %v", w.Name, title, err)
+		return ""
+	}
+	td, err := tid.Parse(data)
+	if err != nil {
+		log.Printf("wiki %s: parsing body %q: %v", w.Name, title, err)
+		return ""
+	}
+	text := td.Text()
+	w.body.Add(title, text)
+	return text
 }
 
 func touchAtime(path string) {
@@ -353,12 +398,20 @@ func fileAtime(path string) string {
 	return atime(info).UTC().Format(time.RFC3339)
 }
 
-func fieldsEqual(a, b map[string]string) bool {
-	if len(a) != len(b) {
+// metaFieldsEqual compares metadata fields (everything except text).
+// stored has no text (stripped by store); parsed may have text.
+func metaFieldsEqual(stored, parsed map[string]string) bool {
+	parsedMeta := 0
+	for k := range parsed {
+		if k != "text" {
+			parsedMeta++
+		}
+	}
+	if len(stored) != parsedMeta {
 		return false
 	}
-	for k, v := range a {
-		if b[k] != v {
+	for k, v := range stored {
+		if parsed[k] != v {
 			return false
 		}
 	}

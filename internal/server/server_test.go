@@ -29,7 +29,7 @@ func newTestServer(t *testing.T) (*Server, *wiki.Wiki) {
 	t.Helper()
 	dir := t.TempDir()
 	ed := editor.New("echo %s")
-	wk := wiki.New("test", dir, ed)
+	wk := wiki.New("test", dir, ed, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
 
@@ -43,6 +43,7 @@ func newTestServer(t *testing.T) (*Server, *wiki.Wiki) {
 	path := filepath.Join(dir, "Hello.md")
 	os.WriteFile(path, tid.Serialize(td), 0644)
 	wk.Store().PutWithPath(td, path)
+	wk.SeedBody("Hello", "Hello world.")
 
 	// Create a temp index.html.
 	f, err := os.CreateTemp("", "index-*.html")
@@ -100,7 +101,7 @@ func TestHandleIndex(t *testing.T) {
 // TestHandleIndexNotConfigured verifies that GET / returns 500 if
 // no index.html is configured.
 func TestHandleIndexNotConfigured(t *testing.T) {
-	wk := wiki.New("test", t.TempDir(), nil)
+	wk := wiki.New("test", t.TempDir(), nil, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
@@ -320,12 +321,11 @@ func TestPutNote(t *testing.T) {
 	}
 
 	// Verify it's in the store.
-	got := wk.Store().Get("NewOne")
-	if got == nil {
+	if wk.Store().Get("NewOne") == nil {
 		t.Fatal("expected note in store")
 	}
-	if got.Text() != "New body." {
-		t.Errorf("text = %q, want %q", got.Text(), "New body.")
+	if text := wk.Get("NewOne", false)["text"]; text != "New body." {
+		t.Errorf("text = %q, want %q", text, "New body.")
 	}
 }
 
@@ -378,10 +378,10 @@ func TestPutNoteSkinny(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
 	}
-	got := wk.Store().Get("Hello")
-	if got.Text() != "Hello world." {
-		t.Errorf("text = %q, want %q (preserved)", got.Text(), "Hello world.")
+	if text := wk.Get("Hello", false)["text"]; text != "Hello world." {
+		t.Errorf("text = %q, want %q (preserved)", text, "Hello world.")
 	}
+	got := wk.Store().Get("Hello")
 	if got.Fields["tags"] != "Updated" {
 		t.Errorf("tags = %q, want %q", got.Fields["tags"], "Updated")
 	}
@@ -444,10 +444,10 @@ func TestHandleFaviconNotFound(t *testing.T) {
 // $:/favicon.ico note.
 func TestHandleFaviconExists(t *testing.T) {
 	srv, wk := newTestServer(t)
-	wk.Store().Put(&tid.Note{Fields: map[string]string{
+	wk.Put("$:/favicon.ico", map[string]string{
 		"title": "$:/favicon.ico",
 		"text":  "fake-icon-data",
-	}})
+	}, "")
 
 	req := httptest.NewRequest("GET", "/test/favicon.ico", nil)
 	w := httptest.NewRecorder()
@@ -493,7 +493,7 @@ func TestHandleEditExternalNoPath(t *testing.T) {
 // when no editor is configured.
 func TestHandleEditExternalNoEditor(t *testing.T) {
 	dir := t.TempDir()
-	wk := wiki.New("test", dir, nil)
+	wk := wiki.New("test", dir, nil, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	td := &tid.Note{Fields: map[string]string{"title": "X"}}
@@ -588,7 +588,7 @@ func TestPutNoteWithNestedFields(t *testing.T) {
 // note has no existing file path.
 func TestPutNoteNoFilePathNoDir(t *testing.T) {
 	// Create a wiki with no noteDir.
-	wk := wiki.New("test", "", nil)
+	wk := wiki.New("test", "", nil, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
@@ -603,12 +603,11 @@ func TestPutNoteNoFilePathNoDir(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
 	}
-	got := wk.Store().Get("NoFile")
-	if got == nil {
+	if wk.Store().Get("NoFile") == nil {
 		t.Fatal("expected note in store")
 	}
-	if got.Text() != "In-memory only." {
-		t.Errorf("text = %q, want %q", got.Text(), "In-memory only.")
+	if text := wk.Get("NoFile", false)["text"]; text != "In-memory only." {
+		t.Errorf("text = %q, want %q", text, "In-memory only.")
 	}
 	// Should have no file path since there is no noteDir.
 	if fp := wk.Store().FilePath("NoFile"); fp != "" {
@@ -653,7 +652,7 @@ func TestHandleEditExternalEditorFails(t *testing.T) {
 	dir := t.TempDir()
 	// Use a nonexistent binary so exec.Command.Start returns an error.
 	ed := editor.New("/nonexistent/editor %s")
-	wk := wiki.New("test", dir, ed)
+	wk := wiki.New("test", dir, ed, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
 
@@ -897,7 +896,7 @@ func TestHandleSearchEmptyQuery(t *testing.T) {
 // TestHandleSearchNoNoteDir verifies search returns 500 when
 // noteDir is not configured.
 func TestHandleSearchNoNoteDir(t *testing.T) {
-	wk := wiki.New("test", "", nil)
+	wk := wiki.New("test", "", nil, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
