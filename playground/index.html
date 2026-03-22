@@ -3,7 +3,6 @@
 <head>
 <meta charset="utf-8">
 <title>TibbitWiki Theme Playground</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <style>
 /* --- Playground chrome (not themed) --- */
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -57,7 +56,9 @@ html { font-family: system-ui, sans-serif; font-size: 14px; background: #111; co
 .tw .note-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .tw .tag-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 12px; font-size: 12px; cursor: pointer; font-weight: 500; }
 .tw .tag-pill:hover { filter: brightness(1.2); }
-.tw .tag-pill .tag-remove { font-size: 10px; opacity: 0; margin-left: 2px; cursor: pointer; }
+.tw svg { vertical-align: -.125em; }
+.tw .tag-pill .tag-remove { opacity: 0; margin-left: 2px; cursor: pointer; }
+.tw .tag-pill .tag-remove svg { width: 10px; height: 10px; }
 .tw .tag-pill:hover .tag-remove { opacity: 0.7; }
 .tw .tag-pill .tag-remove:hover { opacity: 1; }
 .tw .tag-add-btn { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 12px; font-size: 12px; cursor: pointer; background: var(--tw-button_bg); color: var(--tw-accent); border: 1px dashed var(--tw-border_light); }
@@ -100,6 +101,76 @@ html { font-family: system-ui, sans-serif; font-size: 14px; background: #111; co
 .tw .line-icons button:hover { opacity: 1; }
 .tw .line-edit-input { width: 100%; background: var(--tw-code_bg); border: 1px solid var(--tw-accent); border-radius: 3px; color: var(--tw-fg); font-family: inherit; font-size: inherit; padding: 2px 6px; outline: none; box-sizing: border-box; }
 
+/* Chroma syntax highlighting */
+.tw  .chroma { color: #abb2bf; background-color: #282c34; -webkit-text-size-adjust: none; }
+.tw  .chroma .lnlinks { outline: none; text-decoration: none; color: inherit }
+.tw  .chroma .lntd { vertical-align: top; padding: 0; margin: 0; border: 0; }
+.tw  .chroma .lntable { border-spacing: 0; padding: 0; margin: 0; border: 0; }
+.tw  .chroma .hl { background-color: #3d4148 }
+.tw  .chroma .lnt { white-space: pre; -webkit-user-select: none; user-select: none; margin-right: 0.4em; padding: 0 0.4em 0 0.4em;color: #55595f }
+.tw  .chroma .ln { white-space: pre; -webkit-user-select: none; user-select: none; margin-right: 0.4em; padding: 0 0.4em 0 0.4em;color: #55595f }
+.tw  .chroma .line { display: flex; }
+.tw  .chroma .k { color: #c678dd }
+.tw  .chroma .kc { color: #e5c07b }
+.tw  .chroma .kd { color: #c678dd }
+.tw  .chroma .kn { color: #c678dd }
+.tw  .chroma .kp { color: #c678dd }
+.tw  .chroma .kr { color: #c678dd }
+.tw  .chroma .kt { color: #e5c07b }
+.tw  .chroma .n { color: #e06c75 }
+.tw  .chroma .na { color: #e06c75 }
+.tw  .chroma .nc { color: #e5c07b }
+.tw  .chroma .no { color: #e06c75 }
+.tw  .chroma .nd { color: #61afef }
+.tw  .chroma .ni { color: #e06c75 }
+.tw  .chroma .ne { color: #e06c75 }
+.tw  .chroma .nl { color: #e06c75 }
+.tw  .chroma .nn { color: #e06c75 }
+.tw  .chroma .nx { color: #e06c75 }
+.tw  .chroma .py { color: #e06c75 }
+.tw  .chroma .nt { color: #e06c75 }
+.tw  .chroma .nb { color: #e5c07b }
+.tw  .chroma .bp { color: #e5c07b }
+.tw  .chroma .nv { color: #e06c75 }
+.tw  .chroma .vc { color: #e06c75 }
+.tw  .chroma .vg { color: #e06c75 }
+.tw  .chroma .vi { color: #e06c75 }
+.tw  .chroma .vm { color: #e06c75 }
+.tw  .chroma .nf { color: #61afef; font-weight: bold }
+.tw  .chroma .fm { color: #56b6c2; font-weight: bold }
+.tw  .chroma .s { color: #98c379 }
+.tw  .chroma .sa { color: #98c379 }
+.tw  .chroma .sb { color: #98c379 }
+.tw  .chroma .sc { color: #98c379 }
+.tw  .chroma .dl { color: #98c379 }
+.tw  .chroma .sd { color: #98c379 }
+.tw  .chroma .s2 { color: #98c379 }
+.tw  .chroma .se { color: #98c379 }
+.tw  .chroma .sh { color: #98c379 }
+.tw  .chroma .si { color: #98c379 }
+.tw  .chroma .sx { color: #98c379 }
+.tw  .chroma .sr { color: #98c379 }
+.tw  .chroma .s1 { color: #98c379 }
+.tw  .chroma .ss { color: #98c379 }
+.tw  .chroma .m { color: #d19a66 }
+.tw  .chroma .mb { color: #d19a66 }
+.tw  .chroma .mf { color: #d19a66 }
+.tw  .chroma .mh { color: #d19a66 }
+.tw  .chroma .mi { color: #d19a66 }
+.tw  .chroma .il { color: #d19a66 }
+.tw  .chroma .mo { color: #d19a66 }
+.tw  .chroma .o { color: #56b6c2 }
+.tw  .chroma .ow { color: #56b6c2 }
+.tw  .chroma .c { color: #7f848e }
+.tw  .chroma .ch { color: #7f848e }
+.tw  .chroma .cm { color: #7f848e }
+.tw  .chroma .c1 { color: #7f848e }
+.tw  .chroma .cs { color: #7f848e }
+.tw  .chroma .cp { color: #7f848e }
+.tw  .chroma .cpf { color: #7f848e }
+.tw  .chroma .gd { color: #e06c75 }
+.tw  .chroma .gi { color: #98c379; font-weight: bold }
+
 /* Playground overrides */
 .tw #search-bar { position: absolute; bottom: 0; left: 0; right: 0; border-radius: 0 0 8px 8px; display: flex; align-items: center; gap: 8px; }
 .tw #search-bar.active { position: absolute; }
@@ -129,28 +200,32 @@ html { font-family: system-ui, sans-serif; font-size: 14px; background: #111; co
 <div id="main">
   <h1>TibbitWiki</h1>
   <div id="top-bar">
-    <button><i class="bi bi-plus-lg"></i> New</button>
-    <button><i class="bi bi-journal-plus"></i> Journal</button>
-    <button title="Edit config"><i class="bi bi-gear"></i></button>
+    <button onclick="newNote()"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2"></path></svg> New</button>
+    <button onclick="newJournal()"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 5.5a.5.5 0 0 1 .5.5v1.5H10a.5.5 0 0 1 0 1H8.5V10a.5.5 0 0 1-1 0V8.5H6a.5.5 0 0 1 0-1h1.5V6a.5.5 0 0 1 .5-.5"></path><path d="M3 0h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-1h1v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v1H1V2a2 2 0 0 1 2-2"></path><path d="M1 5v-.5a.5.5 0 0 1 1 0V5h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1zm0 3v-.5a.5.5 0 0 1 1 0V8h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1zm0 3v-.5a.5.5 0 0 1 1 0v.5h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1z"></path></svg> Journal</button>
+    <button onclick="editConfig()" title="Edit config"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492M5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0"></path><path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115z"></path></svg></button>
   </div>
-  <div id="river"><div class="note" data-title="WikiSyntax" data-revision="1"><div class="note-header"><h2>WikiSyntax<span class="note-date">22 Mar 2026</span></h2><div class="note-toolbar"><button title="Edit in Neovim"><i class="bi bi-pencil"></i></button><button title="Close"><i class="bi bi-x-lg"></i></button></div></div><div class="note-tags"><span class="tag-pill" style="background: rgb(45, 61, 74); color: rgb(126, 184, 232);"><span>docs</span><i class="bi bi-x tag-remove" title="Remove tag"></i></span><span class="tag-pill" style="background: rgb(45, 74, 74); color: rgb(126, 232, 232);"><span>reference</span><i class="bi bi-x tag-remove" title="Remove tag"></i></span><span class="tag-pill" style="background: rgb(45, 74, 62); color: rgb(126, 232, 168);"><span>markup</span><i class="bi bi-x tag-remove" title="Remove tag"></i></span><span class="tag-add-btn" title="Add tag"><i class="bi bi-plus"></i></span></div><div class="note-body"><p><a href="#" class="wikiword missing" data-title="TibbitWiki">TibbitWiki</a> uses <a href="https://commonmark.org/">Markdown</a>  Links to other tiddlers use <a href="https://en.wikipedia.org/wiki/Camel_case">CamelCase</a> wikiwords. A link to <a href="#" class="wikiword missing" data-title="NonExistentPage">NonExistentPage</a> shows as missing.</p>
+  <div id="river"><div class="note" data-title="WikiSyntax" data-revision="1"><div class="note-header"><h2>WikiSyntax<span class="note-date">22 Mar 2026</span></h2><div class="note-toolbar"><button title="Edit in Neovim"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325"></path></svg></button><button title="Close"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8z"></path></svg></button></div></div><div class="note-tags"><span class="tag-pill" style="background: rgb(45, 61, 74); color: rgb(126, 184, 232);"><span>docs</span><span class="tag-remove" title="Remove tag"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708"></path></svg></span></span><span class="tag-pill" style="background: rgb(45, 74, 74); color: rgb(126, 232, 232);"><span>reference</span><span class="tag-remove" title="Remove tag"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708"></path></svg></span></span><span class="tag-pill" style="background: rgb(45, 74, 62); color: rgb(126, 232, 168);"><span>markup</span><span class="tag-remove" title="Remove tag"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708"></path></svg></span></span><span class="tag-add-btn" title="Add tag"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4"></path></svg></span></div><div class="note-body"><p><a href="#" class="wikiword missing" data-title="TibbitWiki">TibbitWiki</a> uses <a href="https://commonmark.org/">Markdown</a>  Links to other tiddlers use <a href="https://en.wikipedia.org/wiki/Camel_case">CamelCase</a> wikiwords. A link to <a href="#" class="wikiword missing" data-title="NonExistentPage">NonExistentPage</a> shows as missing.</p>
 <p>Inline code looks like <code>go test ./...</code> and blocks:</p>
 <pre class="chroma"><code><span class="line"><span class="cl"><span class="kd">func</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">
 </span></span></span><span class="line"><span class="cl"><span class="w">    </span><span class="nx">fmt</span><span class="p">.</span><span class="nf">Println</span><span class="p">(</span><span class="s">"hello <a href="#" class="wikiword missing" data-title="TibbitWiki">TibbitWiki</a>"</span><span class="p">)</span><span class="w">
 </span></span></span><span class="line"><span class="cl"><span class="p">}</span><span class="w">
-</span></span></span></code></pre><blockquote data-line="11"><span class="line-icons"><button title="Insert line below"><i class="bi bi-chevron-down"></i></button></span>
+</span></span></span></code></pre><blockquote data-line="11"><span class="line-icons"><button title="Insert line below"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" fill-rule="evenodd"><path d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708"></path></svg></button></span>
 <p>This is a blockquote — used for callouts and asides.</p>
 </blockquote>
-</div></div><div class="note" data-title="GoTesting" data-revision="1"><div class="note-header"><h2>GoTesting<span class="note-date">22 Mar 2026</span></h2><div class="note-toolbar"><button title="Edit in Neovim"><i class="bi bi-pencil"></i></button><button title="Close"><i class="bi bi-x-lg"></i></button></div></div><div class="note-tags"><span class="tag-pill" style="background: rgb(74, 61, 45); color: rgb(232, 197, 126);"><span>golang</span><i class="bi bi-x tag-remove" title="Remove tag"></i></span><span class="tag-pill" style="background: rgb(45, 74, 62); color: rgb(126, 232, 168);"><span>testing</span><i class="bi bi-x tag-remove" title="Remove tag"></i></span><span class="tag-add-btn" title="Add tag"><i class="bi bi-plus"></i></span></div><div class="note-body"><p>Run tests with <code>go test -gcflags=all=-l -count=1 ./....</code> Use <a href="https://github.com/agiledragon/gomonkey">GoMonkey</a> for mocking. See also <a href="#" class="wikiword missing" data-title="CoverageGuide">CoverageGuide</a>.</p>
-</div></div></div>
-</div><div id="sidebar">
+</div></div><div class="note" data-title="GoTesting" data-revision="1"><div class="note-header"><h2>GoTesting<span class="note-date">22 Mar 2026</span></h2><div class="note-toolbar"><button title="Edit in Neovim"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325"></path></svg></button><button title="Close"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8z"></path></svg></button></div></div><div class="note-tags"><span class="tag-pill" style="background: rgb(74, 61, 45); color: rgb(232, 197, 126);"><span>golang</span><span class="tag-remove" title="Remove tag"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708"></path></svg></span></span><span class="tag-pill" style="background: rgb(45, 74, 62); color: rgb(126, 232, 168);"><span>testing</span><span class="tag-remove" title="Remove tag"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708"></path></svg></span></span><span class="tag-add-btn" title="Add tag"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4"></path></svg></span></div><div class="note-body"><p>Run tests with <code>go test -gcflags=all=-l -count=1 ./....</code> Use <a href="https://github.com/agiledragon/gomonkey">GoMonkey</a> for mocking. See also <a href="#" class="wikiword missing" data-title="CoverageGuide">CoverageGuide</a>.</p>
+<!-- embed src="GoTesting/spec.pdf" type="application/pdf" width="100%" height="600px">
+
+NB. SIGBUS on <a href="#" class="wikiword missing" data-title="MacOS">MacOS</a> needs workaround
+--></div></div></div>
+</div>
+<div id="sidebar">
   <div id="tab-headers">
     <span class="tab active" data-tab="recent">Recent</span>
     <span class="tab" data-tab="journals">Journals</span>
     <span class="tab" data-tab="tags">Tags</span>
   </div>
   <div id="tab-recent" class="tab-panel active">
-    <ul id="recent-list"><li title="GoTesting">GoTesting</li><li title="WikiSyntax">WikiSyntax</li><li title="FooBar">FooBar</li><li title="ToDo">ToDo</li><li title="Space1999">Space1999</li><li title="HappyDays">HappyDays</li><li title="BookList">BookList</li></ul>
+    <ul id="recent-list"><li title="GoTesting">GoTesting</li><li title="WikiSyntax">WikiSyntax</li><li title="ToDo">ToDo</li><li title="Space1999">Space1999</li><li title="BookList">BookList</li><li title="HappyDays">HappyDays</li></ul>
   </div>
   <div id="tab-journals" class="tab-panel">
     <ul id="journal-list"><li title="GardenLog">GardenLog</li></ul>
@@ -158,7 +233,9 @@ html { font-family: system-ui, sans-serif; font-size: 14px; background: #111; co
   <div id="tab-tags" class="tab-panel">
     <div id="tag-groups"><div class="tag-group-header"><span class="tag-pill" style="background: rgb(74, 61, 45); color: rgb(232, 197, 126);">golang</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="GoTesting">GoTesting</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(45, 74, 62); color: rgb(126, 232, 168);">testing</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="GoTesting">GoTesting</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(45, 61, 74); color: rgb(126, 184, 232);">docs</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="WikiSyntax">WikiSyntax</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(45, 74, 74); color: rgb(126, 232, 232);">reference</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="WikiSyntax">WikiSyntax</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(45, 74, 62); color: rgb(126, 232, 168);">markup</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="WikiSyntax">WikiSyntax</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(74, 45, 61); color: rgb(232, 126, 174);">reading</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="BookList">BookList</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(74, 61, 45); color: rgb(232, 197, 126);">ping</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="BookList">BookList</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(45, 61, 74); color: rgb(126, 184, 232);">garden</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="GardenLog">GardenLog</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(61, 45, 74); color: rgb(196, 155, 235);">journal</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="GardenLog">GardenLog</li></ul></div><div class="tag-group-header"><span class="tag-pill" style="background: rgb(74, 74, 45); color: rgb(212, 212, 126);">tasks</span><span style="margin-left: 6px; opacity: 0.5; font-size: 12px;">(1)</span></div><div><ul><li title="ToDo">ToDo</li></ul></div></div>
   </div>
-</div><div id="search-bar" class="active">
+</div>
+
+<div id="search-bar" class="active">
   <label>/</label>
   <input id="search-input" type="text" placeholder="word !not #tag @title /regex/ m|regex|" autocomplete="off">
   <span class="hint">Enter=search  Esc=close</span>
@@ -176,15 +253,15 @@ const THEME = {
   colors: [
     ['bg',           '#1a1a2e', 'Page background'],
     ['fg',           '#e0e0e0', 'Main text'],
-    ['note_bg',      '#16213e', 'Note background'],
-    ['code_bg',      '#0d1117', 'Code background'],
+    ['note_bg',      '#16213e', 'Note card background'],
+    ['code_bg',      '#0d1117', 'Code/input backgrounds'],
     ['accent',       '#6cacee', 'Links, active tabs'],
     ['accent_hover', '#8ecaff', 'Hovered links'],
     ['danger',       '#e06060', 'Missing links, errors'],
-    ['button_bg',    '#2a2a4a', 'Button hover bg'],
-    ['border',       '#333333', 'Note outlines'],
-    ['border_light', '#444444', 'Input borders'],
-    ['muted',        '#666666', 'Dim text'],
+    ['button_bg',    '#2a2a4a', 'Button hover background'],
+    ['border',       '#333333', 'Note outlines, dividers'],
+    ['border_light', '#444444', 'Input borders, underlines'],
+    ['muted',        '#666666', 'Dim text, inactive tabs'],
     ['muted_light',  '#aaaaaa', 'Mid-tone text'],
   ],
   typography: [

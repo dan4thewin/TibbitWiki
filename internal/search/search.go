@@ -280,6 +280,9 @@ func parseRgJSON(out []byte) []Result {
 			continue
 		}
 		filePath := normalizeHitPath(d.Path.Text)
+		if filePath == "" {
+			continue
+		}
 		filesSeen[filePath] = true
 		text := strings.TrimRight(d.Lines.Text, "\n")
 		// Skip header lines (tags:, title:, etc.) — show body matches only.
@@ -298,12 +301,15 @@ func parseRgJSON(out []byte) []Result {
 // normalizeHitPath maps attachment hits back to the parent note.
 // e.g. /path/GoTesting/spec.txt → /path/GoTesting.md
 // Regular .md files pass through unchanged.
+// Top-level non-.md files (no subdir component) return "" — caller skips them.
 func normalizeHitPath(path string) string {
 	if strings.HasSuffix(path, ".md") {
 		return path
 	}
-	// Attachment in a subdir: dir/NoteTitle/file.txt → dir/NoteTitle.md
 	parent := filepath.Dir(path)
+	if parent == "." || parent == "/" {
+		return ""
+	}
 	return parent + ".md"
 }
 

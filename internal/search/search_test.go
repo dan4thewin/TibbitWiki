@@ -629,3 +629,40 @@ func TestParseRgJSONMalformedData(t *testing.T) {
 		t.Errorf("expected 0 results for malformed data, got %d", len(results))
 	}
 }
+
+// TestNormalizeHitPathMdPassthrough verifies .md files pass through.
+func TestNormalizeHitPathMdPassthrough(t *testing.T) {
+	got := normalizeHitPath("/wiki/GoTesting.md")
+	if got != "/wiki/GoTesting.md" {
+		t.Errorf("got %q, want /wiki/GoTesting.md", got)
+	}
+}
+
+// TestNormalizeHitPathSubdirAttachment maps subdir file to parent note.
+func TestNormalizeHitPathSubdirAttachment(t *testing.T) {
+	got := normalizeHitPath("/wiki/GoTesting/spec.txt")
+	if got != "/wiki/GoTesting.md" {
+		t.Errorf("got %q, want /wiki/GoTesting.md", got)
+	}
+}
+
+// TestNormalizeHitPathTopLevelNonMdDropped verifies top-level non-.md
+// files return empty string so the caller can skip them.
+func TestNormalizeHitPathTopLevelNonMdDropped(t *testing.T) {
+	for _, path := range []string{"config.yaml", "/config.yaml"} {
+		got := normalizeHitPath(path)
+		if got != "" {
+			t.Errorf("normalizeHitPath(%q) = %q, want empty", path, got)
+		}
+	}
+}
+
+// TestParseRgJSONSkipsTopLevelNonMd verifies that rg matches in
+// top-level non-.md files are dropped from results.
+func TestParseRgJSONSkipsTopLevelNonMd(t *testing.T) {
+	input := `{"type":"match","data":{"path":{"text":"config.yaml"},"lines":{"text":"theme: dark\n"}}}` + "\n"
+	results := parseRgJSON([]byte(input))
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for top-level non-.md hit, got %d", len(results))
+	}
+}

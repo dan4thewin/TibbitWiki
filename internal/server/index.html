@@ -3,12 +3,13 @@
 <head>
 <meta charset="utf-8">
 <title>TibbitWiki</title>
-<link rel="stylesheet" href="/theme.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="theme.css">
+
 <style>
 :root {
 }
 body { font-family: var(--tw-font_family); font-size: var(--tw-font_size); margin: 0; padding: 20px; display: flex; gap: 20px; background: var(--tw-bg); color: var(--tw-fg); }
+svg { vertical-align: -.125em; }
 h1 { margin-top: 0; color: var(--tw-fg); }
 #main { flex: 1; min-width: 0; }
 #sidebar { width: var(--tw-sidebar_width); flex-shrink: 0; }
@@ -42,7 +43,8 @@ h1 { margin-top: 0; color: var(--tw-fg); }
 .note-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .tag-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 12px; font-size: 12px; cursor: pointer; font-weight: 500; }
 .tag-pill:hover { filter: brightness(1.2); }
-.tag-pill .tag-remove { font-size: 10px; opacity: 0; margin-left: 2px; cursor: pointer; }
+.tag-pill .tag-remove { opacity: 0; margin-left: 2px; cursor: pointer; }
+.tag-pill .tag-remove svg { width: 10px; height: 10px; }
 .tag-pill:hover .tag-remove { opacity: 0.7; }
 .tag-pill .tag-remove:hover { opacity: 1; }
 .tag-add-btn { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 12px; font-size: 12px; cursor: pointer; background: var(--tw-button_bg); color: var(--tw-accent); border: 1px dashed var(--tw-border_light); }
@@ -91,9 +93,9 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
 <div id="main">
   <h1>TibbitWiki</h1>
   <div id="top-bar">
-    <button onclick="newNote()"><i class="bi bi-plus-lg"></i> New</button>
-    <button onclick="newJournal()"><i class="bi bi-journal-plus"></i> Journal</button>
-    <button onclick="editConfig()" title="Edit config"><i class="bi bi-gear"></i></button>
+    <button onclick="newNote()"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2"/></svg> New</button>
+    <button onclick="newJournal()"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 5.5a.5.5 0 0 1 .5.5v1.5H10a.5.5 0 0 1 0 1H8.5V10a.5.5 0 0 1-1 0V8.5H6a.5.5 0 0 1 0-1h1.5V6a.5.5 0 0 1 .5-.5"/><path d="M3 0h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-1h1v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v1H1V2a2 2 0 0 1 2-2"/><path d="M1 5v-.5a.5.5 0 0 1 1 0V5h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1zm0 3v-.5a.5.5 0 0 1 1 0V8h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1zm0 3v-.5a.5.5 0 0 1 1 0v.5h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1z"/></svg> Journal</button>
+    <button onclick="editConfig()" title="Edit config"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492M5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0"/><path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115z"/></svg></button>
   </div>
   <div id="river"></div>
 </div>
@@ -121,9 +123,20 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
 </div>
 
 <script>
+// Inline SVG icons (replace Bootstrap Icons font dependency).
+const S = (d, fr) => `<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"${fr ? ' fill-rule="evenodd"' : ''}>${d}</svg>`;
+const ICON = {
+  pencil: S('<path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325"/>'),
+  x: S('<path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708"/>'),
+  xLg: S('<path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8z"/>'),
+  plus: S('<path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4"/>'),
+  plusLg: S('<path d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2"/>', true),
+  gear: S('<path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492M5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0"/><path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115z"/>'),
+  journalPlus: S('<path d="M8 5.5a.5.5 0 0 1 .5.5v1.5H10a.5.5 0 0 1 0 1H8.5V10a.5.5 0 0 1-1 0V8.5H6a.5.5 0 0 1 0-1h1.5V6a.5.5 0 0 1 .5-.5"/><path d="M3 0h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-1h1v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v1H1V2a2 2 0 0 1 2-2"/><path d="M1 5v-.5a.5.5 0 0 1 1 0V5h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1zm0 3v-.5a.5.5 0 0 1 1 0V8h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1zm0 3v-.5a.5.5 0 0 1 1 0v.5h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1z"/>'),
+  chevronDown: S('<path d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708"/>', true),
+};
 // Derive wiki prefix from the URL path (e.g., "/work" from "/work/")
 const PREFIX = '/' + window.location.pathname.split('/').filter(Boolean)[0];
-document.querySelector('link[href="/theme.css"]').href = PREFIX + '/theme.css';
 document.title = 'TibbitWiki — ' + PREFIX.slice(1);
 
 let lastThemeRev = '';
@@ -218,14 +231,14 @@ function renderNote(t) {
   const toolbar = document.createElement('div');
   toolbar.className = 'note-toolbar';
   const editBtn = document.createElement('button');
-  editBtn.innerHTML = '<i class="bi bi-pencil"></i>';
+  editBtn.innerHTML = ICON.pencil;
   editBtn.title = 'Edit in Neovim';
   editBtn.onclick = () => {
     fetch(PREFIX + '/edit-external/' + encodeURIComponent(t.title), { method: 'POST' });
   };
   toolbar.appendChild(editBtn);
   const closeBtn = document.createElement('button');
-  closeBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+  closeBtn.innerHTML = ICON.xLg;
   closeBtn.title = 'Close';
   closeBtn.onclick = () => card.remove();
   toolbar.appendChild(closeBtn);
@@ -292,8 +305,9 @@ function buildTagPills(t) {
     label.textContent = tag;
     label.onclick = () => doSearch('#' + tag);
     pill.appendChild(label);
-    const rm = document.createElement('i');
-    rm.className = 'bi bi-x tag-remove';
+    const rm = document.createElement('span');
+    rm.className = 'tag-remove';
+    rm.innerHTML = ICON.x;
     rm.title = 'Remove tag';
     rm.onclick = (e) => { e.stopPropagation(); removeTag(t.title, tag); };
     pill.appendChild(rm);
@@ -301,7 +315,7 @@ function buildTagPills(t) {
   });
   const addBtn = document.createElement('span');
   addBtn.className = 'tag-add-btn';
-  addBtn.innerHTML = '<i class="bi bi-plus"></i>';
+  addBtn.innerHTML = ICON.plus;
   addBtn.title = 'Add tag';
   addBtn.onclick = () => startAddTag(tagDiv, t.title);
   tagDiv.appendChild(addBtn);
@@ -564,7 +578,7 @@ function doSearch(q) {
       const toolbar = document.createElement('div');
       toolbar.className = 'note-toolbar';
       const closeBtn = document.createElement('button');
-      closeBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+      closeBtn.innerHTML = ICON.xLg;
       closeBtn.title = 'Close';
       closeBtn.onclick = () => card.remove();
       toolbar.appendChild(closeBtn);
@@ -672,7 +686,7 @@ function injectLineIcons(container, noteTitle) {
     const icons = document.createElement('span');
     icons.className = 'line-icons';
     const insertBtn = document.createElement('button');
-    insertBtn.innerHTML = '<i class="bi bi-chevron-down"></i>';
+    insertBtn.innerHTML = ICON.chevronDown;
     insertBtn.title = 'Insert line below';
     insertBtn.onclick = (e) => { e.stopPropagation(); startLineEdit(el, noteTitle, true); };
     icons.appendChild(insertBtn);
