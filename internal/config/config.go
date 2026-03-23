@@ -17,8 +17,10 @@ import (
 //go:embed defaults.yaml
 var DefaultYAML []byte
 
-// Theme maps semantic names to CSS values (colors, fonts, sizes).
-type Theme map[string]string
+// Theme maps wiki names to their CSS property maps.
+// The "shared" key holds base values; other keys are wiki-specific
+// overrides that are merged on top of shared.
+type Theme map[string]map[string]string
 
 // Config holds all server configuration.
 type Config struct {
@@ -39,9 +41,39 @@ func Defaults() Config {
 	return cfg
 }
 
-// DefaultTheme returns the theme from the embedded defaults.
+// DefaultTheme returns the full nested theme from embedded defaults.
 func DefaultTheme() Theme {
 	return Defaults().Theme
+}
+
+// DefaultSharedTheme returns the "shared" section from embedded defaults.
+func DefaultSharedTheme() map[string]string {
+	return Defaults().Theme["shared"]
+}
+
+// MergedTheme returns the theme for a specific wiki: shared values
+// with any wiki-specific overrides applied on top.  Missing shared
+// keys are filled from embedded defaults.
+func MergedTheme(theme Theme, wikiName string) map[string]string {
+	defaults := DefaultSharedTheme()
+	shared := theme["shared"]
+	merged := make(map[string]string, len(defaults))
+
+	// Start with embedded defaults.
+	for k, v := range defaults {
+		merged[k] = v
+	}
+	// Override with config shared section.
+	for k, v := range shared {
+		merged[k] = v
+	}
+	// Override with wiki-specific section.
+	if wiki, ok := theme[wikiName]; ok {
+		for k, v := range wiki {
+			merged[k] = v
+		}
+	}
+	return merged
 }
 
 // cliFlags holds parsed CLI flag values for merging into Config.
@@ -120,14 +152,15 @@ func Load(args []string) (Config, error) {
 
 	f.applyTo(&cfg)
 
-	// Fill missing theme keys from embedded defaults.
-	defaults := Defaults().Theme
+	// Fill missing shared theme keys from embedded defaults.
 	if cfg.Theme == nil {
-		cfg.Theme = defaults
+		cfg.Theme = DefaultTheme()
+	} else if cfg.Theme["shared"] == nil {
+		cfg.Theme["shared"] = DefaultSharedTheme()
 	} else {
-		for k, v := range defaults {
-			if _, ok := cfg.Theme[k]; !ok {
-				cfg.Theme[k] = v
+		for k, v := range DefaultSharedTheme() {
+			if _, ok := cfg.Theme["shared"][k]; !ok {
+				cfg.Theme["shared"][k] = v
 			}
 		}
 	}

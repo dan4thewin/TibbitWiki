@@ -32,30 +32,30 @@ func wikiFrom(r *http.Request) *wiki.Wiki {
 
 // Server is the HTTP handler for the TibbitWiki API.
 type Server struct {
-	hub          *wiki.Hub
-	editor       *editor.Editor
-	themeRev     *atomic.Int64
-	pollMS       int
-	indexHTML    string
-	themeCSSPath string
-	configPath   string
-	restartCh    chan struct{}
-	mux          *http.ServeMux
+	hub        *wiki.Hub
+	editor     *editor.Editor
+	themeRev   *atomic.Int64
+	pollMS     int
+	indexHTML  string
+	wikiPath   string
+	configPath string
+	restartCh  chan struct{}
+	mux        *http.ServeMux
 }
 
 // New creates a Server backed by the given Hub.
-// themeRev is bumped externally when theme.css is regenerated.
-func New(hub *wiki.Hub, ed *editor.Editor, themeRev *atomic.Int64, pollMS int, indexHTML, themeCSSPath, configPath string) *Server {
+// themeRev is bumped externally when per-wiki CSS is regenerated.
+func New(hub *wiki.Hub, ed *editor.Editor, themeRev *atomic.Int64, pollMS int, indexHTML, wikiPath, configPath string) *Server {
 	srv := &Server{
-		hub:          hub,
-		editor:       ed,
-		themeRev:     themeRev,
-		pollMS:       pollMS,
-		indexHTML:    indexHTML,
-		themeCSSPath: themeCSSPath,
-		configPath:   configPath,
-		restartCh:    make(chan struct{}, 1),
-		mux:          http.NewServeMux(),
+		hub:        hub,
+		editor:     ed,
+		themeRev:   themeRev,
+		pollMS:     pollMS,
+		indexHTML:  indexHTML,
+		wikiPath:   wikiPath,
+		configPath: configPath,
+		restartCh:  make(chan struct{}, 1),
+		mux:        http.NewServeMux(),
 	}
 	srv.routes()
 	return srv
@@ -128,7 +128,9 @@ func (s *Server) handleWikiSelector(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleThemeCSS(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, s.themeCSSPath)
+	wk := wikiFrom(r)
+	cssPath := filepath.Join(s.wikiPath, wk.Name+".css")
+	http.ServeFile(w, r, cssPath)
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {

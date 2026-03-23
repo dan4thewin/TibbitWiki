@@ -7,28 +7,33 @@ editor_cmd: "neovide -- %s"
 poll_interval: 3s
 cache_size: 200
 
-# Theme applies live on save:
+# Theme applies live on save.
+# "shared" is the base for all wikis.  Add a section named after
+# any wiki subdirectory to override specific values for that wiki.
 theme:
-  # Colors
-  bg:           "#1a1a2e"       # Page background
-  fg:           "#e0e0e0"       # Main text
-  note_bg:      "#16213e"       # Note card background
-  code_bg:      "#0d1117"       # Code/input backgrounds
-  accent:       "#6cacee"       # Links, active tabs
-  accent_hover: "#8ecaff"       # Hovered links
-  danger:       "#e06060"       # Missing links, errors
-  button_bg:    "#2a2a4a"       # Button hover background
-  border:       "#333"          # Note outlines, dividers
-  border_light: "#444"          # Input borders, underlines
-  muted:        "#666"          # Dim text, inactive tabs
-  muted_light:  "#aaa"          # Mid-tone text
-  # Typography
-  font_family:  "-apple-system, BlinkMacSystemFont, sans-serif"  # Body font stack
-  font_size:    "16px"          # Base text size
-  code_font:    "SF Mono, Consolas, monospace"  # Monospace font
-  line_height:  "1.6"           # Body line spacing
-  # Layout
-  note_radius:    "6px"         # Card corner radius
-  sidebar_width:  "220px"       # Sidebar width
-  sidebar_limit:  "20"          # Notes before ellipsis
-  tag_limit:      "5"           # Tags per note
+  shared:
+    # Colors
+    bg:           "#1a1a2e"       # Page background
+    fg:           "#e0e0e0"       # Main text
+    note_bg:      "#16213e"       # Note card background
+    code_bg:      "#0d1117"       # Code/input backgrounds
+    accent:       "#6cacee"       # Links, active tabs
+    accent_hover: "#8ecaff"       # Hovered links
+    danger:       "#e06060"       # Missing links, errors
+    button_bg:    "#2a2a4a"       # Button hover background
+    border:       "#333"          # Note outlines, dividers
+    border_light: "#444"          # Input borders, underlines
+    muted:        "#666"          # Dim text, inactive tabs
+    muted_light:  "#aaa"          # Mid-tone text
+    # Typography
+    font_family:  "-apple-system, BlinkMacSystemFont, sans-serif"  # Body font stack
+    font_size:    "16px"          # Base text size
+    code_font:    "SF Mono, Consolas, monospace"  # Monospace font
+    line_height:  "1.6"           # Body line spacing
+    # Layout
+    note_radius:    "6px"         # Card corner radius
+    sidebar_width:  "220px"       # Sidebar width
+    sidebar_limit:  "20"          # Notes before ellipsis
+    tag_limit:      "5"           # Tags per note
+    # Identity
+    wiki_title:     "TibbitWiki"  # Displayed in header and browser tab

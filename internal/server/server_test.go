@@ -55,12 +55,12 @@ func newTestServer(t *testing.T) (*Server, *wiki.Wiki) {
 	f.WriteString("<html><body>TibbitWiki</body></html>")
 	f.Close()
 
-	// Write a theme.css file for the test.
-	themePath := filepath.Join(dir, "theme.css")
-	os.WriteFile(themePath, []byte(":root{} .chroma{}"), 0644)
+	// Write per-wiki CSS file for the test.
+	cssPath := filepath.Join(dir, "test.css")
+	os.WriteFile(cssPath, []byte(":root{} .chroma{}"), 0644)
 
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, ed, new(atomic.Int64), 3000, f.Name(), themePath, "")
+	srv := New(hub, ed, new(atomic.Int64), 3000, f.Name(), dir, "")
 	return srv, wk
 }
 

@@ -24,6 +24,14 @@ func TestDefaults(t *testing.T) {
 	if cfg.CacheSize != 200 {
 		t.Errorf("CacheSize = %d, want 200", cfg.CacheSize)
 	}
+	// Theme must have a "shared" section with wiki_title.
+	theme := DefaultTheme()
+	if theme["shared"] == nil {
+		t.Fatal("DefaultTheme missing shared section")
+	}
+	if theme["shared"]["wiki_title"] != "TibbitWiki" {
+		t.Errorf("wiki_title = %q, want %q", theme["shared"]["wiki_title"], "TibbitWiki")
+	}
 }
 
 // TestLoadFlags verifies that CLI flags override defaults.
@@ -182,26 +190,28 @@ func TestLoadNoArgs(t *testing.T) {
 }
 
 // TestLoadDefaultTheme verifies that Load with no args returns the
-// default theme with all expected keys.
+// default theme with all expected shared keys.
 func TestLoadDefaultTheme(t *testing.T) {
 	cfg, err := Load([]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := DefaultTheme()
+	expected := DefaultSharedTheme()
+	shared := cfg.Theme["shared"]
 	for k, v := range expected {
-		if cfg.Theme[k] != v {
-			t.Errorf("Theme[%q] = %q, want %q", k, cfg.Theme[k], v)
+		if shared[k] != v {
+			t.Errorf("Theme[shared][%q] = %q, want %q", k, shared[k], v)
 		}
 	}
 }
 
 // TestLoadYAMLTheme verifies that a theme section in YAML overrides
-// defaults, and missing keys are filled from defaults.
+// shared defaults, and missing keys are filled from defaults.
 func TestLoadYAMLTheme(t *testing.T) {
 	content := `theme:
-  bg: "#000000"
-  accent: "#ff0000"
+  shared:
+    bg: "#000000"
+    accent: "#ff0000"
 `
 	f, err := os.CreateTemp("", "tibbitwiki-*.yaml")
 	if err != nil {
@@ -215,20 +225,89 @@ func TestLoadYAMLTheme(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	shared := cfg.Theme["shared"]
 	// Overridden keys.
-	if cfg.Theme["bg"] != "#000000" {
-		t.Errorf("Theme[bg] = %q, want %q", cfg.Theme["bg"], "#000000")
+	if shared["bg"] != "#000000" {
+		t.Errorf("Theme[shared][bg] = %q, want %q", shared["bg"], "#000000")
 	}
-	if cfg.Theme["accent"] != "#ff0000" {
-		t.Errorf("Theme[accent] = %q, want %q", cfg.Theme["accent"], "#ff0000")
+	if shared["accent"] != "#ff0000" {
+		t.Errorf("Theme[shared][accent] = %q, want %q", shared["accent"], "#ff0000")
 	}
 	// Missing key should be filled from defaults.
-	defaults := DefaultTheme()
-	if cfg.Theme["fg"] != defaults["fg"] {
-		t.Errorf("Theme[fg] = %q, want default %q", cfg.Theme["fg"], defaults["fg"])
+	defaults := DefaultSharedTheme()
+	if shared["fg"] != defaults["fg"] {
+		t.Errorf("Theme[shared][fg] = %q, want default %q", shared["fg"], defaults["fg"])
 	}
-	if cfg.Theme["border"] != defaults["border"] {
-		t.Errorf("Theme[border] = %q, want default %q", cfg.Theme["border"], defaults["border"])
+	if shared["border"] != defaults["border"] {
+		t.Errorf("Theme[shared][border] = %q, want default %q", shared["border"], defaults["border"])
+	}
+}
+
+// TestMergedThemeSharedOnly verifies MergedTheme with no wiki overrides.
+func TestMergedThemeSharedOnly(t *testing.T) {
+	theme := Theme{
+		"shared": {"bg": "#111", "fg": "#eee"},
+	}
+	merged := MergedTheme(theme, "work")
+	// Should have the shared values overlaid on defaults.
+	if merged["bg"] != "#111" {
+		t.Errorf("bg = %q, want %q", merged["bg"], "#111")
+	}
+	if merged["fg"] != "#eee" {
+		t.Errorf("fg = %q, want %q", merged["fg"], "#eee")
+	}
+	// Missing keys filled from defaults.
+	defaults := DefaultSharedTheme()
+	if merged["accent"] != defaults["accent"] {
+		t.Errorf("accent = %q, want default %q", merged["accent"], defaults["accent"])
+	}
+}
+
+// TestMergedThemeWikiOverride verifies wiki-specific values override shared.
+func TestMergedThemeWikiOverride(t *testing.T) {
+	theme := Theme{
+		"shared": {"bg": "#111", "accent": "#aaa"},
+		"work":   {"accent": "#bbb", "wiki_title": "Work"},
+	}
+	merged := MergedTheme(theme, "work")
+	if merged["bg"] != "#111" {
+		t.Errorf("bg = %q, want shared %q", merged["bg"], "#111")
+	}
+	if merged["accent"] != "#bbb" {
+		t.Errorf("accent = %q, want wiki override %q", merged["accent"], "#bbb")
+	}
+	if merged["wiki_title"] != "Work" {
+		t.Errorf("wiki_title = %q, want %q", merged["wiki_title"], "Work")
+	}
+}
+
+// TestLoadYAMLThemeWikiOnly verifies that a config with wiki-specific
+// theme but no explicit shared section gets defaults filled in.
+func TestLoadYAMLThemeWikiOnly(t *testing.T) {
+	content := `theme:
+  work:
+    accent: "#00ff00"
+`
+	f, err := os.CreateTemp("", "tibbitwiki-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString(content)
+	f.Close()
+
+	cfg, err := Load([]string{"--config", f.Name()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Shared section should be filled from defaults.
+	defaults := DefaultSharedTheme()
+	if cfg.Theme["shared"]["bg"] != defaults["bg"] {
+		t.Errorf("shared bg = %q, want default %q", cfg.Theme["shared"]["bg"], defaults["bg"])
+	}
+	// Wiki override preserved.
+	if cfg.Theme["work"]["accent"] != "#00ff00" {
+		t.Errorf("work accent = %q, want %q", cfg.Theme["work"]["accent"], "#00ff00")
 	}
 }
 

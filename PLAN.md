@@ -259,3 +259,61 @@ All v5 items complete.
 - [x] Search covers all text files, maps subdir hits to parent note
 - [x] Fix normalizeHitPath bug (top-level non-.md files dropped)
 - [x] Fix theme CSS FOUC (relative URL, no JS rewrite)
+- [x] `scripts/vide` — generic headless nvim + neovide launcher
+- [x] `scripts/tw-start` — detached server launcher with logging
+
+---
+
+## v6: Per-Wiki Theming
+
+### Problem
+
+All wikis share one `theme.css`. No visual distinction between
+personal, work, etc. Wiki title is hardcoded to "TibbitWiki".
+
+### Approach
+
+`config.yaml` theme section becomes nested: `shared` base plus
+optional per-wiki overrides. Server merges shared + wiki-specific,
+writes `{wiki_path}/{wiki}.css` for each wiki. Client reads
+`--tw-wiki-title` from CSS custom property.
+
+### Config structure
+
+```yaml
+theme:
+  shared:
+    bg: "#1a1a2e"
+    wiki_title: "TibbitWiki"
+    # ... all 24 keys
+  personal:
+    accent: "#ff6b6b"
+    wiki_title: "Personal Notes"
+  work:
+    accent: "#4ecdc4"
+    wiki_title: "Work"
+```
+
+No backward compatibility — flat `theme:` is gone.
+
+### File layout
+
+```
+~/notes/                 ← wiki_path
+  config.yaml
+  personal.css           ← merged shared + personal overrides
+  work.css               ← merged shared (no overrides)
+  personal/*.md
+  work/*.md
+```
+
+CSS files at wiki_path level — invisible to rg (runs inside wiki subdirs).
+
+### Todos
+
+- [ ] Config: `Theme map[string]map[string]string`, nested defaults.yaml
+- [ ] Render: `MergeTheme(shared, override)` helper
+- [ ] main.go: per-wiki CSS generation + config watcher regeneration
+- [ ] Server: per-wiki CSS path resolution
+- [ ] Client: wiki title from `--tw-wiki-title` CSS property
+- [ ] defaults.yaml: restructured with `shared:` wrapper

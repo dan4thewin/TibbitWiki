@@ -60,23 +60,30 @@ func main() {
 		log.Fatalf("no wikis found in %s (need subdirs with .md files)", cfg.WikiPath)
 	}
 
-	// Generate theme.css in the wiki path directory.
-	themeCSSPath := filepath.Join(cfg.WikiPath, "theme.css")
-	if err := render.WriteThemeFile(cfg.Theme, themeCSSPath); err != nil {
-		log.Fatalf("writing theme.css: %v", err)
+	// Generate per-wiki theme CSS files in the wiki path directory.
+	for name := range wikis {
+		merged := config.MergedTheme(cfg.Theme, name)
+		cssPath := filepath.Join(cfg.WikiPath, name+".css")
+		if err := render.WriteThemeFile(merged, cssPath); err != nil {
+			log.Fatalf("writing %s: %v", cssPath, err)
+		}
+		log.Printf("theme: %s", cssPath)
 	}
-	log.Printf("theme: %s", themeCSSPath)
 
-	// Watch config.yaml for changes — regenerate theme.css on save.
+	// Watch config.yaml for changes — regenerate per-wiki CSS on save.
 	var themeRev atomic.Int64
-	go watchConfig(configPath, themeCSSPath, &themeRev)
+	wikiNames := make([]string, 0, len(wikis))
+	for name := range wikis {
+		wikiNames = append(wikiNames, name)
+	}
+	go watchConfig(configPath, cfg.WikiPath, wikiNames, &themeRev)
 
 	pollMS := int(cfg.PollInterval.Milliseconds())
 	hub := wiki.NewHub(wikis)
 	for _, wk := range wikis {
 		wk.SetHub(hub)
 	}
-	srv := server.New(hub, ed, &themeRev, pollMS, cfg.IndexHTML, themeCSSPath, configPath)
+	srv := server.New(hub, ed, &themeRev, pollMS, cfg.IndexHTML, cfg.WikiPath, configPath)
 	httpSrv := &http.Server{Addr: cfg.Listen, Handler: srv}
 	log.Printf("listening on http://%s", cfg.Listen)
 	log.Printf("wikis: %v", hub.Names())
@@ -131,8 +138,8 @@ func writeDefaultConfig(path string) {
 }
 
 // watchConfig watches the config file for changes. On save it does
-// an RCS checkin, re-reads the theme section, and regenerates theme.css.
-func watchConfig(configPath, themeCSSPath string, themeRev *atomic.Int64) {
+// an RCS checkin, re-reads the theme section, and regenerates per-wiki CSS.
+func watchConfig(configPath, wikiPath string, wikiNames []string, themeRev *atomic.Int64) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Printf("config watcher: %v", err)
@@ -166,7 +173,7 @@ func watchConfig(configPath, themeCSSPath string, themeRev *atomic.Int64) {
 				debounce.Stop()
 			}
 			debounce = time.AfterFunc(500*time.Millisecond, func() {
-				reloadConfig(configPath, themeCSSPath, themeRev)
+				reloadConfig(configPath, wikiPath, wikiNames, themeRev)
 			})
 		case err, ok := <-w.Errors:
 			if !ok {
@@ -178,8 +185,8 @@ func watchConfig(configPath, themeCSSPath string, themeRev *atomic.Int64) {
 }
 
 // reloadConfig re-reads config.yaml, does an RCS checkin, and
-// regenerates theme.css.
-func reloadConfig(configPath, themeCSSPath string, themeRev *atomic.Int64) {
+// regenerates per-wiki CSS files.
+func reloadConfig(configPath, wikiPath string, wikiNames []string, themeRev *atomic.Int64) {
 	if err := rcs.Checkin(configPath); err != nil {
 		log.Printf("config rcs checkin: %v", err)
 	}
@@ -196,23 +203,29 @@ func reloadConfig(configPath, themeCSSPath string, themeRev *atomic.Int64) {
 		log.Printf("config reload: parsing %s: %v", configPath, err)
 		return
 	}
-	// Fill missing keys from defaults.
+	// Fill missing shared keys from defaults.
 	theme := partial.Theme
 	if theme == nil {
 		theme = config.DefaultTheme()
+	} else if theme["shared"] == nil {
+		theme["shared"] = config.DefaultSharedTheme()
 	} else {
-		for k, v := range config.DefaultTheme() {
-			if _, ok := theme[k]; !ok {
-				theme[k] = v
+		for k, v := range config.DefaultSharedTheme() {
+			if _, ok := theme["shared"][k]; !ok {
+				theme["shared"][k] = v
 			}
 		}
 	}
-	if err := render.WriteThemeFile(theme, themeCSSPath); err != nil {
-		log.Printf("config reload: writing theme.css: %v", err)
-		return
+	for _, name := range wikiNames {
+		merged := config.MergedTheme(theme, name)
+		cssPath := filepath.Join(wikiPath, name+".css")
+		if err := render.WriteThemeFile(merged, cssPath); err != nil {
+			log.Printf("config reload: writing %s: %v", cssPath, err)
+			continue
+		}
 	}
 	themeRev.Add(1)
-	log.Printf("config reload: theme.css regenerated (rev %d)", themeRev.Load())
+	log.Printf("config reload: theme CSS regenerated (rev %d)", themeRev.Load())
 }
 
 // discoverWikis scans dir for subdirs containing .md files and
