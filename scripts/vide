@@ -29,15 +29,8 @@ setup_vars() {
 	readonly prog sock
 }
 
-# Day-of-week log rotation with auto-cleanup.
-# Save original stderr on fd 3; redirect stdout and stderr to log.
-setup_log() {
-	local logdir=~/.log/$prog
-	log=$logdir/$(date +%a)
-	mkdir -p "$logdir"
-	find "$logdir" -name "$(date +%a)" -mtime +1 -delete 2>&- || :
-	exec 3>&2 1>>"$log" 2>&1
-}
+# shellcheck disable=SC1091
+source "${0%/*}/rotate-log"
 
 pr() {
 	echo "$prog: $*"
@@ -88,8 +81,9 @@ main() {
 		exit 1
 	fi
 	local file=$1
+	local log
 
-	setup_log
+	setup_log log "$prog"
 	pr "START file=$file"
 
 	# shellcheck disable=SC2310 # predicates in || are intentional

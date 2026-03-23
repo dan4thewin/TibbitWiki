@@ -1,9 +1,18 @@
-#!/bin/sh
-set -e
+#!/bin/bash
+# pre-commit — Go quality gate: fmt, vet, test+coverage, complexity
+#
+# Install: ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
+#
+# For bash idioms used in this script, see https://aka.ms/bash4thewin
+#
+# shellcheck enable=all
+# shellcheck disable=SC2248,SC2250,SC2312
+
+set -eu
 
 echo "=== pre-commit: fmt ==="
 bad=$(gofmt -l .)
-if [ -n "$bad" ]; then
+if [[ -n $bad ]]; then
 	echo "gofmt needed on:"
 	echo "$bad"
 	exit 1
@@ -17,40 +26,36 @@ go test -gcflags=all=-l -count=1 -coverprofile=cover.out ./... 2>&1
 total=$(go tool cover -func=cover.out | awk '/^total:/{print $3}' | tr -d '%')
 echo "coverage: ${total}%"
 rm -f cover.out
-threshold=80
-if [ "$(echo "$total < $threshold" | bc)" -eq 1 ]; then
-	echo "FAIL: coverage ${total}% < ${threshold}%"
+threshold=800
+# Compare as integer tenths: 86.5 → 865
+total_int=${total/./}
+if (( total_int < threshold )); then
+	echo "FAIL: coverage ${total}% < $((threshold/10))%"
 	exit 1
 fi
 
 echo "=== pre-commit: complexity ==="
 max=12
-whitelist="scripts/cc-whitelist"
-# gocyclo output: "CC package func file:line"
-# Filter out whitelisted functions that have their own higher max.
-violations=""
+whitelist="cc-whitelist"
+violations=()
 while IFS= read -r line; do
-	[ -z "$line" ] && continue
-	cc=$(echo "$line" | awk '{print $1}')
-	func=$(echo "$line" | awk '{print $2 "." $3}')
-	# Check whitelist for a per-function max.
+	[[ -z $line ]] && continue
+	cc=${line%% *}
+	func=$(awk '{print $2 "." $3}' <<< "$line")
 	func_max=$max
-	if [ -f "$whitelist" ]; then
-		wl=$(grep -F "${func} " "$whitelist" 2>/dev/null || true)
-		if [ -n "$wl" ]; then
-			func_max=$(echo "$wl" | awk '{print $2}')
+	if [[ -f $whitelist ]]; then
+		wl=$(grep -F "$func " "$whitelist" 2>&- || :)
+		if [[ -n $wl ]]; then
+			func_max=${wl##* }
 		fi
 	fi
-	if [ "$cc" -gt "$func_max" ]; then
-		violations="${violations}${line}
-"
+	if (( cc > func_max )); then
+		violations+=("$line")
 	fi
-done <<EOF
-$(gocyclo -over $((max)) .)
-EOF
-if [ -n "$violations" ]; then
+done <<< "$(gocyclo -over $max .)"
+if (( ${#violations[@]} )); then
 	echo "FAIL: cyclomatic complexity exceeds threshold"
-	echo "$violations"
+	printf '%s\n' "${violations[@]}"
 	exit 1
 fi
 

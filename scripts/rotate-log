@@ -1,0 +1,80 @@
+#!/bin/bash
+# rotate-log — day-of-week log rotation
+#
+# Source for library use (setup_log, rotate_log), or run directly:
+#   rotate-log <logdir>...    — rotate logs in each directory
+#
+# Each log directory holds files named by 3-letter day abbreviation
+# (Mon, Tue, ...).  For each file that isn't today's name:
+#
+#   held open — rename(2) to today so the fd tracks the current day;
+#               if also > 100 KB, archive a copy under the old name
+#               and truncate the active file
+#   not open  — delete if stale (> 1 day old, i.e. left over from
+#               last week)
+#
+# For bash idioms used in this script, see https://aka.ms/bash4thewin
+#
+# shellcheck enable=all
+# shellcheck disable=SC2248,SC2250
+
+# Portable file size from inode metadata (no file read).
+# macOS stat -f%z, Linux stat -c%s.
+file_size() {
+	stat -f%z "$1" 2>&- || stat -c%s "$1" 2>&-
+}
+
+# Rotate day-name log files in a single directory.
+rotate_log() {
+	local logdir=$1 today
+	today=$(date +%a)
+	local file
+	for file in "$logdir"/???; do
+		[[ -f $file ]] || continue
+		# shellcheck disable=SC2053 # $today is always Mon..Sun
+		[[ ${file##*/} = $today ]] && continue
+		# shellcheck disable=SC2310
+		if lsof -t -- "$file" >&- 2>&-; then
+			# Open fd — rename so it tracks today's name
+			local old=$file
+			mv "$file" "$logdir/$today"
+			local -i size
+			# shellcheck disable=SC2310,SC2311
+			size=$(file_size "$logdir/$today") || continue
+			if (( size > 102400 )); then
+				cp "$logdir/$today" "$old"
+				: > "$logdir/$today"
+			fi
+		else
+			# Not held open — delete if stale
+			find "$file" -mtime +1 -delete 2>&- || :
+		fi
+	done
+}
+
+# Create log directory, rotate, redirect stdout/stderr.
+# Saves the active log path via nameref; no globals assumed.
+#   setup_log <varname> <name>
+# Example: setup_log log "$prog"   → sets $log, logs to ~/.log/$prog/Mon
+setup_log() {
+	local -n _logvar=$1
+	local logdir=~/.log/$2
+	_logvar=$logdir/$(date +%a)
+	mkdir -p "$logdir"
+	rotate_log "$logdir"
+	exec 3>&2 1>>"$_logvar" 2>&1
+}
+
+main() {
+	set -eu
+	if (( ! $# )); then
+		echo "usage: ${0##*/} <logdir>..." >&2
+		exit 1
+	fi
+	local dir
+	for dir in "$@"; do
+		rotate_log "$dir"
+	done
+}
+
+(return 0 2>&-) || main "$@"
