@@ -1,0 +1,259 @@
+#!/usr/bin/perl
+# tw2md — convert TiddlyWiki .tid files to TibbitWiki .md format
+#
+# Usage: tw2md <indir> <outdir>
+#
+# Reads .tid files from indir, converts wikitext body to markdown,
+# preserves headers, writes .md files to outdir.
+#
+# Skips $:/ system tiddlers and %-encoded duplicates.
+# Warns on unconvertible constructs (macros, transclusions, widgets).
+
+use strict;
+use warnings;
+use File::Basename;
+use File::Path qw(make_path);
+use File::Find;
+use Encode qw(decode encode);
+
+die "usage: tw2md <indir> <outdir>\n" unless @ARGV == 2;
+my ($indir, $outdir) = @ARGV;
+die "input directory '$indir' does not exist\n" unless -d $indir;
+make_path($outdir) unless -d $outdir;
+
+my $warnings = 0;
+my $converted = 0;
+my $skipped = 0;
+
+my %MONTHS = (
+    January => '01', February => '02', March => '03', April => '04',
+    May => '05', June => '06', July => '07', August => '08',
+    September => '09', October => '10', November => '11', December => '12',
+);
+
+# "10th July 2023" → "2023-07-10"; returns original if not a TW date.
+sub tw_date_to_iso {
+    my ($title) = @_;
+    if ($title =~ /^(\d{1,2})(?:st|nd|rd|th)\s+(\w+)\s+(\d{4})$/) {
+        my ($day, $month, $year) = ($1, $2, $3);
+        my $mm = $MONTHS{$month} // return $title;
+        return sprintf('%s-%s-%02d', $year, $mm, $day);
+    }
+    return $title;
+}
+
+find(sub {
+    return unless /\.tid$/;
+    my $base = basename($_, '.tid');
+    # Skip system tiddlers and percent-encoded duplicates
+    if ($base =~ /^\$__/ || $base =~ /%2F/) {
+        $skipped++;
+        return;
+    }
+    convert($File::Find::name);
+}, $indir);
+
+print "converted: $converted  skipped: $skipped  warnings: $warnings\n";
+
+sub warn_line {
+    my ($file, $lineno, $what, $line) = @_;
+    chomp $line;
+    warn "$file:$lineno: $what: $line\n";
+    $warnings++;
+}
+
+sub convert {
+    my ($path) = @_;
+
+    open my $fh, '<:raw', $path or die "open $path: $!\n";
+    my $raw = do { local $/; <$fh> };
+    close $fh;
+    $raw = decode('UTF-8', $raw);
+
+    # Split headers from body at first blank line
+    my ($header_block, $body);
+    if ($raw =~ /\A(.*?\n)\r?\n(.*)\z/s) {
+        $header_block = $1;
+        $body = $2;
+    } else {
+        $header_block = $raw;
+        $body = '';
+    }
+
+    # Parse headers
+    my @headers;
+    my %hdr;
+    for my $line (split /\r?\n/, $header_block) {
+        if ($line =~ /^([^:]+):\s*(.*)/) {
+            push @headers, [$1, $2];
+            $hdr{$1} = $2;
+        }
+    }
+
+    my $title = $hdr{title} // basename($path, '.tid');
+    my $type = $hdr{type} // '';
+
+    # Skip non-text tiddlers (images, etc.)
+    if ($type =~ m{^image/|^application/}) {
+        warn "$path: skipping binary type $type\n";
+        $skipped++;
+        return;
+    }
+
+    # Convert timestamps from TW format (YYYYMMDDHHmmssSSS) to ISO 8601
+    for my $h (@headers) {
+        if (($h->[0] eq 'created' || $h->[0] eq 'modified')
+            && $h->[1] =~ /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/) {
+            $h->[1] = "$1-$2-${3}T$4:$5:${6}Z";
+        }
+    }
+
+    # Drop TW-specific headers that don't apply
+    @headers = grep {
+        $_->[0] !~ /^(type|revision|bag|recipe|creator|modifier)$/
+    } @headers;
+
+    # Convert TW tag format [[tag with spaces]] to plain
+    for my $h (@headers) {
+        if ($h->[0] eq 'tags') {
+            $h->[1] =~ s/\[\[([^\]]+)\]\]/$1/g;
+        }
+    }
+
+    # Convert body if it's wikitext (includes no-type default)
+    if ($type eq '' || $type eq 'text/vnd.tiddlywiki') {
+        $body = tw_to_md($path, $body);
+    }
+    # text/x-markdown or text/markdown — pass through unchanged
+
+    # Build output
+    # Convert journal titles: "10th July 2023" → "2023-07-10"
+    my $new_title = tw_date_to_iso($title);
+    if ($new_title ne $title) {
+        $title = $new_title;
+        for my $h (@headers) {
+            $h->[1] = $title if $h->[0] eq 'title';
+        }
+    }
+
+    my $out = '';
+    for my $h (@headers) {
+        $out .= "$h->[0]: $h->[1]\n";
+    }
+    $out .= "\n$body";
+
+    # Title to filename
+    my $fname = title_to_filename($title);
+    my $outpath = "$outdir/$fname";
+
+    open my $ofh, '>:raw', $outpath or die "write $outpath: $!\n";
+    print $ofh encode('UTF-8', $out);
+    close $ofh;
+    $converted++;
+}
+
+sub title_to_filename {
+    my ($title) = @_;
+    $title =~ s{/}{%2F}g;
+    return "$title.md";
+}
+
+sub tw_to_md {
+    my ($file, $text) = @_;
+    my @lines = split /\n/, $text, -1;
+    my @out;
+    my $in_code = 0;
+    my $lineno = 0;
+
+    for my $line (@lines) {
+        $lineno++;
+
+        # Code blocks: ``` pass through unchanged
+        if ($line =~ /^```/) {
+            $in_code = !$in_code;
+            push @out, $line;
+            next;
+        }
+        if ($in_code) {
+            push @out, $line;
+            next;
+        }
+
+        # Warn on real TW constructs (not inside code/bash)
+        if ($line =~ /<<\w[^<]*>>/ && $line !~ /<<</) {
+            warn_line($file, $lineno, 'macro', $line);
+        }
+        if ($line =~ /\{\{[^{][^}]*\}\}/) {
+            warn_line($file, $lineno, 'transclusion', $line);
+        }
+        if ($line =~ /<\$\w+/) {
+            warn_line($file, $lineno, 'widget', $line);
+        }
+
+        # Headings: ! → #
+        if ($line =~ /^(!{1,6})\s*(.*)/) {
+            my $level = '#' x length($1);
+            push @out, "$level $2";
+            next;
+        }
+
+        # TW blockquote: <<< → >
+        if ($line =~ /^<<<\s*(.*)/) {
+            my $rest = $1;
+            push @out, length($rest) ? "> $rest" : "";
+            next;
+        }
+
+        # Nested ordered lists: ## → indented 1.
+        if ($line =~ /^(#{1,6})\s*(.*)/) {
+            my $indent = '   ' x (length($1) - 1);
+            push @out, "${indent}1. $2";
+            next;
+        }
+
+        # Nested unordered lists: ** → indented -
+        if ($line =~ /^(\*{1,6})\s*(.*)/) {
+            my $indent = '   ' x (length($1) - 1);
+            push @out, "${indent}- $2";
+            next;
+        }
+
+        # Bold: ''text'' → **text**
+        $line =~ s/''([^']+)''/**$1**/g;
+
+        # Italic: //text// → *text*
+        $line =~ s{//([^/]+)//}{*$1*}g;
+
+        # Underline: __text__ → <u>text</u>
+        $line =~ s/__([^_]+)__/<u>$1<\/u>/g;
+
+        # Strikethrough: ~~text~~ → ~~text~~ (same)
+
+        # Superscript: ^^text^^ → <sup>text</sup>
+        $line =~ s/\^\^([^^]+)\^\^/<sup>$1<\/sup>/g;
+
+        # Subscript: ,,text,, → <sub>text</sub>
+        $line =~ s/,,([^,]+),,/<sub>$1<\/sub>/g;
+
+        # Links: [[display|target]] → [display](target)
+        $line =~ s/\[\[([^|\]]+)\|([^\]]+)\]\]/[$1]($2)/g;
+
+        # CamelCase/[[plain]] wiki links — keep as-is, client handles them
+
+        # Images: [img[tooltip|url]] → ![tooltip](url)
+        $line =~ s/\[img\[([^|\]]+)\|([^\]]+)\]\]/![$1]($2)/g;
+        # Images: [img[url]] → ![](url)
+        $line =~ s/\[img\[([^\]]+)\]\]/![]($1)/g;
+
+        # Definition lists: ;term :definition → **term** — definition
+        if ($line =~ /^;(.+?)\s*:(.+)/) {
+            push @out, "**$1** — $2";
+            next;
+        }
+
+        push @out, $line;
+    }
+
+    return join("\n", @out);
+}
+

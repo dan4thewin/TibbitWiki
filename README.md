@@ -42,13 +42,16 @@ Then open http://127.0.0.1:8080 in your browser.
 
 The server auto-discovers wiki subdirectories under `--wiki-path`.
 Each subdirectory with `.md` files becomes a wiki at `/{name}/`.
+Wikis are flat — only `.md` files directly in the subdirectory are
+loaded as notes (no nested directories).
 
 ## Browser client
 
 The browser client is a single self-contained HTML file with inline
-JS (currently `exp/026-multi-wiki/index.html` — will be embedded in
-the binary in a future release). No build step — markdown rendering
-and syntax highlighting are handled server-side.
+JS, embedded in the binary (`internal/server/index.html`). No build
+step — markdown rendering and syntax highlighting are handled
+server-side. The `--index-html` flag overrides with an external file
+for development.
 
 **Features:**
 - Story river — multiple notes open in a scrollable column
@@ -84,8 +87,9 @@ just open it in a browser (or serve it alongside the wiki).
 - Right panel: pixel-perfect mock of the real wiki UI (rendered
   DOM captured from a live instance)
 - **Copy YAML** button outputs a ready-to-paste `theme:` block
-- On load, fetches `/theme.css` to seed current values (falls back
-  to built-in defaults if opened standalone)
+- Falls back to built-in defaults when opened standalone. To seed
+  from an existing wiki theme, symlink `playground/` into a wiki
+  directory and browse to `/{wiki}/playground/index.html`
 
 ## Configuration
 
@@ -102,7 +106,7 @@ config file < CLI flags.
 | `--wiki-path` | Path to wiki folder containing subdirs |
 | `--listen` | Host:port to listen on |
 | `--editor-cmd` | Editor command (`%s` = file path) |
-| `--index-html` | Path to HTML file served for GET / |
+| `--index-html` | Override embedded HTML (for development) |
 | `--poll-interval` | Browser poll interval |
 | `--cache-size` | LRU body cache size per wiki |
 
@@ -140,7 +144,6 @@ CLI flags override config file values.
 | POST | `/{wiki}/line-edit/{title}` | Replace or insert a body line |
 | GET | `/{wiki}/search?q=...` | Full-text search (JSON) |
 | GET | `/{wiki}/theme.css` | Theme CSS (custom properties + syntax) |
-| GET | `/favicon.ico` | Favicon |
 | POST | `/{wiki}/edit-external/{title}` | Launch external editor |
 | POST | `/{wiki}/edit-config` | Launch editor on config.yaml |
 
@@ -223,3 +226,29 @@ Install: `go install github.com/dcjones/mk@latest`
 
 See [TESTING.md](TESTING.md) for browser automation and integration
 testing techniques.
+
+## Known Limitations
+
+- **macOS file watching uses kqueue**, which opens a file descriptor per
+  file. Wikis with thousands of notes may hit the per-process fd limit
+  (default ~10K). Raise it with `ulimit -n 65536` if needed. Linux
+  uses inotify and has no such limit.
+- **Dangling symlinks** in a wiki directory are moved to
+  `lost+found/` at startup with a log warning. This prevents macOS
+  kqueue (which must open every file) from blocking the file watcher.
+- **Single-user design.** No authentication, no concurrent-writer
+  conflict resolution. Intended for one person on localhost.
+- **Search requires ripgrep** (`rg`) on PATH.
+- **macOS ships bash 3.2.** The helper scripts (`vide`, `tw-start`,
+  `rotate-log`) require bash 4.3+ features (`local -n`). Install a
+  modern bash via `brew install bash` and ensure it appears first on
+  PATH.
+
+## How this was built
+
+TibbitWiki was designed and directed by a human; all code, tests, and
+documentation were written by GitHub Copilot (Claude) through
+interactive conversation. Every commit carries a `Co-authored-by:
+Copilot` trailer. The human contribution was architecture, design
+decisions, domain knowledge, and relentless quality standards. The
+AI's contribution was typing really fast and getting told to try again.

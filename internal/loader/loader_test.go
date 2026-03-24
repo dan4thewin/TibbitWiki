@@ -1,10 +1,12 @@
 package loader
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/dan4thewin/tibbitwiki/internal/store"
 )
 
@@ -57,25 +59,6 @@ func TestLoadSkipsMalformed(t *testing.T) {
 	}
 	if s.Get("Good") == nil {
 		t.Error("expected Good in store")
-	}
-}
-
-// TestLoadSystemNote verifies that system notes ($__ prefix)
-// are loaded correctly.
-func TestLoadSystemNote(t *testing.T) {
-	dir := t.TempDir()
-	writeFile(t, dir, "$__config_Test.md", "title: $:/config/Test\n\nvalue")
-
-	s := store.New()
-	n, _, err := Load(dir, s, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if n != 1 {
-		t.Errorf("loaded %d, want 1", n)
-	}
-	if s.Get("$:/config/Test") == nil {
-		t.Error("expected $:/config/Test in store")
 	}
 }
 
@@ -260,5 +243,204 @@ func TestSymlinkOwnerNonRelative(t *testing.T) {
 	}
 	if len(sym) != 0 {
 		t.Errorf("symlinks = %v, want empty", sym)
+	}
+}
+
+// TestLoadDanglingSymlinkQuarantined verifies that a dangling symlink
+// is moved to lost+found/ and does not prevent loading other notes.
+func TestLoadDanglingSymlinkQuarantined(t *testing.T) {
+	parent := t.TempDir()
+	wiki := filepath.Join(parent, "wiki")
+	os.Mkdir(wiki, 0755)
+
+	// A valid note.
+	writeFile(t, wiki, "Good.md", "title: Good\n\nBody.")
+
+	// A dangling symlink — target does not exist.
+	os.Symlink("../other/Gone.md", filepath.Join(wiki, "Gone.md"))
+
+	s := store.New()
+	n, _, err := Load(wiki, s, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("loaded %d, want 1", n)
+	}
+	if s.Get("Good") == nil {
+		t.Error("expected Good in store")
+	}
+
+	// Dangling symlink should be in lost+found/.
+	lf := filepath.Join(wiki, "lost+found", "Gone.md")
+	if _, err := os.Lstat(lf); err != nil {
+		t.Errorf("expected quarantined file at %s: %v", lf, err)
+	}
+
+	// Original should be gone.
+	if _, err := os.Lstat(filepath.Join(wiki, "Gone.md")); err == nil {
+		t.Error("dangling symlink should have been moved")
+	}
+}
+
+// TestQuarantineUnwritableDir verifies that quarantine logs gracefully
+// when lost+found/ cannot be created.
+func TestQuarantineUnwritableDir(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("skipping: running as root")
+	}
+
+	parent := t.TempDir()
+	wiki := filepath.Join(parent, "wiki")
+	os.Mkdir(wiki, 0755)
+
+	writeFile(t, wiki, "Good.md", "title: Good\n\nBody.")
+	os.Symlink("../nowhere/Missing.md", filepath.Join(wiki, "Missing.md"))
+
+	// Make wiki dir read-only so lost+found/ creation fails.
+	os.Chmod(wiki, 0555)
+	t.Cleanup(func() { os.Chmod(wiki, 0755) })
+
+	s := store.New()
+	n, _, err := Load(wiki, s, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Good.md should still load despite quarantine failure.
+	if n != 1 {
+		t.Errorf("loaded %d, want 1", n)
+	}
+}
+
+// TestQuarantineRenameError verifies that quarantine logs gracefully
+// when the file cannot be moved (e.g. lost+found exists but rename fails).
+func TestQuarantineRenameError(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("skipping: running as root")
+	}
+
+	parent := t.TempDir()
+	wiki := filepath.Join(parent, "wiki")
+	os.Mkdir(wiki, 0755)
+
+	writeFile(t, wiki, "Good.md", "title: Good\n\nBody.")
+	os.Symlink("../nowhere/Missing.md", filepath.Join(wiki, "Missing.md"))
+
+	// Pre-create lost+found/ but make it unwritable so rename fails.
+	lf := filepath.Join(wiki, "lost+found")
+	os.Mkdir(lf, 0555)
+	t.Cleanup(func() { os.Chmod(lf, 0755) })
+
+	s := store.New()
+	n, _, err := Load(wiki, s, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("loaded %d, want 1", n)
+	}
+}
+
+// TestLoadSymlinkUnreadableTarget verifies that a symlink pointing
+// to an unreadable file is skipped gracefully.
+func TestLoadSymlinkUnreadableTarget(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("skipping: running as root")
+	}
+
+	parent := t.TempDir()
+	work := filepath.Join(parent, "work")
+	evernote := filepath.Join(parent, "evernote")
+	os.Mkdir(work, 0755)
+	os.Mkdir(evernote, 0755)
+
+	// Create a target file then make it unreadable.
+	writeFile(t, work, "Secret.md", "title: Secret\n\nSecret body.")
+	os.Chmod(filepath.Join(work, "Secret.md"), 0000)
+	t.Cleanup(func() { os.Chmod(filepath.Join(work, "Secret.md"), 0644) })
+
+	os.Symlink("../work/Secret.md", filepath.Join(evernote, "Secret.md"))
+	writeFile(t, evernote, "Local.md", "title: Local\n\nLocal body.")
+
+	s := store.New()
+	n, sym, err := Load(evernote, s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only local note loads; unreadable symlink is skipped.
+	if n != 1 {
+		t.Errorf("loaded %d, want 1", n)
+	}
+	if len(sym) != 0 {
+		t.Errorf("symlinks = %v, want empty (unreadable skipped)", sym)
+	}
+}
+
+// TestLoadSymlinkMalformedTarget verifies that a symlink pointing
+// to a file with unparseable content is skipped gracefully.
+func TestLoadSymlinkMalformedTarget(t *testing.T) {
+	parent := t.TempDir()
+	work := filepath.Join(parent, "work")
+	evernote := filepath.Join(parent, "evernote")
+	os.Mkdir(work, 0755)
+	os.Mkdir(evernote, 0755)
+
+	// Target file has no title header — Parse will fail.
+	writeFile(t, work, "Bad.md", "no headers here, just text")
+	os.Symlink("../work/Bad.md", filepath.Join(evernote, "Bad.md"))
+	writeFile(t, evernote, "Local.md", "title: Local\n\nLocal body.")
+
+	s := store.New()
+	n, sym, err := Load(evernote, s, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("loaded %d, want 1", n)
+	}
+	if len(sym) != 0 {
+		t.Errorf("symlinks = %v, want empty (malformed skipped)", sym)
+	}
+}
+
+// TestSymlinkOwnerReadlinkError verifies that SymlinkOwner returns ""
+// when os.Readlink fails on a valid symlink (e.g. permission error).
+func TestSymlinkOwnerReadlinkError(t *testing.T) {
+	parent := t.TempDir()
+	work := filepath.Join(parent, "work")
+	src := filepath.Join(parent, "src")
+	os.Mkdir(work, 0755)
+	os.Mkdir(src, 0755)
+	writeFile(t, work, "Note.md", "title: Note\n\nBody.")
+	os.Symlink("../work/Note.md", filepath.Join(src, "Note.md"))
+
+	patches := gomonkey.ApplyFunc(os.Readlink, func(string) (string, error) {
+		return "", errors.New("simulated readlink error")
+	})
+	defer patches.Reset()
+
+	if got := SymlinkOwner(filepath.Join(src, "Note.md")); got != "" {
+		t.Errorf("SymlinkOwner = %q, want empty on readlink error", got)
+	}
+}
+func TestIsDanglingRegularFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "regular.md")
+	os.WriteFile(path, []byte("data"), 0644)
+	if isDangling(path) {
+		t.Error("regular file should not be dangling")
+	}
+}
+
+// TestIsDanglingValidSymlink verifies isDangling returns false
+// for a symlink whose target exists.
+func TestIsDanglingValidSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.md")
+	os.WriteFile(target, []byte("data"), 0644)
+	link := filepath.Join(dir, "link.md")
+	os.Symlink(target, link)
+	if isDangling(link) {
+		t.Error("valid symlink should not be dangling")
 	}
 }

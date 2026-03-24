@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # tw-start — launch tibbitwiki detached with day-of-week logging
 #
 # Usage: tw-start [tibbitwiki args...]
@@ -32,16 +32,6 @@ pr() {
 	echo "$prog: $*"
 }
 
-err() {
-	echo "$prog: $*"
-	echo "$prog: $*" >&3
-}
-
-# True when tibbitwiki is already listening
-tw_alive() {
-	curl -sf http://localhost:8080/status >&- 2>&-
-}
-
 main() {
 	setup_bash
 	setup_vars
@@ -49,32 +39,11 @@ main() {
 	setup_log log "$prog"
 	pr "START ${*:+ARGV=$*}"
 
-	# shellcheck disable=SC2310 # predicate in if is intentional
-	if tw_alive; then
-		pr "tibbitwiki already running"
-		echo "$prog: tibbitwiki already running" >&3
-		return
-	fi
-
 	pr "launching $bin $*"
 	"$bin" "$@" >>"$log" 2>&1 &
 	disown -h
-
-	local -i i
-	for (( i=0; i<20; i++ )); do
-		# shellcheck disable=SC2310
-		tw_alive && break
-		sleep 0.5
-	done
-
-	# shellcheck disable=SC2310
-	if tw_alive; then
-		pr "tibbitwiki running, pid $!"
-		echo "$prog: tibbitwiki running, pid $!" >&3
-	else
-		err "tibbitwiki did not start within 10s"
-		exit 1
-	fi
+	pr "launched pid $!"
+	echo "$prog: launched pid $!" >&3
 }
 
-(return 0 2>&-) || main "$@"
+(return 0) 2>&- || main "$@"

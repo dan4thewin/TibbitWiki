@@ -114,9 +114,9 @@ WIN_ID=$(osascript -e 'tell application "Safari" to id of front window')
 screencapture -l "$WIN_ID" /tmp/screenshot.png
 ```
 
-The `render-url.sh` script (in `~/src/dpa/scripts/`) also captures
-screenshots but reloads the page first — useful for fresh-state
-captures, not for observing live poll updates.
+The `render-url.sh` script also captures screenshots but reloads
+the page first — useful for fresh-state captures, not for observing
+live poll updates.
 
 ## Mock editor
 

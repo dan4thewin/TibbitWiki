@@ -353,7 +353,7 @@ function buildTextRow(container, key, val, desc) {
 // Try to load current theme.css from server (works when served by TibbitWiki).
 async function loadCurrentTheme() {
   try {
-    const resp = await fetch('/theme.css');
+    const resp = await fetch('../theme.css');
     if (!resp.ok) return;
     const text = await resp.text();
     // Parse --tw-key: value; lines

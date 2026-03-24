@@ -69,7 +69,6 @@ func (s *Server) RestartCh() <-chan struct{} {
 func (s *Server) routes() {
 	s.mux.HandleFunc("/", s.handleIndex)
 	s.mux.HandleFunc("/status", s.handleStatus)
-	s.mux.HandleFunc("/favicon.ico", s.handleFavicon)
 	s.mux.HandleFunc("/notes", s.handleListNotes)
 	s.mux.HandleFunc("/notes/", s.handleNote)
 	s.mux.HandleFunc("/line-edit/", s.handleLineEdit)
@@ -198,17 +197,6 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status)
-}
-
-// handleFavicon serves the favicon from the $:/favicon.ico note.
-func (s *Server) handleFavicon(w http.ResponseWriter, r *http.Request) {
-	fields := wikiFrom(r).Get("$:/favicon.ico", false)
-	if fields == nil {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", "image/x-icon")
-	w.Write([]byte(fields["text"]))
 }
 
 // handleListNotes returns all notes without their text field.

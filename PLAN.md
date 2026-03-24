@@ -311,9 +311,33 @@ CSS files at wiki_path level — invisible to rg (runs inside wiki subdirs).
 
 ### Todos
 
-- [ ] Config: `Theme map[string]map[string]string`, nested defaults.yaml
-- [ ] Render: `MergeTheme(shared, override)` helper
-- [ ] main.go: per-wiki CSS generation + config watcher regeneration
-- [ ] Server: per-wiki CSS path resolution
-- [ ] Client: wiki title from `--tw-wiki-title` CSS property
-- [ ] defaults.yaml: restructured with `shared:` wrapper
+- [x] Config: `Theme map[string]map[string]string`, nested defaults.yaml
+- [x] Render: `MergeTheme(shared, override)` helper
+- [x] main.go: per-wiki CSS generation + config watcher regeneration
+- [x] Server: per-wiki CSS path resolution
+- [x] Client: wiki title from `--tw-wiki-title` CSS property
+- [x] defaults.yaml: restructured with `shared:` wrapper
+
+---
+
+## v7: Cleanup and Hardening
+
+### Completed
+
+- [x] `scripts/rotate-log` — standalone log rotation library
+- [x] `scripts/vide` — bash 5.3 compat, nvim SIGABRT fix
+- [x] `scripts/tw-start` — simplified (no health check)
+- [x] `scripts/pre-commit` — rewritten in bash with proper idioms
+- [x] Apache 2.0 license
+- [x] Dangling symlinks quarantined to `lost+found/` at startup
+- [x] Relative `wiki_path` resolved against config file directory
+- [x] Removed TiddlyWiki `$:/` system note convention and favicon handler
+- [x] Sanitized docs (removed personal paths from history)
+- [x] 100% statement coverage restored on all packages
+- [x] Theme playground: relative CSS fetch for per-wiki support
+
+### TODO
+
+- [ ] Delete note button in browser client (API exists)
+- [ ] Revisions browser — show RCS history, revert to prior version
+- [ ] Per-wiki theming not yet tested end-to-end in browser

@@ -3,7 +3,7 @@
 // The .md format uses RFC822-style headers (key: value), a blank
 // line separator, then the body text. Example:
 //
-//	created: 20230710174528965
+//	created: 2023-07-10T17:45:28Z
 //	tags: Journal
 //	title: My Note
 //
@@ -112,15 +112,8 @@ func Serialize(t *Note) []byte {
 }
 
 // TitleToFilename converts a note title to its .md filename.
-// $:/foo/bar becomes $__foo_bar.md. Titles containing path
-// separators get URL-encoded.
+// Titles containing path separators get URL-encoded.
 func TitleToFilename(title string) string {
-	// System notes: $:/ prefix → $__ prefix, / → _
-	if strings.HasPrefix(title, "$:/") {
-		name := "$__" + strings.ReplaceAll(title[3:], "/", "_")
-		return name + ".md"
-	}
-	// Non-system notes with slashes get URL-encoded.
 	if strings.Contains(title, "/") {
 		return url.PathEscape(title) + ".md"
 	}
@@ -128,14 +121,9 @@ func TitleToFilename(title string) string {
 }
 
 // FilenameToTitle converts a .md filename back to a note title.
-// $__foo_bar.md becomes $:/foo/bar. URL-encoded names are decoded.
+// URL-encoded names are decoded.
 func FilenameToTitle(filename string) string {
 	name := strings.TrimSuffix(filepath.Base(filename), ".md")
-
-	// System notes: $__ prefix → $:/ prefix, _ → /
-	if strings.HasPrefix(name, "$__") {
-		return "$:/" + strings.ReplaceAll(name[3:], "_", "/")
-	}
 
 	// Try URL-decoding for names with percent-encoded characters.
 	if strings.Contains(name, "%") {

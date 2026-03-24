@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -151,6 +152,11 @@ func Load(args []string) (Config, error) {
 	}
 
 	f.applyTo(&cfg)
+
+	// Resolve relative wiki_path against the config file's directory.
+	if f.configFile != "" && !filepath.IsAbs(cfg.WikiPath) {
+		cfg.WikiPath = filepath.Join(filepath.Dir(f.configFile), cfg.WikiPath)
+	}
 
 	// Fill missing shared theme keys from embedded defaults.
 	if cfg.Theme == nil {

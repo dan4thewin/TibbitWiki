@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # pre-commit — Go quality gate: fmt, vet, test+coverage, complexity
 #
 # Install: ln -sf ../../scripts/pre-commit .git/hooks/pre-commit

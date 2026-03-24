@@ -34,21 +34,20 @@ mkdir -p ~/notes/work
 Notes are `.md` files — RFC822-style headers, blank line, markdown body:
 
 ```
-created: 20230710174528965
-modified: 20230710232609285
+created: 2023-07-10T17:45:28Z
+modified: 2023-07-10T23:26:09Z
 tags: Journal
-title: 10th July 2023
+title: 2023-07-10
 
 Body text goes here. Uses **markdown** formatting.
 ```
 
 ### Filename conventions
 
-| Note title             | Filename                              |
-|---------------------------|---------------------------------------|
-| `My Note`              | `My Note.md`                       |
-| `$:/config/Something`     | `$__config_Something.md`              |
-| Titles with `/`           | URL-encoded: `%2Fpath%2Fto%2F.md`     |
+| Note title      | Filename                           |
+|-----------------|------------------------------------|
+| `My Note`       | `My Note.md`                       |
+| `path/to/thing` | `path%2Fto%2Fthing.md` (URL-encoded) |
 
 Spaces in titles are literal spaces in filenames.
 
@@ -122,9 +121,7 @@ logging, similar to `vide`:
 tw-start --wiki-path ~/notes
 ```
 
-- Checks if tibbitwiki is already running (via `/status` endpoint)
 - Launches detached with `disown -h`
-- Waits up to 10 seconds for `/status` to respond
 - Logs to `~/.log/tw-start/<day-of-week>` (auto-cleaned weekly)
 - No auto-restart on crash — absence is the signal
 
@@ -136,7 +133,8 @@ tw-start --wiki-path ~/notes
 3. Browser updates within 3 seconds (poll-based)
 4. Click "+ Journal" for a date-titled entry
 5. Click "+ New" for a custom-titled note
-6. Click ⚙ gear icon to edit config.yaml (theme changes apply live)
+6. Click ⚙ gear icon to edit config.yaml (theme changes apply live),
+   or choose "Restart server" from the gear dropdown for other changes
 
 ## RCS version control
 

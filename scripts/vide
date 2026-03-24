@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # vide — manage headless nvim + neovide GUI + file open
 #
 # Usage: vide <file>
@@ -43,7 +43,7 @@ err() {
 
 # True when headless nvim is listening on $sock
 nvim_alive() {
-	[[ -S $sock ]] && nvim --server "$sock" --remote-expr 1 >&- 2>&-
+	[[ -S $sock ]] && nvim --server "$sock" --remote-expr 1 >/dev/null 2>&1
 }
 
 # True when neovide has an open connection to $sock
@@ -94,4 +94,4 @@ main() {
 	nvim --server "$sock" --remote "$file"
 }
 
-(return 0 2>&-) || main "$@"
+(return 0) 2>&- || main "$@"

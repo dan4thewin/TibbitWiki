@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # rotate-log — day-of-week log rotation
 #
 # Source for library use (setup_log, rotate_log), or run directly:
@@ -77,4 +77,4 @@ main() {
 	done
 }
 
-(return 0 2>&-) || main "$@"
+(return 0) 2>&- || main "$@"

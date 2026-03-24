@@ -260,6 +260,8 @@ function renderNote(t) {
     fetch(PREFIX + '/edit-external/' + encodeURIComponent(t.title), { method: 'POST' });
   };
   toolbar.appendChild(editBtn);
+  // TODO: add a delete button (API exists: DELETE /{wiki}/notes/{title})
+  // TODO: add a revisions button — show RCS history and revert to prior version
   const closeBtn = document.createElement('button');
   closeBtn.innerHTML = ICON.xLg;
   closeBtn.title = 'Close';
@@ -439,7 +441,6 @@ function updateSidebar(notes) {
   const tagMap = {};  // tag -> [notes]
   byModified.forEach(t => {
     parseTags(t.tags).forEach(tag => {
-      if (tag.startsWith('$:/')) return;
       if (!tagMap[tag]) tagMap[tag] = [];
       tagMap[tag].push(t);
     });

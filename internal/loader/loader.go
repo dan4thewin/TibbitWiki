@@ -18,10 +18,36 @@ type BodySeeder interface {
 	SeedBody(title, text string)
 }
 
+// quarantine moves a file to {dir}/lost+found/ and logs a warning.
+func quarantine(dir, path, reason string) {
+	lf := filepath.Join(dir, "lost+found")
+	if err := os.MkdirAll(lf, 0o755); err != nil {
+		log.Printf("loader: cannot create lost+found: %v", err)
+		return
+	}
+	dest := filepath.Join(lf, filepath.Base(path))
+	if err := os.Rename(path, dest); err != nil {
+		log.Printf("loader: cannot quarantine %s: %v", path, err)
+		return
+	}
+	log.Printf("loader: quarantined %s → lost+found/ (%s)", filepath.Base(path), reason)
+}
+
+// isDangling returns true if path is a symlink whose target does not exist.
+func isDangling(path string) bool {
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		return false
+	}
+	_, err = os.Stat(path)
+	return err != nil
+}
+
 // Load reads all .md files from dir and populates the store.
 // If seeder is non-nil, note bodies are also cached.
 // Returns the number of notes loaded and a map of symlinked titles
 // to their owning wiki names (for delegation at read time).
+// Dangling symlinks are moved to {dir}/lost+found/.
 func Load(dir string, s *store.Store, seeder BodySeeder) (int, map[string]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -39,6 +65,11 @@ func Load(dir string, s *store.Store, seeder BodySeeder) (int, map[string]string
 		}
 
 		path := filepath.Join(dir, entry.Name())
+
+		if isDangling(path) {
+			quarantine(dir, path, "dangling symlink")
+			continue
+		}
 
 		// Symlinks are not loaded into the store; they are delegated
 		// to the owning wiki at read time.

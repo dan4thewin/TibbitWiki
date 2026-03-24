@@ -208,16 +208,6 @@ func TestTitleToFilename(t *testing.T) {
 			want:  "My Note.md",
 		},
 		{
-			name:  "SystemNote",
-			title: "$:/config/SyncPollingInterval",
-			want:  "$__config_SyncPollingInterval.md",
-		},
-		{
-			name:  "NestedSystemNote",
-			title: "$:/themes/tiddlywiki/vanilla/options/sidebarlayout",
-			want:  "$__themes_tiddlywiki_vanilla_options_sidebarlayout.md",
-		},
-		{
 			name:  "TitleWithSlash",
 			title: "/Users/dg/notes/Test",
 			want:  "%2FUsers%2Fdg%2Fnotes%2FTest.md",
@@ -252,19 +242,9 @@ func TestFilenameToTitle(t *testing.T) {
 			want:     "My Note",
 		},
 		{
-			name:     "SystemNote",
-			filename: "$__config_SyncPollingInterval.md",
-			want:     "$:/config/SyncPollingInterval",
-		},
-		{
 			name:     "URLEncodedFilename",
 			filename: "%2FUsers%2Fdg%2Fnotes%2FTest.md",
 			want:     "/Users/dg/notes/Test",
-		},
-		{
-			name:     "WithDirectoryPath",
-			filename: "/some/path/$__palette.md",
-			want:     "$:/palette",
 		},
 	}
 	for _, tc := range tests {
@@ -324,8 +304,6 @@ func TestFilenameToTitleBadPercent(t *testing.T) {
 func TestTitleFilenameRoundTrip(t *testing.T) {
 	titles := []string{
 		"Simple Title",
-		"$:/config/Something",
-		"$:/themes/tiddlywiki/vanilla/base",
 	}
 	for _, title := range titles {
 		t.Run(title, func(t *testing.T) {
