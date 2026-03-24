@@ -675,13 +675,13 @@ func TestWikiSearchEmptyDir(t *testing.T) {
 
 // TestWikiSearchWithResults verifies search returns matching notes.
 func TestWikiSearchWithResults(t *testing.T) {
-	// Mock search.Search to return a hit for a note in the store.
-	patches := gomonkey.ApplyFunc(search.Search, func(dir, query string) ([]search.Result, error) {
+	orig := searchFunc
+	searchFunc = func(dir, query string) ([]search.Result, error) {
 		return []search.Result{
 			{File: "Found.md", Lines: []string{"matching line"}},
 		}, nil
-	})
-	defer patches.Reset()
+	}
+	defer func() { searchFunc = orig }()
 
 	wk := testWiki(t)
 	writeNote(t, wk, "Found", "matching line")
@@ -703,10 +703,11 @@ func TestWikiSearchWithResults(t *testing.T) {
 
 // TestWikiSearchError verifies search propagates errors.
 func TestWikiSearchError(t *testing.T) {
-	patches := gomonkey.ApplyFunc(search.Search, func(dir, query string) ([]search.Result, error) {
+	orig := searchFunc
+	searchFunc = func(dir, query string) ([]search.Result, error) {
 		return nil, fmt.Errorf("rg exploded")
-	})
-	defer patches.Reset()
+	}
+	defer func() { searchFunc = orig }()
 
 	wk := testWiki(t)
 	_, err := wk.Search("hello")
@@ -717,12 +718,13 @@ func TestWikiSearchError(t *testing.T) {
 
 // TestWikiSearchNilLines verifies nil Lines are coalesced to [].
 func TestWikiSearchNilLines(t *testing.T) {
-	patches := gomonkey.ApplyFunc(search.Search, func(dir, query string) ([]search.Result, error) {
+	orig := searchFunc
+	searchFunc = func(dir, query string) ([]search.Result, error) {
 		return []search.Result{
 			{File: "NilLine.md", Lines: nil},
 		}, nil
-	})
-	defer patches.Reset()
+	}
+	defer func() { searchFunc = orig }()
 
 	wk := testWiki(t)
 	writeNote(t, wk, "NilLine", "body")
@@ -742,12 +744,13 @@ func TestWikiSearchNilLines(t *testing.T) {
 // TestWikiSearchNilResults verifies that when no hits match stored
 // notes, results is coalesced to [].
 func TestWikiSearchNilResults(t *testing.T) {
-	patches := gomonkey.ApplyFunc(search.Search, func(dir, query string) ([]search.Result, error) {
+	orig := searchFunc
+	searchFunc = func(dir, query string) ([]search.Result, error) {
 		return []search.Result{
 			{File: "NoSuch.md", Lines: []string{"x"}},
 		}, nil
-	})
-	defer patches.Reset()
+	}
+	defer func() { searchFunc = orig }()
 
 	wk := testWiki(t)
 

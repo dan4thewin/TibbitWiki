@@ -24,6 +24,9 @@ import (
 // NowFunc returns the current time. Overridden in tests.
 var NowFunc = time.Now
 
+// searchFunc wraps search.Search for testability (gomonkey + -coverprofile SIGBUS).
+var searchFunc = search.Search
+
 func isoNow() string {
 	return NowFunc().UTC().Format(time.RFC3339)
 }
@@ -227,7 +230,7 @@ func (w *Wiki) Search(query string) ([]SearchResult, error) {
 			err = fmt.Errorf("search not available")
 			return
 		}
-		hits, e := search.Search(w.noteDir, query)
+		hits, e := searchFunc(w.noteDir, query)
 		if e != nil {
 			err = e
 			return
