@@ -18,6 +18,29 @@ go test -gcflags=all=-l -count=1 ./...
 The `-gcflags=all=-l` disables inlining, required for gomonkey
 patches in watcher and editor tests.
 
+### gomonkey + `-coverprofile` caveat
+
+On darwin/arm64, gomonkey's binary patching of certain functions
+causes SIGBUS when run with `-coverprofile`.  The workaround is a
+package-level function variable that tests can override without
+binary patching:
+
+```go
+// production code
+var searchFunc = search.Search  // package-level variable
+
+func (w *Wiki) doSearch(query string) { searchFunc(w.dir, query) }
+
+// test code
+orig := searchFunc
+searchFunc = func(dir, q string) ([]search.Result, error) { ... }
+defer func() { searchFunc = orig }()
+```
+
+This pattern is used for `search.Search` in `wiki.go` and
+`fsnotify.NewWatcher` in `watcher.go`.  If adding new gomonkey
+patches that SIGBUS under coverage, convert them the same way.
+
 ### Statement coverage
 
 All 11 `internal/` packages are at 100% statement coverage.
