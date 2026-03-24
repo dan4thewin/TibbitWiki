@@ -1716,6 +1716,130 @@ func TestServeAttachmentPathEscape(t *testing.T) {
 	}
 }
 
+// TestServeAttachmentDirIndex verifies that requesting a directory
+// with an index.html serves the index.html content.
+func TestServeAttachmentDirIndex(t *testing.T) {
+	dir := t.TempDir()
+	pg := filepath.Join(dir, "playground")
+	os.Mkdir(pg, 0755)
+	os.WriteFile(filepath.Join(pg, "index.html"), []byte("<html>playground</html>"), 0644)
+
+	wk := wiki.New("test", dir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+
+	// Directory path with trailing slash serves index.html.
+	req := httptest.NewRequest("GET", "/test/playground/", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if w.Body.String() != "<html>playground</html>" {
+		t.Errorf("body = %q", w.Body.String())
+	}
+}
+
+// TestServeAttachmentDirRedirect verifies that a directory without
+// trailing slash redirects to add one (so relative URLs resolve correctly).
+func TestServeAttachmentDirRedirect(t *testing.T) {
+	dir := t.TempDir()
+	pg := filepath.Join(dir, "playground")
+	os.Mkdir(pg, 0755)
+	os.WriteFile(filepath.Join(pg, "index.html"), []byte("<html>pg</html>"), 0644)
+
+	wk := wiki.New("test", dir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+
+	req := httptest.NewRequest("GET", "/test/playground", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusMovedPermanently {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusMovedPermanently)
+	}
+	loc := w.Header().Get("Location")
+	if loc != "playground/" {
+		t.Errorf("Location = %q, want %q", loc, "playground/")
+	}
+}
+
+// TestServeAttachmentDirNoIndex verifies that a directory without
+// index.html returns 404.
+func TestServeAttachmentDirNoIndex(t *testing.T) {
+	dir := t.TempDir()
+	os.Mkdir(filepath.Join(dir, "empty"), 0755)
+
+	wk := wiki.New("test", dir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+
+	req := httptest.NewRequest("GET", "/test/empty/", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+// TestServeAttachmentIndexHtmlDirect verifies that requesting
+// a subdir/index.html directly works (no redirect).
+func TestServeAttachmentIndexHtmlDirect(t *testing.T) {
+	dir := t.TempDir()
+	pg := filepath.Join(dir, "playground")
+	os.Mkdir(pg, 0755)
+	os.WriteFile(filepath.Join(pg, "index.html"), []byte("<html>direct</html>"), 0644)
+
+	wk := wiki.New("test", dir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+
+	req := httptest.NewRequest("GET", "/test/playground/index.html", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (should not redirect)", w.Code, http.StatusOK)
+	}
+	if w.Body.String() != "<html>direct</html>" {
+		t.Errorf("body = %q", w.Body.String())
+	}
+}
+
+// TestServeAttachmentOpenError covers the os.Open failure path
+// (file exists per Stat but becomes unreadable before Open).
+func TestServeAttachmentOpenError(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "sub")
+	os.Mkdir(sub, 0755)
+	fp := filepath.Join(sub, "file.txt")
+	os.WriteFile(fp, []byte("data"), 0644)
+
+	wk := wiki.New("test", dir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+
+	// Make the file unreadable after Stat can still see it.
+	os.Chmod(fp, 0000)
+	t.Cleanup(func() { os.Chmod(fp, 0644) })
+
+	req := httptest.NewRequest("GET", "/test/sub/file.txt", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
 // Keep unused imports from erroring.
 var _ = io.Discard
 var _ = (*store.Store)(nil)

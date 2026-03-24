@@ -388,20 +388,25 @@ document.getElementById('copy-yaml').addEventListener('click', () => {
     ['# Typography', THEME.typography],
     ['# Layout', THEME.layout],
   ];
-  let yaml = 'theme:\n';
+  // Detect wiki name from URL: /{wiki}/playground/...
+  const parts = location.pathname.split('/').filter(Boolean);
+  const section = (parts.length >= 2 && parts[1] === 'playground')
+    ? parts[0] : 'shared';
+  let yaml = '  ' + section + ':\n';
   for (const [header, entries] of groups) {
-    yaml += '  ' + header + '\n';
+    yaml += '    ' + header + '\n';
     for (const [key, , desc] of entries) {
       const val = current[key] || '';
       const pad = Math.max(1, 14 - key.length);
-      yaml += '  ' + key + ':' + ' '.repeat(pad) + '"' + val + '"'
+      yaml += '    ' + key + ':' + ' '.repeat(pad) + '"' + val + '"'
             + ' '.repeat(Math.max(1, 24 - val.length))
             + '# ' + desc + '\n';
     }
   }
   navigator.clipboard.writeText(yaml).then(() => {
-    document.getElementById('copy-msg').textContent = '✓ Copied to clipboard';
-    setTimeout(() => document.getElementById('copy-msg').textContent = '', 2000);
+    document.getElementById('copy-msg').textContent =
+      '✓ Copied — paste under "theme:" in config.yaml';
+    setTimeout(() => document.getElementById('copy-msg').textContent = '', 3000);
   });
 });
 

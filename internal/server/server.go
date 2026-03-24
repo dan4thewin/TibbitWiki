@@ -165,26 +165,52 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 // serveAttachment serves static files from note subdirectories.
 // A path like /Meeting/report.pdf maps to {noteDir}/Meeting/report.pdf.
-// Only files inside subdirectories are served; .md files are refused.
+// Directories serve their index.html if present.
 func (s *Server) serveAttachment(w http.ResponseWriter, r *http.Request) {
 	wk := wikiFrom(r)
 	clean := filepath.Clean(r.URL.Path)
-	// Require at least one subdir component (e.g. /Meeting/file.pdf).
-	if !strings.Contains(clean[1:], string(filepath.Separator)) {
-		http.NotFound(w, r)
-		return
-	}
 	fp := filepath.Join(wk.NoteDir(), clean)
 	// Ensure the resolved path stays within the note directory.
 	if !strings.HasPrefix(fp, wk.NoteDir()+string(filepath.Separator)) {
 		http.NotFound(w, r)
 		return
 	}
-	if _, err := os.Stat(fp); err != nil {
+	fi, err := os.Stat(fp)
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	http.ServeFile(w, r, fp)
+	// Directories: redirect to add trailing slash so relative URLs
+	// resolve correctly, then serve index.html if present.
+	if fi.IsDir() {
+		if !strings.HasSuffix(r.URL.Path, "/") {
+			// Relative redirect preserving the wiki prefix.
+			w.Header().Set("Location", filepath.Base(clean)+"/")
+			w.WriteHeader(http.StatusMovedPermanently)
+			return
+		}
+		fp = filepath.Join(fp, "index.html")
+		fi, err = os.Stat(fp)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+	} else {
+		// Non-directory files require a subdir (e.g. /Meeting/file.pdf).
+		// Top-level files are notes, not attachments.
+		if !strings.Contains(clean[1:], string(filepath.Separator)) {
+			http.NotFound(w, r)
+			return
+		}
+	}
+	// ServeContent avoids http.ServeFile's index.html redirect.
+	f, err := os.Open(fp)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer f.Close()
+	http.ServeContent(w, r, fp, fi.ModTime(), f)
 }
 
 // handleStatus returns server status as JSON.

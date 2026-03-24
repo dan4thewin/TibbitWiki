@@ -7,6 +7,14 @@
 
 <style>
 :root {
+  --tw-bg: #1a1a2e; --tw-fg: #e0e0e0; --tw-note_bg: #16213e;
+  --tw-code_bg: #0d1117; --tw-accent: #6cacee; --tw-accent_hover: #8ecaff;
+  --tw-danger: #e06060; --tw-button_bg: #2a2a4a; --tw-border: #333;
+  --tw-border_light: #444; --tw-muted: #666; --tw-muted_light: #aaa;
+  --tw-font_family: -apple-system, BlinkMacSystemFont, sans-serif;
+  --tw-font_size: 16px; --tw-code_font: SF Mono, Consolas, monospace;
+  --tw-line_height: 1.6; --tw-note_radius: 6px; --tw-sidebar_width: 220px;
+  --tw-sidebar_limit: 20; --tw-tag_limit: 5; --tw-wiki_title: "TibbitWiki";
 }
 body { font-family: var(--tw-font_family); font-size: var(--tw-font_size); margin: 0; padding: 20px; display: flex; gap: 20px; background: var(--tw-bg); color: var(--tw-fg); }
 svg { vertical-align: -.125em; }
@@ -350,7 +358,7 @@ function buildTagPills(t) {
 let pollInterval = 3000;
 
 function poll() {
-  fetch(PREFIX + '/notes')
+  return fetch(PREFIX + '/notes')
     .then(r => {
       const rev = r.headers.get('X-Theme-Rev');
       if (rev && rev !== lastThemeRev) {
@@ -384,16 +392,17 @@ function poll() {
     .finally(() => setTimeout(poll, pollInterval));
 }
 
-// Build a list with an optional ellipsis to show remaining items.
-function buildList(ul, items, limit) {
+// Build a list with an optional chevron to expand/collapse.
+// Once expanded by the user, stays expanded across poll rebuilds.
+// Optional onToggle(expanded) callback for external state tracking.
+function buildList(ul, items, limit, onToggle) {
+  const expanded = ul.dataset.expanded === '1';
   ul.innerHTML = '';
   const parent = ul.parentNode;
   const oldBtn = parent.querySelector('.ellipsis-btn');
   if (oldBtn) oldBtn.remove();
 
-  const shown = items.slice(0, limit);
-  const rest = items.slice(limit);
-
+  const shown = expanded ? items : items.slice(0, limit);
   shown.forEach(t => {
     const li = document.createElement('li');
     li.textContent = t.title;
@@ -402,21 +411,27 @@ function buildList(ul, items, limit) {
     ul.appendChild(li);
   });
 
-  if (rest.length > 0) {
+  if (items.length > limit) {
     const btn = document.createElement('div');
     btn.className = 'ellipsis-btn';
-    btn.textContent = '···';
-    btn.title = rest.length + ' more';
-    btn.onclick = () => {
-      rest.forEach(t => {
-        const li = document.createElement('li');
-        li.textContent = t.title;
-        li.title = t.title;
-        li.onclick = () => openNote(t.title);
-        ul.appendChild(li);
-      });
-      btn.remove();
-    };
+    if (expanded) {
+      btn.innerHTML = ICON.chevronDown;
+      btn.style.transform = 'rotate(180deg)';
+      btn.title = 'Show fewer';
+      btn.onclick = () => {
+        delete ul.dataset.expanded;
+        if (onToggle) onToggle(false);
+        buildList(ul, items, limit, onToggle);
+      };
+    } else {
+      btn.innerHTML = ICON.chevronDown;
+      btn.title = (items.length - limit) + ' more';
+      btn.onclick = () => {
+        ul.dataset.expanded = '1';
+        if (onToggle) onToggle(true);
+        buildList(ul, items, limit, onToggle);
+      };
+    }
     parent.appendChild(btn);
   }
 }
@@ -438,6 +453,8 @@ function updateSidebar(notes) {
   buildList(document.getElementById('journal-list'), journals, limit);
 
   // Tags tab: group by tag, sorted by most recent in each group.
+  if (!updateSidebar._expandedTags) updateSidebar._expandedTags = {};
+  const expandedTags = updateSidebar._expandedTags;
   const tagMap = {};  // tag -> [notes]
   byModified.forEach(t => {
     parseTags(t.tags).forEach(tag => {
@@ -472,10 +489,11 @@ function updateSidebar(notes) {
     container.appendChild(hdr);
 
     const ul = document.createElement('ul');
+    if (expandedTags[tag]) ul.dataset.expanded = '1';
     const wrapper = document.createElement('div');
     wrapper.appendChild(ul);
     container.appendChild(wrapper);
-    buildList(ul, items, tagLimit);
+    buildList(ul, items, tagLimit, exp => { expandedTags[tag] = exp; });
   });
 }
 
@@ -556,18 +574,8 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('.gear-dropdown')) closeGearMenu();
 });
 
-fetch(PREFIX + '/notes')
-  .then(r => r.json())
-  .then(notes => {
-    allNotes = notes;
-    notes.forEach(t => {
-      knownTitles.add(t.title);
-      knownRevisions[t.title] = t.revision;
-    });
-    updateSidebar(notes);
-    openNote('ToDo');
-    setTimeout(poll, 3000);
-  });
+// Initial load: poll immediately, then open default note.
+poll().then(() => openNote('ToDo'));
 
 document.addEventListener('click', e => {
   const link = e.target.closest('a.wikiword');
