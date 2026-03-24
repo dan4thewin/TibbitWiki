@@ -114,9 +114,8 @@ WIN_ID=$(osascript -e 'tell application "Safari" to id of front window')
 screencapture -l "$WIN_ID" /tmp/screenshot.png
 ```
 
-The `render-url.sh` script also captures screenshots but reloads
-the page first — useful for fresh-state captures, not for observing
-live poll updates.
+The `screencapture -l` command captures without reloading — use it
+for observing live poll updates.
 
 ## Mock editor
 
@@ -232,7 +231,7 @@ cd ~/src/TibbitWiki/exp
 ```
 
 It kills any existing server, starts a fresh one with the
-experiment's index.html, and takes a screenshot via render-url.sh.
+experiment's index.html, and takes a screenshot.
 
 ## Gotchas
 
@@ -245,9 +244,9 @@ experiment's index.html, and takes a screenshot via render-url.sh.
   spaces are handled correctly. But if you ever change this logic,
   test with a title like "21st March 2026".
 
-- **render-url.sh reloads the page.** This means you can't use it
-  to capture live poll updates (the reload resets JS state). Use
-  `screencapture -l` directly for that.
+- **Screenshots reload caveat.** Some screenshot tools reload the
+  page, which resets JS state. Use `screencapture -l` directly to
+  capture live poll updates without reloading.
 
 - **Poll timing.** After triggering a change, wait at least 5-6
   seconds: ~1s for the watcher to fire, up to 3s for the next poll

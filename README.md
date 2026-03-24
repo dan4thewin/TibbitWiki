@@ -227,6 +227,12 @@ Install: `go install github.com/dcjones/mk@latest`
 See [TESTING.md](TESTING.md) for browser automation and integration
 testing techniques.
 
+### Migrating from TiddlyWiki
+
+`scripts/tw2md` converts TiddlyWiki `.tid` files to TibbitWiki `.md`
+format — timestamps, headers, wikitext→markdown, and journal
+filename conversion (e.g. "10th July 2023" → "2023-07-10").
+
 ## Known Limitations
 
 - **macOS file watching uses kqueue**, which opens a file descriptor per

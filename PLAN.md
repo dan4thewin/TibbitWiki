@@ -97,12 +97,9 @@ goroutine. LRU cache keeps memory bounded.
     Meeting.md → ../work/Meeting.md   (symlink)
 ```
 
-Single-wiki: if `--wiki-path` contains .md files directly (no
-subdirs with .md), treat it as a single wiki named "default" and
-serve at `/` (current URL scheme unchanged).
-
-Multi-wiki: subdirs auto-discovered, served at `/{name}/notes/...`
-etc. Root `/` shows wiki selector or redirects to a default.
+Wikis are subdirectories of `--wiki-path`, auto-discovered at
+startup. Each subdir with `.md` files becomes a wiki at `/{name}/`.
+Root `/` shows the wiki selector.
 
 ### URL routing
 
