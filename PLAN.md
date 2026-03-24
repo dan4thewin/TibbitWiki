@@ -335,6 +335,6 @@ CSS files at wiki_path level — invisible to rg (runs inside wiki subdirs).
 
 ### TODO
 
-- [ ] Delete note button in browser client (API exists)
+- [x] Delete note button in browser client (API exists)
 - [ ] Revisions browser — show RCS history, revert to prior version
-- [ ] Per-wiki theming not yet tested end-to-end in browser
+- [x] Per-wiki theming not yet tested end-to-end in browser

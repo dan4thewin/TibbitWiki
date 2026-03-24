@@ -161,13 +161,26 @@ func (w *Wiki) Put(title string, fields map[string]string, clientRev string) (in
 	return rev, conflict
 }
 
-// Delete removes a note and its file on disk.
+// Delete removes a note file and preserves its RCS history in last+chance/.
 func (w *Wiki) Delete(title string) {
 	w.do(func() {
-		if fp := w.store.FilePath(title); fp != "" {
-			if err := os.Remove(fp); err != nil && !os.IsNotExist(err) {
-				log.Printf("wiki %s: error deleting %q: %v", w.Name, title, err)
+		fp := w.store.FilePath(title)
+		if fp == "" {
+			return
+		}
+		// Move RCS archive to last+chance/ before removing the note.
+		base := filepath.Base(fp)
+		rcsFile := filepath.Join(filepath.Dir(fp), "RCS", base+",v")
+		if _, err := os.Stat(rcsFile); err == nil {
+			lcDir := filepath.Join(w.noteDir, "last+chance")
+			if err := os.MkdirAll(lcDir, 0o755); err != nil {
+				log.Printf("wiki %s: cannot create last+chance: %v", w.Name, err)
+			} else if err := os.Rename(rcsFile, filepath.Join(lcDir, base+",v")); err != nil {
+				log.Printf("wiki %s: cannot preserve %s: %v", w.Name, base+",v", err)
 			}
+		}
+		if err := os.Remove(fp); err != nil && !os.IsNotExist(err) {
+			log.Printf("wiki %s: error deleting %q: %v", w.Name, title, err)
 		}
 		w.store.Delete(title)
 		w.body.Remove(title)

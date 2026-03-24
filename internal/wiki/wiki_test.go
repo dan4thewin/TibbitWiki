@@ -212,6 +212,110 @@ func TestWikiDelete(t *testing.T) {
 	}
 }
 
+// TestWikiDeletePreservesRCS verifies that deleting a note moves
+// its RCS archive to last+chance/ for recovery.
+func TestWikiDeletePreservesRCS(t *testing.T) {
+	wk := testWiki(t)
+	path := writeNote(t, wk, "Saved", "history")
+
+	// Create a fake RCS archive.
+	rcsDir := filepath.Join(wk.NoteDir(), "RCS")
+	os.MkdirAll(rcsDir, 0755)
+	rcsFile := filepath.Join(rcsDir, "Saved.md,v")
+	os.WriteFile(rcsFile, []byte("rcs-data"), 0644)
+
+	wk.Delete("Saved")
+
+	// Note file should be gone.
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Error("note file should be deleted")
+	}
+	// RCS archive should be gone from RCS/.
+	if _, err := os.Stat(rcsFile); !os.IsNotExist(err) {
+		t.Error("RCS archive should be moved out of RCS/")
+	}
+	// RCS archive should be in last+chance/.
+	lcFile := filepath.Join(wk.NoteDir(), "last+chance", "Saved.md,v")
+	if _, err := os.Stat(lcFile); err != nil {
+		t.Errorf("RCS archive should be in last+chance/: %v", err)
+	}
+	data, _ := os.ReadFile(lcFile)
+	if string(data) != "rcs-data" {
+		t.Errorf("last+chance content = %q, want %q", data, "rcs-data")
+	}
+}
+
+// TestWikiDeleteNoRCS verifies delete works fine when there's no
+// RCS archive (new note never checked in).
+func TestWikiDeleteNoRCS(t *testing.T) {
+	wk := testWiki(t)
+	writeNote(t, wk, "NoHistory", "ephemeral")
+
+	wk.Delete("NoHistory")
+
+	if wk.Store().Get("NoHistory") != nil {
+		t.Error("note should be deleted from store")
+	}
+	// No last+chance/ dir should be created.
+	lcDir := filepath.Join(wk.NoteDir(), "last+chance")
+	if _, err := os.Stat(lcDir); !os.IsNotExist(err) {
+		t.Error("last+chance/ should not be created when no RCS archive exists")
+	}
+}
+
+// TestWikiDeleteNotInStore verifies deleting a title with no file
+// path (not in store) is a harmless no-op.
+func TestWikiDeleteNotInStore(t *testing.T) {
+	wk := testWiki(t)
+	wk.Delete("Ghost")
+	// No panic, no crash — just a no-op.
+}
+
+// TestWikiDeleteLastChanceMkdirError verifies that a MkdirAll failure
+// for last+chance/ is logged but the note is still deleted.
+func TestWikiDeleteLastChanceMkdirError(t *testing.T) {
+	wk := testWiki(t)
+	writeNote(t, wk, "MkdirFail", "body")
+
+	// Create RCS archive so the last+chance path is attempted.
+	rcsDir := filepath.Join(wk.NoteDir(), "RCS")
+	os.MkdirAll(rcsDir, 0755)
+	os.WriteFile(filepath.Join(rcsDir, "MkdirFail.md,v"), []byte("v"), 0644)
+
+	// Block last+chance creation by putting a file where the dir would be.
+	os.WriteFile(filepath.Join(wk.NoteDir(), "last+chance"), []byte("block"), 0644)
+
+	wk.Delete("MkdirFail")
+
+	if wk.Store().Get("MkdirFail") != nil {
+		t.Error("note should be deleted from store despite MkdirAll error")
+	}
+}
+
+// TestWikiDeleteLastChanceRenameError verifies that a Rename failure
+// is logged but the note is still deleted.
+func TestWikiDeleteLastChanceRenameError(t *testing.T) {
+	wk := testWiki(t)
+	writeNote(t, wk, "RenameFail", "body")
+
+	// Create RCS archive.
+	rcsDir := filepath.Join(wk.NoteDir(), "RCS")
+	os.MkdirAll(rcsDir, 0755)
+	os.WriteFile(filepath.Join(rcsDir, "RenameFail.md,v"), []byte("v"), 0644)
+
+	// Create last+chance/ as unwritable so Rename fails.
+	lcDir := filepath.Join(wk.NoteDir(), "last+chance")
+	os.MkdirAll(lcDir, 0755)
+	os.Chmod(lcDir, 0555)
+	t.Cleanup(func() { os.Chmod(lcDir, 0755) })
+
+	wk.Delete("RenameFail")
+
+	if wk.Store().Get("RenameFail") != nil {
+		t.Error("note should be deleted from store despite Rename error")
+	}
+}
+
 func TestWikiList(t *testing.T) {
 	wk := testWiki(t)
 	writeNote(t, wk, "Alpha", "a")
