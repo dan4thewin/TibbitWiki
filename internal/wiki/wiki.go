@@ -77,6 +77,28 @@ func (w *Wiki) SetSymlinks(m map[string]string) { w.symlinks = m }
 // Called once after all wikis are created.
 func (w *Wiki) SetHub(h *Hub) { w.hub = h }
 
+// ScanRCS detects notes checked out at non-head revisions by
+// looking for read-only files with a CHECKOUT symbolic tag.
+// Called once after loading, before Start.
+func (w *Wiki) ScanRCS() {
+	for _, td := range w.store.All() {
+		fp := w.store.FilePath(td.Title())
+		if fp == "" || !isReadOnly(fp) {
+			continue
+		}
+		rev, err := rcs.CheckoutTag(fp, "CHECKOUT")
+		if err != nil || rev == "" {
+			continue
+		}
+		head, err := rcs.HeadRev(fp)
+		if err != nil {
+			continue
+		}
+		w.store.SetRCS(td.Title(), rev, head)
+		log.Printf("wiki %s: %q at revision %s (head %s)", w.Name, td.Title(), rev, head)
+	}
+}
+
 // Start launches the event loop goroutine.
 func (w *Wiki) Start() { go w.loop() }
 
@@ -127,6 +149,13 @@ func (w *Wiki) Get(title string, renderPlain bool) map[string]string {
 		text := w.fetchBody(title)
 		result["text"] = text
 		result["revision"] = fmt.Sprintf("%d", w.store.Revision(title))
+		if fp := w.store.FilePath(title); fp != "" && isReadOnly(fp) {
+			result["readOnly"] = "true"
+		}
+		if rev, head := w.store.RCS(title); rev != "" {
+			result["rcsRev"] = rev
+			result["rcsHead"] = head
+		}
 		if text != "" {
 			if renderPlain {
 				result["html"] = render.ToPlainHTML(text)
@@ -211,19 +240,21 @@ func (w *Wiki) List() []map[string]string {
 		if ow == nil {
 			continue
 		}
-		td := ow.Store().Get(title)
-		if td == nil {
-			continue
-		}
-		fields := td.SkinnyFields()
-		fields["revision"] = fmt.Sprintf("%d", ow.Store().Revision(title))
-		fields["owner"] = owner
-		if fp := ow.Store().FilePath(title); fp != "" {
-			if at := fileAtime(fp); at != "" {
-				fields["accessed"] = at
+		ow.do(func() {
+			td := ow.store.Get(title)
+			if td == nil {
+				return
 			}
-		}
-		result = append(result, fields)
+			fields := td.SkinnyFields()
+			fields["revision"] = fmt.Sprintf("%d", ow.store.Revision(title))
+			fields["owner"] = owner
+			if fp := ow.store.FilePath(title); fp != "" {
+				if at := fileAtime(fp); at != "" {
+					fields["accessed"] = at
+				}
+			}
+			result = append(result, fields)
+		})
 	}
 	return result
 }
@@ -232,6 +263,145 @@ func (w *Wiki) List() []map[string]string {
 type SearchResult struct {
 	Title   string   `json:"title"`
 	Matches []string `json:"matches"`
+}
+
+// RevisionsResult holds revision history for a note.
+type RevisionsResult struct {
+	Revisions []string `json:"revisions"`
+	DiffHTML  string   `json:"diffHTML"`
+	IsHead    bool     `json:"isHead"`
+}
+
+// Revisions returns the revision history for a note: list of
+// revision strings, concatenated diff HTML for the most recent
+// maxDiffs pairs, and whether the working file is at head.
+func (w *Wiki) Revisions(title string, maxDiffs int) (RevisionsResult, error) {
+	var result RevisionsResult
+	var err error
+	w.do(func() {
+		fp := w.store.FilePath(title)
+		if fp == "" {
+			err = fmt.Errorf("no file for note")
+			return
+		}
+		head, e := rcs.HeadRev(fp)
+		if e != nil {
+			err = e
+			return
+		}
+		result.IsHead = !isReadOnly(fp)
+		result.Revisions = buildRevList(head)
+		result.DiffHTML = buildDiffHTML(fp, result.Revisions, maxDiffs)
+	})
+	return result, err
+}
+
+// CheckoutRevision checks out a specific revision (read-only) or
+// restores the head (writable) when rev is empty.
+// On checkout, sets the CHECKOUT symbolic tag and records RCS state.
+// On restore, deletes the tag and clears RCS state.
+func (w *Wiki) CheckoutRevision(title, rev string) error {
+	var err error
+	w.do(func() {
+		fp := w.store.FilePath(title)
+		if fp == "" {
+			err = fmt.Errorf("no file for note")
+			return
+		}
+		if rev == "" {
+			err = rcs.CheckoutHead(fp)
+			if err == nil {
+				rcs.DeleteTag(fp, "CHECKOUT")
+				w.store.SetRCS(title, "", "")
+			}
+		} else {
+			err = rcs.Checkout(fp, rev)
+			if err == nil {
+				head, _ := rcs.HeadRev(fp)
+				rcs.SetTag(fp, "CHECKOUT", rev)
+				w.store.SetRCS(title, rev, head)
+			}
+		}
+	})
+	return err
+}
+
+// IsReadOnly returns true when a note's file is read-only (checked
+// out at a non-head revision).
+func (w *Wiki) IsReadOnly(title string) bool {
+	var ro bool
+	w.do(func() {
+		fp := w.store.FilePath(title)
+		if fp != "" {
+			ro = isReadOnly(fp)
+		}
+	})
+	return ro
+}
+
+// PromoteRevision checks in the current (old) working file as the
+// new head revision, then clears the CHECKOUT tag and RCS state.
+func (w *Wiki) PromoteRevision(title string) error {
+	var err error
+	w.do(func() {
+		fp := w.store.FilePath(title)
+		if fp == "" {
+			err = fmt.Errorf("no file for note")
+			return
+		}
+		if !isReadOnly(fp) {
+			err = fmt.Errorf("note is already at head")
+			return
+		}
+		if err = rcs.Checkin(fp); err != nil {
+			return
+		}
+		rcs.DeleteTag(fp, "CHECKOUT")
+		w.store.SetRCS(title, "", "")
+	})
+	return err
+}
+
+func isReadOnly(path string) bool {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return fi.Mode().Perm()&0200 == 0
+}
+
+// buildRevList generates ["1.1", "1.2", ..., "1.N"] from head "1.N".
+func buildRevList(head string) []string {
+	// Parse "1.N" to get N.
+	var major, minor int
+	fmt.Sscanf(head, "%d.%d", &major, &minor)
+	revs := make([]string, 0, minor)
+	for i := 1; i <= minor; i++ {
+		revs = append(revs, fmt.Sprintf("%d.%d", major, i))
+	}
+	return revs
+}
+
+// buildDiffHTML runs rcsdiff between consecutive revision pairs
+// (most recent maxDiffs pairs) and returns syntax-highlighted HTML.
+func buildDiffHTML(path string, revs []string, maxDiffs int) string {
+	if len(revs) < 2 {
+		return ""
+	}
+	start := 0
+	if len(revs)-1 > maxDiffs {
+		start = len(revs) - 1 - maxDiffs
+	}
+	var buf strings.Builder
+	for i := start; i < len(revs)-1; i++ {
+		diff, err := rcs.DiffRange(path, revs[i], revs[i+1])
+		if err != nil || diff == "" {
+			continue
+		}
+		fmt.Fprintf(&buf, "<h4>%s → %s</h4>\n", revs[i], revs[i+1])
+		buf.WriteString(render.DiffToHTML(diff))
+	}
+	return buf.String()
 }
 
 // Search runs a full-text search over the wiki's notes.
@@ -467,6 +637,10 @@ func (w *Wiki) reloadFile(path string) {
 	w.body.Add(td.Title(), td.Text())
 	w.store.PutWithPath(td, path)
 	log.Printf("wiki %s: reloaded %q", w.Name, td.Title())
+	// Skip checkin for read-only files (checked out at non-head revision).
+	if isReadOnly(path) {
+		return
+	}
 	if err := rcs.Checkin(path); err != nil {
 		log.Printf("wiki %s: rcs checkin %s: %v", w.Name, path, err)
 	}

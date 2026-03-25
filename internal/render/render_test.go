@@ -466,3 +466,32 @@ func TestToPlainHTMLConvertError(t *testing.T) {
 		t.Errorf("ToPlainHTML = %q, want original %q", got, input)
 	}
 }
+
+// TestDiffToHTMLHighlights verifies DiffToHTML produces syntax-
+// highlighted HTML for unified diff input.
+func TestDiffToHTMLHighlights(t *testing.T) {
+	diff := `--- a/test.md
++++ b/test.md
+@@ -1,3 +1,3 @@
+ unchanged
+-old line
++new line
+ unchanged
+`
+	got := DiffToHTML(diff)
+	// Should produce chroma-highlighted HTML, not raw text.
+	if !strings.Contains(got, "<") {
+		t.Error("expected HTML output")
+	}
+	if strings.Contains(got, "<pre>"+diff) {
+		t.Error("should not fall back to plain <pre> for valid diff")
+	}
+}
+
+// TestDiffToHTMLEmpty verifies DiffToHTML handles empty input.
+func TestDiffToHTMLEmpty(t *testing.T) {
+	got := DiffToHTML("")
+	if got == "" {
+		t.Error("expected some HTML output even for empty diff")
+	}
+}

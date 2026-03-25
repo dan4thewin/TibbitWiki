@@ -6,6 +6,7 @@ listen: 127.0.0.1:8080
 editor_cmd: "neovide -- %s"
 poll_interval: 3s
 cache_size: 200
+max_diffs: 10
 
 # Theme applies live on save.
 # "shared" is the base for all wikis.  Add a section named after

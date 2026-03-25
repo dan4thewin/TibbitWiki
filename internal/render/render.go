@@ -7,7 +7,9 @@ import (
 	"os"
 	"sort"
 
+	"github.com/alecthomas/chroma/v2"
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
+	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -208,4 +210,25 @@ func GenerateThemeCSS(theme map[string]string) string {
 // WriteThemeFile generates theme CSS and writes it to path.
 func WriteThemeFile(theme map[string]string, path string) error {
 	return os.WriteFile(path, []byte(GenerateThemeCSS(theme)), 0644)
+}
+
+// DiffToHTML renders unified diff text as syntax-highlighted HTML
+// using the chroma Diff lexer and OneDark theme.
+func DiffToHTML(diff string) string {
+	lexer := lexers.Get("Diff")
+	if lexer == nil {
+		lexer = lexers.Fallback
+	}
+	lexer = chroma.Coalesce(lexer)
+	style := styles.Get("onedark")
+	formatter := chromahtml.New(chromahtml.WithClasses(true))
+	iter, err := lexer.Tokenise(nil, diff)
+	if err != nil {
+		return "<pre>" + diff + "</pre>"
+	}
+	var buf bytes.Buffer
+	if err := formatter.Format(&buf, style, iter); err != nil {
+		return "<pre>" + diff + "</pre>"
+	}
+	return buf.String()
 }

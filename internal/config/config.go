@@ -32,6 +32,7 @@ type Config struct {
 	TWCorePath   string        `yaml:"tw_core_path"`
 	IndexHTML    string        `yaml:"index_html"`
 	CacheSize    int           `yaml:"cache_size"`
+	MaxDiffs     int           `yaml:"max_diffs"`
 	Theme        Theme         `yaml:"theme"`
 }
 

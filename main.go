@@ -83,7 +83,7 @@ func main() {
 	for _, wk := range wikis {
 		wk.SetHub(hub)
 	}
-	srv := server.New(hub, ed, &themeRev, pollMS, cfg.IndexHTML, cfg.WikiPath, configPath)
+	srv := server.New(hub, ed, &themeRev, pollMS, cfg.MaxDiffs, cfg.IndexHTML, cfg.WikiPath, configPath)
 	httpSrv := &http.Server{Addr: cfg.Listen, Handler: srv}
 	log.Printf("listening on http://%s", cfg.Listen)
 	log.Printf("wikis: %v", hub.Names())
@@ -257,6 +257,7 @@ func discoverWikis(dir string, ed *editor.Editor, cacheSize int) map[string]*wik
 			log.Printf("wiki %s: %d symlinked notes", name, len(sym))
 		}
 		log.Printf("wiki %s: loaded %d notes from %s", name, n, subdir)
+		wk.ScanRCS()
 		wk.Start()
 		startWatcher(name, subdir, wk)
 		wikis[name] = wk

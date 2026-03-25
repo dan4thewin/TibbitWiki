@@ -42,6 +42,9 @@ playground/ — theme playground (standalone HTML)
 | GET | `/{wiki}/search?q=...` | Full-text search (rg) |
 | GET | `/{wiki}/theme.css` | Generated CSS (theme + chroma) |
 | GET | `/{wiki}/Title/file.ext` | Static attachment from subdir |
+| GET | `/{wiki}/revisions/{title}` | Revision history + diffs (JSON) |
+| POST | `/{wiki}/revisions/{title}/checkout` | Checkout revision (?rev=1.3) or head |
+| POST | `/{wiki}/revisions/{title}/promote` | Promote old rev as new head |
 
 ### Design decisions
 
@@ -336,5 +339,58 @@ CSS files at wiki_path level — invisible to rg (runs inside wiki subdirs).
 ### TODO
 
 - [x] Delete note button in browser client (API exists)
-- [ ] Revisions browser — show RCS history, revert to prior version
+- [x] Revisions browser (see v8 below)
 - [x] Per-wiki theming not yet tested end-to-end in browser
+
+---
+
+## v8: Revisions Browser
+
+### Design
+
+1. **Diff display:** Concatenated `rcsdiff -u` for most recent N
+   revision pairs. Chroma diff syntax highlighting. Capped by
+   `max_diffs` config (default 10).
+
+2. **Non-head detection:** Read-only file permission. `co -r1.3`
+   (no `-l`) → 0444. Checked via `fi.Mode().Perm()&0200 == 0`
+   at load time. No xattr, no sidecar.
+
+3. **Checkout flow:** Clickable revision numbers in diff history
+   + text input fallback. `co -r{rev}` (no lock) → read-only →
+   watcher fires → poll updates card. Restore head via `co -l`.
+   Edit/delete/line-edit disabled when viewing old revision.
+
+4. **Toolbar:** `[▼] [edit ✏️] [close ✕]` — chevron expands to
+   show `[revisions 🕐] [delete 🗑]` inline left of edit.
+
+5. **Config:** Top-level `max_diffs: 10`, config-only.
+
+### TODO
+
+- [x] Add `max_diffs` to config
+- [x] Add `Log`, `HeadRev`, `DiffRange`, `Checkout`, `CheckoutHead` to rcs
+- [x] Tests for new rcs functions
+- [x] Wiki methods: `Revisions`, `Checkout`, `IsHead`
+- [x] Wiki method tests
+- [x] Server endpoints: `GET revisions/{title}`, `POST revisions/{title}/checkout`
+- [x] Server endpoint tests
+- [x] Refactor toolbar: chevron hides delete + revisions
+- [x] Revisions dropdown UI
+- [x] Diff display with chroma highlighting
+- [x] Checkout + restore head UI
+- [x] Non-head visual indicator (read-only → disabled buttons + badge)
+- [x] Update README.md
+- [x] Store refactor: collapsed 3 maps into single `entry` struct
+- [x] RCS symbolic tags (`-N`) for tracking checked-out revision
+- [x] Promote revision: `ci -l` on read-only file → new trunk head
+- [x] `POST /revisions/{title}/promote` endpoint (204/409/404)
+- [x] Browser: promote button ("1.1 → 1.4") + restore button when
+  viewing non-head revision
+- [x] `rcsRev`/`rcsHead` in GET /notes response for non-head files
+- [x] `ScanRCS()` at startup: parse CHECKOUT tag from `rlog -h`
+- [x] Revision number shown on note card (muted, next to date)
+- [x] Simpler clock icon for revisions button
+- [x] Line-edit cancel: Escape and click-away (blur) dismiss input
+- [x] Removed hardcoded `openNote('ToDo')` startup; `alert→console.warn`
+- [x] Integration tests: 37/37 (API + Safari DOM)

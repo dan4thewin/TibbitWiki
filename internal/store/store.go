@@ -1,61 +1,64 @@
 // Package store provides an in-memory note store with revision
-// tracking. It is the central data structure that the HTTP server
-// reads from and the file watcher/API writes to.
+// tracking. All access is serialized through the owning wiki's
+// goroutine event loop — no internal locking needed.
 package store
 
 import (
 	"sort"
-	"sync"
 
 	"github.com/dan4thewin/tibbitwiki/internal/tid"
 )
 
+// entry bundles all per-note metadata into a single struct.
+type entry struct {
+	note     *tid.Note
+	revision int
+	filePath string
+	rcsRev   string // checked-out revision ("" = at head)
+	rcsHead  string // RCS head when checked out
+}
+
 // Store holds notes in memory with per-note revision counters.
 type Store struct {
-	mu        sync.RWMutex
-	notes     map[string]*tid.Note // title → note
-	revisions map[string]int       // title → change count
-	// filePaths tracks title → absolute file path on disk.
-	filePaths map[string]string
+	entries map[string]*entry // title → entry
 }
 
 // New creates an empty Store.
 func New() *Store {
-	return &Store{
-		notes:     make(map[string]*tid.Note),
-		revisions: make(map[string]int),
-		filePaths: make(map[string]string),
-	}
+	return &Store{entries: make(map[string]*entry)}
 }
 
-// Clear removes all notes, revisions, and file paths.
+// Clear removes all entries from the store.
 func (s *Store) Clear() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.notes = make(map[string]*tid.Note)
-	s.revisions = make(map[string]int)
-	s.filePaths = make(map[string]string)
+	s.entries = make(map[string]*entry)
+}
+
+func (s *Store) getOrCreate(title string) *entry {
+	e := s.entries[title]
+	if e == nil {
+		e = &entry{}
+		s.entries[title] = e
+	}
+	return e
 }
 
 // Put adds or updates a note and bumps its revision counter.
 // The text field is stripped; body storage is the caller's concern.
 func (s *Store) Put(t *tid.Note) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	title := t.Title()
-	s.notes[title] = stripText(t)
-	s.revisions[title]++
+	e := s.getOrCreate(title)
+	e.note = stripText(t)
+	e.revision++
 }
 
 // PutWithPath adds or updates a note and records its file path.
 // The text field is stripped; body storage is the caller's concern.
 func (s *Store) PutWithPath(t *tid.Note, path string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	title := t.Title()
-	s.notes[title] = stripText(t)
-	s.revisions[title]++
-	s.filePaths[title] = path
+	e := s.getOrCreate(title)
+	e.note = stripText(t)
+	e.revision++
+	e.filePath = path
 }
 
 // stripText returns a copy of the note with the text field removed.
@@ -71,53 +74,64 @@ func stripText(t *tid.Note) *tid.Note {
 
 // Get returns a note by title, or nil if not found.
 func (s *Store) Get(title string) *tid.Note {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.notes[title]
+	if e := s.entries[title]; e != nil {
+		return e.note
+	}
+	return nil
 }
 
 // Delete removes a note by title. Returns true if it existed.
 func (s *Store) Delete(title string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.notes[title]; !ok {
+	if _, ok := s.entries[title]; !ok {
 		return false
 	}
-	delete(s.notes, title)
-	delete(s.revisions, title)
-	delete(s.filePaths, title)
+	delete(s.entries, title)
 	return true
 }
 
 // Revision returns the current revision for a note title.
 func (s *Store) Revision(title string) int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.revisions[title]
+	if e := s.entries[title]; e != nil {
+		return e.revision
+	}
+	return 0
 }
 
 // FilePath returns the on-disk path for a note title.
 func (s *Store) FilePath(title string) string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.filePaths[title]
+	if e := s.entries[title]; e != nil {
+		return e.filePath
+	}
+	return ""
 }
 
 // SetFilePath records the on-disk path for a note without
 // bumping the revision (used during initial load).
 func (s *Store) SetFilePath(title, path string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.filePaths[title] = path
+	s.getOrCreate(title).filePath = path
+}
+
+// SetRCS records the checked-out revision and head for a note.
+func (s *Store) SetRCS(title, rev, head string) {
+	e := s.getOrCreate(title)
+	e.rcsRev = rev
+	e.rcsHead = head
+}
+
+// RCS returns the checked-out revision and head for a note.
+// Both are empty when the working file is at head.
+func (s *Store) RCS(title string) (rev, head string) {
+	if e := s.entries[title]; e != nil {
+		return e.rcsRev, e.rcsHead
+	}
+	return "", ""
 }
 
 // All returns all notes sorted by title.
 func (s *Store) All() []*tid.Note {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	result := make([]*tid.Note, 0, len(s.notes))
-	for _, t := range s.notes {
-		result = append(result, t)
+	result := make([]*tid.Note, 0, len(s.entries))
+	for _, e := range s.entries {
+		result = append(result, e.note)
 	}
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Title() < result[j].Title()
@@ -127,7 +141,5 @@ func (s *Store) All() []*tid.Note {
 
 // Count returns the number of notes in the store.
 func (s *Store) Count() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return len(s.notes)
+	return len(s.entries)
 }

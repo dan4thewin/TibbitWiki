@@ -36,6 +36,7 @@ type Server struct {
 	editor     *editor.Editor
 	themeRev   *atomic.Int64
 	pollMS     int
+	maxDiffs   int
 	indexHTML  string
 	wikiPath   string
 	configPath string
@@ -45,12 +46,13 @@ type Server struct {
 
 // New creates a Server backed by the given Hub.
 // themeRev is bumped externally when per-wiki CSS is regenerated.
-func New(hub *wiki.Hub, ed *editor.Editor, themeRev *atomic.Int64, pollMS int, indexHTML, wikiPath, configPath string) *Server {
+func New(hub *wiki.Hub, ed *editor.Editor, themeRev *atomic.Int64, pollMS, maxDiffs int, indexHTML, wikiPath, configPath string) *Server {
 	srv := &Server{
 		hub:        hub,
 		editor:     ed,
 		themeRev:   themeRev,
 		pollMS:     pollMS,
+		maxDiffs:   maxDiffs,
 		indexHTML:  indexHTML,
 		wikiPath:   wikiPath,
 		configPath: configPath,
@@ -78,6 +80,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/restart", s.handleRestart)
 	s.mux.HandleFunc("/theme.css", s.handleThemeCSS)
 	s.mux.HandleFunc("/search", s.handleSearch)
+	s.mux.HandleFunc("/revisions/", s.handleRevisions)
 }
 
 // ServeHTTP extracts the wiki name from the first path segment,
@@ -421,6 +424,84 @@ func (s *Server) handleLineEdit(w http.ResponseWriter, r *http.Request) {
 		"html":     html,
 		"revision": fmt.Sprintf("%d", rev),
 	})
+}
+
+// handleRevisions dispatches GET and POST for revision operations.
+// GET /revisions/{title} returns revision history with diffs.
+// POST /revisions/{title}/checkout?rev=1.3 checks out a revision.
+// POST /revisions/{title}/promote promotes the checked-out revision.
+func (s *Server) handleRevisions(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/revisions/")
+	if path == "" {
+		http.Error(w, "missing note title", http.StatusBadRequest)
+		return
+	}
+	// Check for /checkout suffix.
+	if strings.HasSuffix(path, "/checkout") {
+		title := strings.TrimSuffix(path, "/checkout")
+		s.checkoutRevision(w, r, title)
+		return
+	}
+	// Check for /promote suffix.
+	if strings.HasSuffix(path, "/promote") {
+		title := strings.TrimSuffix(path, "/promote")
+		s.promoteRevision(w, r, title)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.getRevisions(w, r, path)
+}
+
+func (s *Server) getRevisions(w http.ResponseWriter, r *http.Request, title string) {
+	result, err := wikiFrom(r).Revisions(title, s.maxDiffs)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "no file") {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+func (s *Server) checkoutRevision(w http.ResponseWriter, r *http.Request, title string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	rev := r.URL.Query().Get("rev")
+	if err := wikiFrom(r).CheckoutRevision(title, rev); err != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "no file") {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) promoteRevision(w http.ResponseWriter, r *http.Request, title string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := wikiFrom(r).PromoteRevision(title); err != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "no file") {
+			status = http.StatusNotFound
+		} else if strings.Contains(err.Error(), "already at head") {
+			status = http.StatusConflict
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // extractTitle pulls the note title from a URL path by removing

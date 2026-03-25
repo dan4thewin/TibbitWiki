@@ -236,6 +236,7 @@ func TestClear(t *testing.T) {
 	s := New()
 	s.PutWithPath(makeNote("A", "text"), "/a.md")
 	s.Put(makeNote("B", "text"))
+	s.SetRCS("A", "1.1", "1.3")
 	s.Clear()
 	if s.Count() != 0 {
 		t.Errorf("count = %d, want 0", s.Count())
@@ -248,5 +249,47 @@ func TestClear(t *testing.T) {
 	}
 	if s.Revision("A") != 0 {
 		t.Error("revision should be gone")
+	}
+	if r, h := s.RCS("A"); r != "" || h != "" {
+		t.Errorf("rcs should be empty, got %q/%q", r, h)
+	}
+}
+
+// TestSetRCSAndRCS verifies that RCS state can be stored and
+// retrieved per note.
+func TestSetRCSAndRCS(t *testing.T) {
+	s := New()
+	s.Put(makeNote("R", ""))
+	s.SetRCS("R", "1.1", "1.3")
+	rev, head := s.RCS("R")
+	if rev != "1.1" || head != "1.3" {
+		t.Errorf("rcs = %q/%q, want 1.1/1.3", rev, head)
+	}
+	// Clear RCS state.
+	s.SetRCS("R", "", "")
+	rev, head = s.RCS("R")
+	if rev != "" || head != "" {
+		t.Errorf("rcs after clear = %q/%q, want empty", rev, head)
+	}
+}
+
+// TestRCSMissing verifies that RCS returns empty for unknown titles.
+func TestRCSMissing(t *testing.T) {
+	s := New()
+	rev, head := s.RCS("Nope")
+	if rev != "" || head != "" {
+		t.Errorf("rcs = %q/%q, want empty", rev, head)
+	}
+}
+
+// TestDeleteClearsRCS verifies that Delete removes RCS state.
+func TestDeleteClearsRCS(t *testing.T) {
+	s := New()
+	s.Put(makeNote("D", ""))
+	s.SetRCS("D", "1.2", "1.5")
+	s.Delete("D")
+	rev, head := s.RCS("D")
+	if rev != "" || head != "" {
+		t.Errorf("rcs after delete = %q/%q, want empty", rev, head)
 	}
 }

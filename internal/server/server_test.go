@@ -60,7 +60,7 @@ func newTestServer(t *testing.T) (*Server, *wiki.Wiki) {
 	os.WriteFile(cssPath, []byte(":root{} .chroma{}"), 0644)
 
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, ed, new(atomic.Int64), 3000, f.Name(), dir, "")
+	srv := New(hub, ed, new(atomic.Int64), 3000, 10, f.Name(), dir, "")
 	return srv, wk
 }
 
@@ -110,7 +110,7 @@ func TestHandleIndexEmbedded(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 	req := httptest.NewRequest("GET", "/test/", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -475,7 +475,7 @@ func TestHandleEditExternalNoEditor(t *testing.T) {
 	os.WriteFile(path, tid.Serialize(td), 0644)
 	wk.Store().PutWithPath(td, path)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("POST", "/test/edit-external/X", nil)
 	w := httptest.NewRecorder()
@@ -566,7 +566,7 @@ func TestPutNoteNoFilePathNoDir(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	body := `{"title":"NoFile","tags":"Mem","text":"In-memory only."}`
 	req := httptest.NewRequest("PUT", "/test/notes/NoFile",
@@ -639,7 +639,7 @@ func TestHandleEditExternalEditorFails(t *testing.T) {
 	wk.Store().PutWithPath(td, path)
 
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("POST", "/test/edit-external/FailEdit", nil)
 	w := httptest.NewRecorder()
@@ -874,7 +874,7 @@ func TestHandleSearchNoNoteDir(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/search?q=hello", nil)
 	w := httptest.NewRecorder()
@@ -1388,7 +1388,7 @@ func TestHandleNewDraftError(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("POST", "/test/new-draft", nil)
 	w := httptest.NewRecorder()
@@ -1410,7 +1410,7 @@ func TestHandleEditConfig(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, ed, new(atomic.Int64), 3000, "", "", configPath)
+	srv := New(hub, ed, new(atomic.Int64), 3000, 10, "", "", configPath)
 
 	req := httptest.NewRequest("POST", "/test/edit-config", nil)
 	w := httptest.NewRecorder()
@@ -1428,7 +1428,7 @@ func TestHandleEditConfigNoEditor(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "/some/config.yaml")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "/some/config.yaml")
 
 	req := httptest.NewRequest("POST", "/test/edit-config", nil)
 	w := httptest.NewRecorder()
@@ -1447,7 +1447,7 @@ func TestHandleEditConfigNoPath(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, ed, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, ed, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("POST", "/test/edit-config", nil)
 	w := httptest.NewRecorder()
@@ -1483,7 +1483,7 @@ func TestHandleEditConfigEditorError(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, ed, new(atomic.Int64), 3000, "", "", configPath)
+	srv := New(hub, ed, new(atomic.Int64), 3000, 10, "", "", configPath)
 
 	req := httptest.NewRequest("POST", "/test/edit-config", nil)
 	w := httptest.NewRecorder()
@@ -1550,7 +1550,7 @@ func TestServeAttachment(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/Meeting/report.pdf", nil)
 	w := httptest.NewRecorder()
@@ -1576,7 +1576,7 @@ func TestServeAttachmentMdInSubdir(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/Notes/readme.md", nil)
 	w := httptest.NewRecorder()
@@ -1600,7 +1600,7 @@ func TestServeAttachmentNoSubdir(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/loose.pdf", nil)
 	w := httptest.NewRecorder()
@@ -1619,7 +1619,7 @@ func TestServeAttachmentTraversal(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/../../../etc/passwd", nil)
 	w := httptest.NewRecorder()
@@ -1642,7 +1642,7 @@ func TestServeAttachmentMissing(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/Meeting/nofile.pdf", nil)
 	w := httptest.NewRecorder()
@@ -1667,7 +1667,7 @@ func TestServeAttachmentEscapeViaSymlink(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/escape/secret.txt", nil)
 	w := httptest.NewRecorder()
@@ -1697,7 +1697,7 @@ func TestServeAttachmentPathEscape(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	// First call returns "/" (Join produces "/sub/file.txt"),
 	// second call returns real dir (HasPrefix fails).
@@ -1728,7 +1728,7 @@ func TestServeAttachmentDirIndex(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	// Directory path with trailing slash serves index.html.
 	req := httptest.NewRequest("GET", "/test/playground/", nil)
@@ -1754,7 +1754,7 @@ func TestServeAttachmentDirRedirect(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/playground", nil)
 	w := httptest.NewRecorder()
@@ -1778,7 +1778,7 @@ func TestServeAttachmentDirNoIndex(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/empty/", nil)
 	w := httptest.NewRecorder()
@@ -1800,7 +1800,7 @@ func TestServeAttachmentIndexHtmlDirect(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/playground/index.html", nil)
 	w := httptest.NewRecorder()
@@ -1826,7 +1826,7 @@ func TestServeAttachmentOpenError(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, "", "", "")
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	// Make the file unreadable after Stat can still see it.
 	os.Chmod(fp, 0000)
@@ -1843,3 +1843,219 @@ func TestServeAttachmentOpenError(t *testing.T) {
 // Keep unused imports from erroring.
 var _ = io.Discard
 var _ = (*store.Store)(nil)
+
+// --- Revision endpoint tests ---
+
+// writeNoteWithRCS creates a note with multiple RCS checkins for
+// revision endpoint testing. Returns the file path.
+func writeNoteWithRCS(t *testing.T, wk *wiki.Wiki, title string, bodies []string) string {
+	t.Helper()
+	path := filepath.Join(wk.NoteDir(), tid.TitleToFilename(title))
+	for _, body := range bodies {
+		td := &tid.Note{Fields: map[string]string{
+			"title": title,
+			"text":  body,
+		}}
+		os.WriteFile(path, tid.Serialize(td), 0644)
+		if err := rcs.Checkin(path); err != nil {
+			t.Fatalf("checkin: %v", err)
+		}
+	}
+	data, _ := os.ReadFile(path)
+	td, _ := tid.Parse(data)
+	wk.Store().PutWithPath(td, path)
+	wk.SeedBody(title, td.Text())
+	return path
+}
+
+// TestGetRevisions verifies GET /revisions/{title} returns revision
+// history with diffs.
+func TestGetRevisions(t *testing.T) {
+	srv, wk := newTestServer(t)
+	writeNoteWithRCS(t, wk, "Rev", []string{"V1.", "V2.", "V3."})
+
+	req := httptest.NewRequest("GET", "/test/revisions/Rev", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	var result wiki.RevisionsResult
+	json.NewDecoder(w.Body).Decode(&result)
+	if len(result.Revisions) != 3 {
+		t.Errorf("revisions count = %d, want 3", len(result.Revisions))
+	}
+	if !result.IsHead {
+		t.Error("should be at head")
+	}
+	if !strings.Contains(result.DiffHTML, "1.1 → 1.2") {
+		t.Error("missing diff header")
+	}
+}
+
+// TestGetRevisionsNotFound verifies GET /revisions/{title} returns
+// 404 for a note not in the store.
+func TestGetRevisionsNotFound(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	req := httptest.NewRequest("GET", "/test/revisions/Ghost", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", w.Code)
+	}
+}
+
+// TestGetRevisionsMissingTitle verifies GET /revisions/ with no
+// title returns 400.
+func TestGetRevisionsMissingTitle(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	req := httptest.NewRequest("GET", "/test/revisions/", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", w.Code)
+	}
+}
+
+// TestGetRevisionsMethodNotAllowed verifies POST /revisions/{title}
+// (without /checkout suffix) returns 405.
+func TestGetRevisionsMethodNotAllowed(t *testing.T) {
+	srv, _ := newTestServer(t)
+	writeNoteWithRCS(t, srv.hub.Wiki("test"), "Rev", []string{"V1."})
+
+	req := httptest.NewRequest("POST", "/test/revisions/Rev", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status = %d, want 405", w.Code)
+	}
+}
+
+// TestCheckoutRevision verifies POST /revisions/{title}/checkout
+// checks out an old revision.
+func TestCheckoutRevision(t *testing.T) {
+	srv, wk := newTestServer(t)
+	writeNoteWithRCS(t, wk, "Pin", []string{"V1.", "V2.", "V3."})
+
+	req := httptest.NewRequest("POST", "/test/revisions/Pin/checkout?rev=1.1", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", w.Code)
+	}
+	// File should be read-only.
+	fp := filepath.Join(wk.NoteDir(), "Pin.md")
+	fi, _ := os.Stat(fp)
+	if fi.Mode().Perm()&0200 != 0 {
+		t.Error("file should be read-only after checkout")
+	}
+}
+
+// TestCheckoutRevisionRestoreHead verifies POST without rev param
+// restores head.
+func TestCheckoutRevisionRestoreHead(t *testing.T) {
+	srv, wk := newTestServer(t)
+	fp := writeNoteWithRCS(t, wk, "Restore", []string{"V1.", "V2."})
+
+	// Checkout old rev first.
+	rcs.Checkout(fp, "1.1")
+
+	req := httptest.NewRequest("POST", "/test/revisions/Restore/checkout", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", w.Code)
+	}
+	fi, _ := os.Stat(fp)
+	if fi.Mode().Perm()&0200 == 0 {
+		t.Error("file should be writable after head restore")
+	}
+}
+
+// TestCheckoutRevisionNotFound verifies checkout returns 404 for
+// a missing note.
+func TestCheckoutRevisionNotFound(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	req := httptest.NewRequest("POST", "/test/revisions/Ghost/checkout?rev=1.1", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", w.Code)
+	}
+}
+
+// TestCheckoutRevisionMethodNotAllowed verifies GET on /checkout
+// returns 405.
+func TestCheckoutRevisionMethodNotAllowed(t *testing.T) {
+	srv, wk := newTestServer(t)
+	writeNoteWithRCS(t, wk, "Pin", []string{"V1."})
+
+	req := httptest.NewRequest("GET", "/test/revisions/Pin/checkout", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status = %d, want 405", w.Code)
+	}
+}
+
+// TestPromoteRevision verifies POST /revisions/{title}/promote
+// checks in old content as new head and returns 204.
+func TestPromoteRevision(t *testing.T) {
+	srv, wk := newTestServer(t)
+	writeNoteWithRCS(t, wk, "Pro", []string{"V1.", "V2.", "V3."})
+
+	// Checkout old revision first.
+	req := httptest.NewRequest("POST", "/test/revisions/Pro/checkout?rev=1.1", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("checkout status = %d, want 204", w.Code)
+	}
+
+	// Promote.
+	req = httptest.NewRequest("POST", "/test/revisions/Pro/promote", nil)
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("promote status = %d, want 204", w.Code)
+	}
+}
+
+// TestPromoteAtHeadReturnsConflict verifies promote on a note
+// already at head returns 409.
+func TestPromoteAtHeadReturnsConflict(t *testing.T) {
+	srv, wk := newTestServer(t)
+	writeNoteWithRCS(t, wk, "Head", []string{"V1."})
+
+	req := httptest.NewRequest("POST", "/test/revisions/Head/promote", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusConflict {
+		t.Errorf("status = %d, want 409", w.Code)
+	}
+}
+
+// TestPromoteMethodNotAllowed verifies GET on /promote returns 405.
+func TestPromoteMethodNotAllowed(t *testing.T) {
+	srv, wk := newTestServer(t)
+	writeNoteWithRCS(t, wk, "PMeth", []string{"V1."})
+
+	req := httptest.NewRequest("GET", "/test/revisions/PMeth/promote", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status = %d, want 405", w.Code)
+	}
+}

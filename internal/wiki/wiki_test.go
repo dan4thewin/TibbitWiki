@@ -1480,3 +1480,401 @@ func TestReloadFileDeletesSymlink(t *testing.T) {
 		t.Error("Shared should be removed from symlinks map")
 	}
 }
+
+// --- Revision tests ---
+
+// writeNoteWithRevisions creates a note with multiple RCS revisions.
+// Returns the wiki and the note file path.
+func writeNoteWithRevisions(t *testing.T, title string, bodies []string) (*Wiki, string) {
+	t.Helper()
+	wk := testWiki(t)
+	path := filepath.Join(wk.NoteDir(), tid.TitleToFilename(title))
+	for _, body := range bodies {
+		td := &tid.Note{Fields: map[string]string{
+			"title": title,
+			"text":  body,
+		}}
+		os.WriteFile(path, tid.Serialize(td), 0644)
+		if err := rcs.Checkin(path); err != nil {
+			t.Fatalf("checkin: %v", err)
+		}
+	}
+	// Parse final version into store.
+	data, _ := os.ReadFile(path)
+	td, _ := tid.Parse(data)
+	wk.Store().PutWithPath(td, path)
+	wk.SeedBody(title, td.Text())
+	return wk, path
+}
+
+// TestRevisionsReturnsHistory verifies Revisions returns all revision
+// numbers and diff HTML for consecutive pairs.
+func TestRevisionsReturnsHistory(t *testing.T) {
+	wk, _ := writeNoteWithRevisions(t, "History",
+		[]string{"Version 1.", "Version 2.", "Version 3."})
+
+	result, err := wk.Revisions("History", 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Revisions) != 3 {
+		t.Errorf("revisions count = %d, want 3", len(result.Revisions))
+	}
+	if result.Revisions[0] != "1.1" || result.Revisions[2] != "1.3" {
+		t.Errorf("revisions = %v", result.Revisions)
+	}
+	if !result.IsHead {
+		t.Error("should be at head")
+	}
+	// Diff HTML should contain both transition headers.
+	if !strings.Contains(result.DiffHTML, "1.1 → 1.2") {
+		t.Error("missing 1.1 → 1.2 diff header")
+	}
+	if !strings.Contains(result.DiffHTML, "1.2 → 1.3") {
+		t.Error("missing 1.2 → 1.3 diff header")
+	}
+}
+
+// TestRevisionsMaxDiffsCap verifies that only the most recent
+// maxDiffs pairs are included in the diff output.
+func TestRevisionsMaxDiffsCap(t *testing.T) {
+	wk, _ := writeNoteWithRevisions(t, "Capped",
+		[]string{"V1.", "V2.", "V3.", "V4."})
+
+	result, err := wk.Revisions("Capped", 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Revisions) != 4 {
+		t.Errorf("revisions count = %d, want 4", len(result.Revisions))
+	}
+	// Only last 2 diff pairs: 1.2→1.3, 1.3→1.4.
+	if strings.Contains(result.DiffHTML, "1.1 → 1.2") {
+		t.Error("1.1 → 1.2 should be excluded by maxDiffs cap")
+	}
+	if !strings.Contains(result.DiffHTML, "1.2 → 1.3") {
+		t.Error("missing 1.2 → 1.3")
+	}
+	if !strings.Contains(result.DiffHTML, "1.3 → 1.4") {
+		t.Error("missing 1.3 → 1.4")
+	}
+}
+
+// TestRevisionsSingleRev verifies that a note with only one revision
+// returns an empty diff.
+func TestRevisionsSingleRev(t *testing.T) {
+	wk, _ := writeNoteWithRevisions(t, "Solo", []string{"Only one."})
+
+	result, err := wk.Revisions("Solo", 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Revisions) != 1 {
+		t.Errorf("revisions count = %d, want 1", len(result.Revisions))
+	}
+	if result.DiffHTML != "" {
+		t.Errorf("expected empty diff, got: %s", result.DiffHTML)
+	}
+}
+
+// TestRevisionsNoFile verifies Revisions returns an error for a
+// note not in the store.
+func TestRevisionsNoFile(t *testing.T) {
+	wk := testWiki(t)
+	_, err := wk.Revisions("Ghost", 10)
+	if err == nil {
+		t.Fatal("expected error for missing note")
+	}
+}
+
+// TestCheckoutRevisionMakesReadOnly verifies checking out an old
+// revision makes the file read-only, and IsReadOnly detects it.
+func TestCheckoutRevisionMakesReadOnly(t *testing.T) {
+	wk, _ := writeNoteWithRevisions(t, "Pinned",
+		[]string{"V1.", "V2.", "V3."})
+
+	if wk.IsReadOnly("Pinned") {
+		t.Error("should be writable before checkout")
+	}
+
+	if err := wk.CheckoutRevision("Pinned", "1.1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !wk.IsReadOnly("Pinned") {
+		t.Error("should be read-only after checkout of old revision")
+	}
+}
+
+// TestCheckoutRevisionRestoreHead verifies restoring head makes
+// the file writable again.
+func TestCheckoutRevisionRestoreHead(t *testing.T) {
+	wk, _ := writeNoteWithRevisions(t, "Restore",
+		[]string{"V1.", "V2."})
+
+	wk.CheckoutRevision("Restore", "1.1")
+	if !wk.IsReadOnly("Restore") {
+		t.Fatal("should be read-only after old checkout")
+	}
+
+	// Restore head (empty rev).
+	if err := wk.CheckoutRevision("Restore", ""); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if wk.IsReadOnly("Restore") {
+		t.Error("should be writable after head restore")
+	}
+}
+
+// TestCheckoutRevisionNoFile verifies CheckoutRevision returns an
+// error for a note not in the store.
+func TestCheckoutRevisionNoFile(t *testing.T) {
+	wk := testWiki(t)
+	err := wk.CheckoutRevision("Ghost", "1.1")
+	if err == nil {
+		t.Fatal("expected error for missing note")
+	}
+}
+
+// TestIsReadOnlyMissing verifies IsReadOnly returns false for a
+// note not in the store.
+func TestIsReadOnlyMissing(t *testing.T) {
+	wk := testWiki(t)
+	if wk.IsReadOnly("Ghost") {
+		t.Error("should return false for missing note")
+	}
+}
+
+// TestBuildRevList verifies revision list generation from head string.
+func TestBuildRevList(t *testing.T) {
+	revs := buildRevList("1.5")
+	want := []string{"1.1", "1.2", "1.3", "1.4", "1.5"}
+	if len(revs) != len(want) {
+		t.Fatalf("len = %d, want %d", len(revs), len(want))
+	}
+	for i, r := range revs {
+		if r != want[i] {
+			t.Errorf("rev[%d] = %q, want %q", i, r, want[i])
+		}
+	}
+}
+
+// TestIsReadOnlyPermission verifies the isReadOnly helper with
+// actual file permissions.
+func TestIsReadOnlyPermission(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.md")
+	os.WriteFile(path, []byte("test"), 0644)
+	if isReadOnly(path) {
+		t.Error("0644 should not be read-only")
+	}
+	os.Chmod(path, 0444)
+	if !isReadOnly(path) {
+		t.Error("0444 should be read-only")
+	}
+}
+
+// TestIsReadOnlyNoFile verifies isReadOnly returns false for
+// a nonexistent file.
+func TestIsReadOnlyNoFile(t *testing.T) {
+	if isReadOnly("/no/such/file") {
+		t.Error("should return false for nonexistent file")
+	}
+}
+
+// TestReloadSkipsCheckinForReadOnly verifies that reloading a
+// read-only file (checked out at non-head) updates the store but
+// does NOT create a new RCS revision.
+func TestReloadSkipsCheckinForReadOnly(t *testing.T) {
+	wk, path := writeNoteWithRevisions(t, "NoCheckin",
+		[]string{"V1.", "V2.", "V3."})
+
+	// Get head rev before checkout.
+	headBefore, _ := rcs.HeadRev(path)
+	if headBefore != "1.3" {
+		t.Fatalf("expected head 1.3, got %s", headBefore)
+	}
+
+	// Checkout old revision (read-only).
+	rcs.Checkout(path, "1.1")
+
+	// Simulate watcher reload.
+	wk.Reload(path)
+	wk.Do(func() {}) // drain queue
+
+	// Head rev must NOT have changed — no new checkin.
+	headAfter, _ := rcs.HeadRev(path)
+	if headAfter != "1.3" {
+		t.Errorf("head changed from 1.3 to %s — reloadFile should not checkin read-only files", headAfter)
+	}
+
+	// File should still be read-only.
+	fi, _ := os.Stat(path)
+	if fi.Mode().Perm()&0200 != 0 {
+		t.Error("file should still be read-only after reload")
+	}
+}
+
+// TestGetReadOnlyField verifies that Get includes readOnly=true
+// for files checked out at a non-head revision.
+func TestGetReadOnlyField(t *testing.T) {
+	wk, _ := writeNoteWithRevisions(t, "ROField",
+		[]string{"V1.", "V2."})
+
+	// At head — no readOnly.
+	fields := wk.Get("ROField", false)
+	if fields["readOnly"] != "" {
+		t.Errorf("expected no readOnly at head, got %q", fields["readOnly"])
+	}
+
+	// Checkout old — readOnly=true.
+	wk.CheckoutRevision("ROField", "1.1")
+	wk.Reload(wk.Store().FilePath("ROField"))
+	wk.Do(func() {})
+	fields = wk.Get("ROField", false)
+	if fields["readOnly"] != "true" {
+		t.Errorf("expected readOnly=true, got %q", fields["readOnly"])
+	}
+}
+
+// TestPromoteRevision verifies that PromoteRevision checks in the
+// old content as a new trunk revision and clears RCS state.
+func TestPromoteRevision(t *testing.T) {
+	wk, path := writeNoteWithRevisions(t, "Promote",
+		[]string{"Version 1.", "Version 2.", "Version 3."})
+
+	// Checkout old revision 1.1.
+	if err := wk.CheckoutRevision("Promote", "1.1"); err != nil {
+		t.Fatalf("checkout: %v", err)
+	}
+	wk.Reload(path)
+	wk.Do(func() {})
+
+	// Verify checked-out state.
+	rev, head := wk.Store().RCS("Promote")
+	if rev != "1.1" || head != "1.3" {
+		t.Errorf("rcs state = %q/%q, want 1.1/1.3", rev, head)
+	}
+	if !wk.IsReadOnly("Promote") {
+		t.Fatal("expected read-only after checkout")
+	}
+
+	// Promote: old content becomes new head.
+	if err := wk.PromoteRevision("Promote"); err != nil {
+		t.Fatalf("promote: %v", err)
+	}
+
+	// File should be writable (new head).
+	if wk.IsReadOnly("Promote") {
+		t.Error("expected writable after promote")
+	}
+	// RCS state should be cleared.
+	rev, head = wk.Store().RCS("Promote")
+	if rev != "" || head != "" {
+		t.Errorf("rcs state after promote = %q/%q, want empty", rev, head)
+	}
+	// RCS head should be 1.4 (promoted trunk).
+	newHead, err := rcs.HeadRev(path)
+	if err != nil {
+		t.Fatalf("HeadRev: %v", err)
+	}
+	if newHead != "1.4" {
+		t.Errorf("head = %s, want 1.4", newHead)
+	}
+	// CHECKOUT tag should be gone.
+	tag, _ := rcs.CheckoutTag(path, "CHECKOUT")
+	if tag != "" {
+		t.Errorf("CHECKOUT tag = %q, want empty", tag)
+	}
+}
+
+// TestPromoteAtHeadFails verifies that promoting a note already at
+// head returns an error.
+func TestPromoteAtHeadFails(t *testing.T) {
+	wk, _ := writeNoteWithRevisions(t, "AtHead",
+		[]string{"Version 1."})
+	err := wk.PromoteRevision("AtHead")
+	if err == nil {
+		t.Fatal("expected error promoting note at head")
+	}
+	if !strings.Contains(err.Error(), "already at head") {
+		t.Errorf("error = %v, want 'already at head'", err)
+	}
+}
+
+// TestCheckoutSetsTag verifies that CheckoutRevision sets the
+// CHECKOUT symbolic tag and populates store RCS state.
+func TestCheckoutSetsTag(t *testing.T) {
+	wk, path := writeNoteWithRevisions(t, "Tag",
+		[]string{"V1.", "V2.", "V3."})
+
+	wk.CheckoutRevision("Tag", "1.2")
+	// Verify tag in RCS archive.
+	tag, err := rcs.CheckoutTag(path, "CHECKOUT")
+	if err != nil {
+		t.Fatalf("CheckoutTag: %v", err)
+	}
+	if tag != "1.2" {
+		t.Errorf("tag = %q, want 1.2", tag)
+	}
+	// Verify store state.
+	rev, head := wk.Store().RCS("Tag")
+	if rev != "1.2" || head != "1.3" {
+		t.Errorf("store rcs = %q/%q, want 1.2/1.3", rev, head)
+	}
+}
+
+// TestRestoreHeadClearsTag verifies that restoring head (rev="")
+// deletes the CHECKOUT tag and clears RCS state.
+func TestRestoreHeadClearsTag(t *testing.T) {
+	wk, path := writeNoteWithRevisions(t, "Restore",
+		[]string{"V1.", "V2."})
+
+	wk.CheckoutRevision("Restore", "1.1")
+	wk.CheckoutRevision("Restore", "")
+	// Tag should be gone.
+	tag, _ := rcs.CheckoutTag(path, "CHECKOUT")
+	if tag != "" {
+		t.Errorf("tag after restore = %q, want empty", tag)
+	}
+	// Store state should be cleared.
+	rev, head := wk.Store().RCS("Restore")
+	if rev != "" || head != "" {
+		t.Errorf("store rcs = %q/%q, want empty", rev, head)
+	}
+}
+
+// TestGetIncludesRCSFields verifies that Get returns rcsRev and
+// rcsHead when the note is checked out at a non-head revision.
+func TestGetIncludesRCSFields(t *testing.T) {
+	wk, path := writeNoteWithRevisions(t, "Fields",
+		[]string{"V1.", "V2.", "V3."})
+
+	wk.CheckoutRevision("Fields", "1.1")
+	wk.Reload(path)
+	wk.Do(func() {})
+	fields := wk.Get("Fields", false)
+	if fields["rcsRev"] != "1.1" {
+		t.Errorf("rcsRev = %q, want 1.1", fields["rcsRev"])
+	}
+	if fields["rcsHead"] != "1.3" {
+		t.Errorf("rcsHead = %q, want 1.3", fields["rcsHead"])
+	}
+}
+
+// TestScanRCSDetectsCheckout verifies that ScanRCS picks up
+// checked-out notes from a CHECKOUT tag at startup.
+func TestScanRCSDetectsCheckout(t *testing.T) {
+	wk, path := writeNoteWithRevisions(t, "Scan",
+		[]string{"V1.", "V2.", "V3."})
+
+	// Simulate a prior checkout: set tag, make read-only.
+	rcs.Checkout(path, "1.2")
+	rcs.SetTag(path, "CHECKOUT", "1.2")
+
+	wk.ScanRCS()
+	rev, head := wk.Store().RCS("Scan")
+	if rev != "1.2" || head != "1.3" {
+		t.Errorf("ScanRCS: rcs = %q/%q, want 1.2/1.3", rev, head)
+	}
+}

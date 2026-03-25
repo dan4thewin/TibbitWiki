@@ -3,6 +3,7 @@ package rcs
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -71,5 +72,245 @@ func TestFileExists(t *testing.T) {
 	}
 	if fileExists(filepath.Join(dir, "nope.txt")) {
 		t.Error("returned true for nonexistent file")
+	}
+}
+
+// setupMultiRev creates a file with 3 checkins and returns the path.
+func setupMultiRev(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	for i, body := range []string{"Version 1.", "Version 2.", "Version 3."} {
+		os.WriteFile(path, []byte("title: Test\n\n"+body), 0644)
+		if err := Checkin(path); err != nil {
+			t.Fatalf("checkin %d: %v", i+1, err)
+		}
+	}
+	return path
+}
+
+// TestLogReturnsOutput verifies Log returns rlog output containing
+// revision entries.
+func TestLogReturnsOutput(t *testing.T) {
+	path := setupMultiRev(t)
+	out, err := Log(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "revision 1.1") {
+		t.Error("expected 'revision 1.1' in rlog output")
+	}
+	if !strings.Contains(out, "revision 1.3") {
+		t.Error("expected 'revision 1.3' in rlog output")
+	}
+}
+
+// TestLogBadPath verifies Log returns an error for a nonexistent file.
+func TestLogBadPath(t *testing.T) {
+	_, err := Log("/no/such/file.md")
+	if err == nil {
+		t.Fatal("expected error for bad path")
+	}
+}
+
+// TestHeadRevReturnsLatest verifies HeadRev returns the head
+// revision string.
+func TestHeadRevReturnsLatest(t *testing.T) {
+	path := setupMultiRev(t)
+	rev, err := HeadRev(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rev != "1.3" {
+		t.Errorf("expected 1.3, got %s", rev)
+	}
+}
+
+// TestHeadRevBadPath verifies HeadRev returns an error for a
+// nonexistent file.
+func TestHeadRevBadPath(t *testing.T) {
+	_, err := HeadRev("/no/such/file.md")
+	if err == nil {
+		t.Fatal("expected error for bad path")
+	}
+}
+
+// TestDiffRangeShowsChanges verifies DiffRange returns a unified
+// diff between two revisions.
+func TestDiffRangeShowsChanges(t *testing.T) {
+	path := setupMultiRev(t)
+	diff, err := DiffRange(path, "1.1", "1.2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(diff, "-Version 1.") {
+		t.Error("expected removed line in diff")
+	}
+	if !strings.Contains(diff, "+Version 2.") {
+		t.Error("expected added line in diff")
+	}
+}
+
+// TestDiffRangeIdentical verifies DiffRange returns empty for
+// identical revisions.
+func TestDiffRangeIdentical(t *testing.T) {
+	path := setupMultiRev(t)
+	diff, err := DiffRange(path, "1.2", "1.2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if diff != "" {
+		t.Errorf("expected empty diff, got: %s", diff)
+	}
+}
+
+// TestDiffRangeBadRev verifies DiffRange returns an error for a
+// nonexistent revision.
+func TestDiffRangeBadRev(t *testing.T) {
+	path := setupMultiRev(t)
+	_, err := DiffRange(path, "1.1", "9.9")
+	if err == nil {
+		t.Fatal("expected error for bad revision")
+	}
+}
+
+// TestDiffRangeBadPath verifies DiffRange returns an error for a
+// nonexistent file.
+func TestDiffRangeBadPath(t *testing.T) {
+	_, err := DiffRange("/no/such/file.md", "1.1", "1.2")
+	if err == nil {
+		t.Fatal("expected error for bad path")
+	}
+}
+
+// TestCheckoutMakesReadOnly verifies Checkout checks out a prior
+// revision and the file is read-only (no owner write bit).
+func TestCheckoutMakesReadOnly(t *testing.T) {
+	path := setupMultiRev(t)
+	if err := Checkout(path, "1.1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "Version 1.") {
+		t.Errorf("expected Version 1 content, got: %s", data)
+	}
+	fi, _ := os.Stat(path)
+	if fi.Mode().Perm()&0200 != 0 {
+		t.Errorf("expected read-only, got mode %o", fi.Mode().Perm())
+	}
+}
+
+// TestCheckoutBadRev verifies Checkout returns an error for a
+// nonexistent revision.
+func TestCheckoutBadRev(t *testing.T) {
+	path := setupMultiRev(t)
+	err := Checkout(path, "9.9")
+	if err == nil {
+		t.Fatal("expected error for bad revision")
+	}
+}
+
+// TestCheckoutBadPath verifies Checkout returns an error for a
+// nonexistent file.
+func TestCheckoutBadPath(t *testing.T) {
+	err := Checkout("/no/such/file.md", "1.1")
+	if err == nil {
+		t.Fatal("expected error for bad path")
+	}
+}
+
+// TestCheckoutHeadRestoresWritable verifies CheckoutHead checks out
+// the head revision with a lock, making the file writable.
+func TestCheckoutHeadRestoresWritable(t *testing.T) {
+	path := setupMultiRev(t)
+	// First checkout an old revision (read-only).
+	Checkout(path, "1.1")
+
+	if err := CheckoutHead(path); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "Version 3.") {
+		t.Errorf("expected Version 3 content, got: %s", data)
+	}
+	fi, _ := os.Stat(path)
+	if fi.Mode().Perm()&0200 == 0 {
+		t.Errorf("expected writable, got mode %o", fi.Mode().Perm())
+	}
+}
+
+// TestCheckoutHeadBadPath verifies CheckoutHead returns an error
+// for a nonexistent file.
+func TestCheckoutHeadBadPath(t *testing.T) {
+	err := CheckoutHead("/no/such/file.md")
+	if err == nil {
+		t.Fatal("expected error for bad path")
+	}
+}
+
+// TestSetTagAndCheckoutTag verifies that a symbolic name can be
+// set and read back from rlog -h.
+func TestSetTagAndCheckoutTag(t *testing.T) {
+	path := setupMultiRev(t)
+	if err := SetTag(path, "CHECKOUT", "1.1"); err != nil {
+		t.Fatalf("SetTag: %v", err)
+	}
+	rev, err := CheckoutTag(path, "CHECKOUT")
+	if err != nil {
+		t.Fatalf("CheckoutTag: %v", err)
+	}
+	if rev != "1.1" {
+		t.Errorf("tag rev = %q, want 1.1", rev)
+	}
+}
+
+// TestDeleteTag verifies that a symbolic name can be removed.
+func TestDeleteTag(t *testing.T) {
+	path := setupMultiRev(t)
+	SetTag(path, "CHECKOUT", "1.2")
+	if err := DeleteTag(path, "CHECKOUT"); err != nil {
+		t.Fatalf("DeleteTag: %v", err)
+	}
+	rev, err := CheckoutTag(path, "CHECKOUT")
+	if err != nil {
+		t.Fatalf("CheckoutTag after delete: %v", err)
+	}
+	if rev != "" {
+		t.Errorf("tag rev after delete = %q, want empty", rev)
+	}
+}
+
+// TestCheckoutTagMissing verifies that CheckoutTag returns empty
+// for a tag that doesn't exist.
+func TestCheckoutTagMissing(t *testing.T) {
+	path := setupMultiRev(t)
+	rev, err := CheckoutTag(path, "NOSUCHTAG")
+	if err != nil {
+		t.Fatalf("CheckoutTag: %v", err)
+	}
+	if rev != "" {
+		t.Errorf("tag rev = %q, want empty", rev)
+	}
+}
+
+// TestSetTagBadPath verifies SetTag returns an error for a bad path.
+func TestSetTagBadPath(t *testing.T) {
+	if err := SetTag("/no/such/file.md", "X", "1.1"); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+// TestDeleteTagBadPath verifies DeleteTag returns an error for a bad path.
+func TestDeleteTagBadPath(t *testing.T) {
+	if err := DeleteTag("/no/such/file.md", "X"); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+// TestCheckoutTagBadPath verifies CheckoutTag returns an error for a bad path.
+func TestCheckoutTagBadPath(t *testing.T) {
+	_, err := CheckoutTag("/no/such/file.md", "X")
+	if err == nil {
+		t.Fatal("expected error")
 	}
 }

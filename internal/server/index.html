@@ -48,6 +48,8 @@ h1 { margin-top: 0; color: var(--tw-fg); }
 .note-toolbar { display: flex; gap: 4px; }
 .note-toolbar button { background: none; border: 1px solid var(--tw-border_light); border-radius: 4px; cursor: pointer; padding: 2px 8px; font-size: 16px; color: var(--tw-muted_light); }
 .note-toolbar button:hover { background: var(--tw-button_bg); color: var(--tw-fg); }
+.hidden-actions { display: inline; }
+.hidden-actions + button { margin-right: 2px; }
 .note-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .tag-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 12px; font-size: 12px; cursor: pointer; font-weight: 500; }
 .tag-pill:hover { filter: brightness(1.2); }
@@ -64,6 +66,8 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
 #top-bar { margin-bottom: 16px; display: flex; gap: 8px; align-items: center; }
 #top-bar button { padding: 6px 14px; font-size: 14px; border: 1px solid var(--tw-border_light); border-radius: 4px; cursor: pointer; background: var(--tw-note_bg); color: var(--tw-fg); }
 #top-bar button:hover { background: var(--tw-button_bg); }
+.action-btn { padding: 4px 10px; font-size: 13px; border: 1px solid var(--tw-border_light); border-radius: 4px; cursor: pointer; background: var(--tw-note_bg); color: var(--tw-fg); }
+.action-btn:hover { background: var(--tw-button_bg); }
 .gear-dropdown { position: relative; }
 .gear-dropdown .gear-menu { display: none; position: absolute; top: 100%; right: 0; margin-top: 4px; background: var(--tw-note_bg); border: 1px solid var(--tw-border_light); border-radius: 4px; min-width: 160px; z-index: 50; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
 .gear-dropdown .gear-menu.open { display: block; }
@@ -159,6 +163,7 @@ const ICON = {
   journalPlus: S('<path d="M8 5.5a.5.5 0 0 1 .5.5v1.5H10a.5.5 0 0 1 0 1H8.5V10a.5.5 0 0 1-1 0V8.5H6a.5.5 0 0 1 0-1h1.5V6a.5.5 0 0 1 .5-.5"/><path d="M3 0h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-1h1v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v1H1V2a2 2 0 0 1 2-2"/><path d="M1 5v-.5a.5.5 0 0 1 1 0V5h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1zm0 3v-.5a.5.5 0 0 1 1 0V8h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1zm0 3v-.5a.5.5 0 0 1 1 0v.5h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1z"/>'),
   chevronDown: S('<path d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708"/>', true),
   trash: S('<path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/>'),
+  clockHistory: S('<path d="M8 3.5a.5.5 0 0 0-1 0V8a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 7.71z"/><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0"/>'),
 };
 // Derive wiki prefix from the URL path (e.g., "/work" from "/work/")
 const PREFIX = '/' + window.location.pathname.split('/').filter(Boolean)[0];
@@ -247,6 +252,7 @@ function renderNote(t) {
   card.className = 'note';
   card.dataset.title = t.title;
   card.dataset.revision = t.revision || '0';
+  if (t.readOnly === 'true') card.dataset.readOnly = 'true';
 
   const header = document.createElement('div');
   header.className = 'note-header';
@@ -259,17 +265,28 @@ function renderNote(t) {
     dateSp.textContent = dateStr;
     h2.appendChild(dateSp);
   }
+  if (t.rcsRev) {
+    const revSp = document.createElement('span');
+    revSp.className = 'note-date';
+    revSp.textContent = 'rev ' + t.rcsRev;
+    h2.appendChild(revSp);
+  }
   header.appendChild(h2);
 
   const toolbar = document.createElement('div');
   toolbar.className = 'note-toolbar';
-  const editBtn = document.createElement('button');
-  editBtn.innerHTML = ICON.pencil;
-  editBtn.title = 'Edit in Neovim';
-  editBtn.onclick = () => {
-    fetch(PREFIX + '/edit-external/' + encodeURIComponent(t.title), { method: 'POST' });
-  };
-  toolbar.appendChild(editBtn);
+
+  // Hidden actions revealed by chevron.
+  const hiddenActions = document.createElement('span');
+  hiddenActions.className = 'hidden-actions';
+  hiddenActions.style.display = 'none';
+
+  const revBtn = document.createElement('button');
+  revBtn.innerHTML = ICON.clockHistory;
+  revBtn.title = 'Revisions';
+  revBtn.onclick = () => showRevisions(t.title, card);
+  hiddenActions.appendChild(revBtn);
+
   const delBtn = document.createElement('button');
   delBtn.innerHTML = ICON.trash;
   delBtn.title = 'Delete note';
@@ -277,8 +294,27 @@ function renderNote(t) {
     fetch(PREFIX + '/notes/' + encodeURIComponent(t.title), { method: 'DELETE' })
       .then(() => { card.remove(); knownTitles.delete(t.title); delete knownRevisions[t.title]; });
   };
-  toolbar.appendChild(delBtn);
-  // TODO: add a revisions button — show RCS history and revert to prior version
+  hiddenActions.appendChild(delBtn);
+  toolbar.appendChild(hiddenActions);
+
+  const chevBtn = document.createElement('button');
+  chevBtn.innerHTML = ICON.chevronDown;
+  chevBtn.title = 'More actions';
+  chevBtn.style.transition = 'transform 0.2s';
+  chevBtn.onclick = () => {
+    const showing = hiddenActions.style.display !== 'none';
+    hiddenActions.style.display = showing ? 'none' : 'inline';
+    chevBtn.style.transform = showing ? '' : 'rotate(180deg)';
+  };
+  toolbar.appendChild(chevBtn);
+
+  const editBtn = document.createElement('button');
+  editBtn.innerHTML = ICON.pencil;
+  editBtn.title = 'Edit in Neovim';
+  editBtn.onclick = () => {
+    fetch(PREFIX + '/edit-external/' + encodeURIComponent(t.title), { method: 'POST' });
+  };
+  toolbar.appendChild(editBtn);
   const closeBtn = document.createElement('button');
   closeBtn.innerHTML = ICON.xLg;
   closeBtn.title = 'Close';
@@ -286,15 +322,164 @@ function renderNote(t) {
   toolbar.appendChild(closeBtn);
   header.appendChild(toolbar);
   card.appendChild(header);
+
+  // Read-only indicator: disable edit/delete when at a non-head revision.
+  if (t.readOnly === 'true') {
+    editBtn.disabled = true;
+    editBtn.style.opacity = '0.3';
+    editBtn.title = 'Read-only (non-head revision)';
+    editBtn.onclick = null;
+    delBtn.disabled = true;
+    delBtn.style.opacity = '0.3';
+    delBtn.title = 'Read-only (non-head revision)';
+    delBtn.onclick = null;
+    // Add promote button: "1.1 → 1.4" (checked-out rev → next head).
+    if (t.rcsRev && t.rcsHead) {
+      const promoteBtn = document.createElement('button');
+      const parts = t.rcsHead.split('.');
+      parts[parts.length - 1] = String(Number(parts[parts.length - 1]) + 1);
+      const nextRev = parts.join('.');
+      promoteBtn.textContent = t.rcsRev + ' → ' + nextRev;
+      promoteBtn.title = 'Promote this revision as new head';
+      promoteBtn.style.cssText = 'font-size:11px;color:var(--tw-accent);';
+      promoteBtn.onclick = () => doPromote(t.title).then(() => refreshNote(t.title));
+      toolbar.insertBefore(promoteBtn, closeBtn);
+    }
+    // Add "Restore head" button to toolbar.
+    const restoreBtn = document.createElement('button');
+    restoreBtn.textContent = '↺ head';
+    restoreBtn.title = 'Restore head revision';
+    restoreBtn.style.cssText = 'font-size:11px;color:var(--tw-danger);';
+    restoreBtn.onclick = () => doCheckout(t.title, '', null).then(() => refreshNote(t.title));
+    toolbar.insertBefore(restoreBtn, closeBtn);
+  }
+
   card.appendChild(buildTagPills(t));
 
   const body = document.createElement('div');
   body.className = 'note-body';
   body.innerHTML = linkifyWikiWords(t.html || t.text || '');
-  injectLineIcons(body, t.title);
-  attachCodeBlockEditing(body, t.title);
+  if (t.readOnly !== 'true') {
+    injectLineIcons(body, t.title);
+    attachCodeBlockEditing(body, t.title);
+  }
   card.appendChild(body);
   return card;
+}
+
+// Show revision history as an ephemeral card below the note.
+function showRevisions(title, noteCard) {
+  const prev = document.querySelector('.note[data-title="__revisions__"]');
+  if (prev) prev.remove();
+
+  fetch(PREFIX + '/revisions/' + encodeURIComponent(title))
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(data => {
+      const card = document.createElement('div');
+      card.className = 'note';
+      card.dataset.title = '__revisions__';
+
+      const header = document.createElement('div');
+      header.className = 'note-header';
+      const h2 = document.createElement('h2');
+      h2.textContent = 'Revisions: ' + title;
+      if (!data.isHead) {
+        const badge = document.createElement('span');
+        badge.className = 'note-date';
+        badge.style.color = 'var(--tw-danger)';
+        badge.textContent = '(not at head)';
+        h2.appendChild(badge);
+      }
+      header.appendChild(h2);
+
+      const toolbar = document.createElement('div');
+      toolbar.className = 'note-toolbar';
+      const closeBtn = document.createElement('button');
+      closeBtn.innerHTML = ICON.xLg;
+      closeBtn.title = 'Close';
+      closeBtn.onclick = () => card.remove();
+      toolbar.appendChild(closeBtn);
+      header.appendChild(toolbar);
+      card.appendChild(header);
+
+      const body = document.createElement('div');
+      body.className = 'note-body';
+
+      // Checkout controls.
+      const controls = document.createElement('div');
+      controls.style.marginBottom = '12px';
+      const revInput = document.createElement('input');
+      revInput.type = 'text';
+      revInput.placeholder = 'rev';
+      revInput.style.cssText = 'width:50px;margin-right:6px;background:var(--tw-code_bg);color:var(--tw-fg);border:1px solid var(--tw-border_light);padding:2px 6px;border-radius:3px;font-family:var(--tw-code_font);font-size:13px;';
+      controls.appendChild(revInput);
+      const goBtn = document.createElement('button');
+      goBtn.className = 'action-btn';
+      goBtn.textContent = 'Checkout';
+      goBtn.onclick = () => {
+        const rev = revInput.value.trim();
+        if (!rev) return;
+        doCheckout(title, rev, card);
+      };
+      controls.appendChild(goBtn);
+      if (!data.isHead) {
+        const headBtn = document.createElement('button');
+        headBtn.className = 'action-btn';
+        headBtn.textContent = 'Restore head';
+        headBtn.style.marginLeft = '6px';
+        headBtn.onclick = () => doCheckout(title, '', card);
+        controls.appendChild(headBtn);
+      }
+      body.appendChild(controls);
+
+      // Diff HTML with clickable revision headers.
+      if (data.diffHTML) {
+        const diffDiv = document.createElement('div');
+        diffDiv.innerHTML = data.diffHTML;
+        // Make h4 headers clickable: "1.2 → 1.3" becomes linked rev numbers.
+        diffDiv.querySelectorAll('h4').forEach(h4 => {
+          const m = h4.textContent.match(/^(\d+\.\d+)\s*→\s*(\d+\.\d+)$/);
+          if (!m) return;
+          h4.innerHTML = '';
+          const a1 = document.createElement('a');
+          a1.href = '#'; a1.textContent = m[1];
+          a1.style.color = 'var(--tw-accent)';
+          a1.onclick = (e) => { e.preventDefault(); doCheckout(title, m[1], card); };
+          const a2 = document.createElement('a');
+          a2.href = '#'; a2.textContent = m[2];
+          a2.style.color = 'var(--tw-accent)';
+          a2.onclick = (e) => { e.preventDefault(); doCheckout(title, m[2], card); };
+          h4.appendChild(a1);
+          h4.appendChild(document.createTextNode(' → '));
+          h4.appendChild(a2);
+        });
+        body.appendChild(diffDiv);
+      } else {
+        body.innerHTML += '<p style="color:#888">No diffs (single revision).</p>';
+      }
+
+      card.appendChild(body);
+      noteCard.after(card);
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    })
+    .catch(err => alert('Revisions failed: ' + err.message));
+}
+
+function doCheckout(title, rev, revCard) {
+  const url = PREFIX + '/revisions/' + encodeURIComponent(title) + '/checkout' +
+    (rev ? '?rev=' + encodeURIComponent(rev) : '');
+  return fetch(url, { method: 'POST' })
+    .then(r => { if (!r.ok) throw new Error(r.status); })
+    .then(() => {
+      if (revCard) revCard.remove();
+    })
+    .catch(err => alert('Checkout failed: ' + err.message));
+}
+
+function doPromote(title) {
+  return fetch(PREFIX + '/revisions/' + encodeURIComponent(title) + '/promote', { method: 'POST' })
+    .then(r => { if (!r.ok) throw new Error(r.status); })
+    .catch(err => alert('Promote failed: ' + err.message));
 }
 
 function openNote(title) {
@@ -308,7 +493,7 @@ function openNote(title) {
       document.getElementById('river').appendChild(card);
       card.scrollIntoView({ behavior: 'smooth', block: 'start' });
     })
-    .catch(() => alert('Note not found: ' + title));
+    .catch(() => console.warn('Note not found: ' + title));
 }
 
 function refreshNote(title) {
@@ -317,6 +502,15 @@ function refreshNote(title) {
   fetch(PREFIX + '/notes/' + encodeURIComponent(title))
     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(t => {
+      // If readOnly state changed, rebuild the whole card (toolbar changes).
+      const wasReadOnly = card.dataset.readOnly === 'true';
+      const isReadOnly = t.readOnly === 'true';
+      if (wasReadOnly !== isReadOnly) {
+        const newCard = renderNote(t);
+        card.replaceWith(newCard);
+        knownRevisions[t.title] = t.revision;
+        return;
+      }
       // Update tags.
       const oldTags = card.querySelector('.note-tags');
       if (oldTags) oldTags.remove();
@@ -326,8 +520,10 @@ function refreshNote(title) {
       // Update body.
       const body = card.querySelector('.note-body');
       body.innerHTML = linkifyWikiWords(t.html || t.text || '');
-      injectLineIcons(body, t.title);
-      attachCodeBlockEditing(body, t.title);
+      if (!isReadOnly) {
+        injectLineIcons(body, t.title);
+        attachCodeBlockEditing(body, t.title);
+      }
       // Update revision.
       card.dataset.revision = t.revision;
       knownRevisions[t.title] = t.revision;
@@ -583,8 +779,8 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('.gear-dropdown')) closeGearMenu();
 });
 
-// Initial load: poll immediately, then open default note.
-poll().then(() => openNote('ToDo'));
+// Initial load: poll to populate sidebar.
+poll();
 
 document.addEventListener('click', e => {
   const link = e.target.closest('a.wikiword');
@@ -802,6 +998,10 @@ function startLineEdit(el, noteTitle, isInsert) {
       input.focus();
       // Place cursor at end of prefill.
       input.selectionStart = input.selectionEnd = input.value.length;
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') wrapper.remove();
+      });
+      input.addEventListener('blur', () => { if (!submitted) wrapper.remove(); });
     });
   } else {
     fetchSourceLine(noteTitle, lineNum).then(srcLine => {
@@ -812,18 +1012,22 @@ function startLineEdit(el, noteTitle, isInsert) {
       input.focus();
       input.select();
 
+      const cancelEdit = () => {
+        el.innerHTML = savedHTML;
+        injectLineIcons(el.closest('.note-body'), noteTitle);
+      };
       input.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-          el.innerHTML = savedHTML;
-          injectLineIcons(el.closest('.note-body'), noteTitle);
-        }
+        if (e.key === 'Escape') cancelEdit();
       });
+      input.addEventListener('blur', () => { if (!submitted) cancelEdit(); });
     });
   }
 
+  let submitted = false;
   input.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
+    submitted = true;
     const text = input.value;
     submitLineEdit(noteTitle, lineNum, text, isInsert);
   });

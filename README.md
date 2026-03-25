@@ -19,6 +19,11 @@ and RCS version control.
   a note in your configured editor
 - **RCS version control** — every note save is automatically
   checked into RCS; full revision history per file
+- **Revisions browser** — view syntax-highlighted diffs between
+  consecutive revisions, checkout old revisions (read-only), promote
+  an old revision as new head (non-destructive rollback), and restore
+  head. Revision number shown on card when viewing a prior revision.
+  Toolbar chevron reveals revisions and delete buttons.
 - **Config-driven theming** — all colors, fonts, and layout values
   live in `config.yaml`; edit and save to see changes live
 - **Theme playground** — standalone HTML page for previewing theme
@@ -64,7 +69,8 @@ for development.
 - Tabbed sidebar — Recent (non-journals), Journals, Tags with
   per-tag groups; ellipsis to expand
 - Line-level quick edit — hover ✏️/➕ icons on list items for
-  inline edit and insert-below without leaving the browser
+  inline edit and insert-below without leaving the browser; Escape
+  or click-away to cancel
 - Configurable poll interval (default 3s) for external changes
 - Edit button per note (launches neovim via server)
 - New note and Journal buttons
@@ -146,6 +152,9 @@ CLI flags override config file values.
 | GET | `/{wiki}/theme.css` | Theme CSS (custom properties + syntax) |
 | POST | `/{wiki}/edit-external/{title}` | Launch external editor |
 | POST | `/{wiki}/edit-config` | Launch editor on config.yaml |
+| GET | `/{wiki}/revisions/{title}` | Revision history + diffs (JSON) |
+| POST | `/{wiki}/revisions/{title}/checkout?rev=1.3` | Checkout revision (or head if no rev) |
+| POST | `/{wiki}/revisions/{title}/promote` | Promote checked-out revision as new head |
 
 ## Editing notes
 

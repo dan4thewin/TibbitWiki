@@ -24,6 +24,9 @@ func TestDefaults(t *testing.T) {
 	if cfg.CacheSize != 200 {
 		t.Errorf("CacheSize = %d, want 200", cfg.CacheSize)
 	}
+	if cfg.MaxDiffs != 10 {
+		t.Errorf("MaxDiffs = %d, want 10", cfg.MaxDiffs)
+	}
 	// Theme must have a "shared" section with wiki_title.
 	theme := DefaultTheme()
 	if theme["shared"] == nil {
