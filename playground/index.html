@@ -20,6 +20,9 @@ html { font-family: system-ui, sans-serif; font-size: 14px; background: #111; co
 .pg-row .pg-hex { width: 72px; flex-shrink: 0; background: #0d1117; border: 1px solid #444; border-radius: 3px; color: #e0e0e0; padding: 3px 6px; font-size: 12px; font-family: monospace; }
 #copy-yaml { margin-top: 16px; width: 100%; padding: 8px; background: #2a2a4a; color: #8ecaff; border: 1px solid #444; border-radius: 4px; cursor: pointer; font-size: 13px; }
 #copy-yaml:hover { background: #3a3a5a; }
+.pg-reset { background: none; border: none; color: #666; cursor: pointer; padding: 2px; line-height: 1; font-size: 14px; flex-shrink: 0; }
+.pg-reset:hover { color: #8ecaff; }
+.pg-reset[hidden] { display: none; }
 #copy-msg { font-size: 11px; color: #6c6; margin-top: 4px; min-height: 1em; }
 
 /* Right: preview */
@@ -286,6 +289,11 @@ const THEME = {
 
 const root = document.getElementById('tw-preview');
 const current = {};  // key → current value
+const defaults = {}; // key → built-in default (before live theme overwrites)
+
+// Snapshot defaults before loadCurrentTheme can overwrite THEME entries.
+for (const group of Object.values(THEME))
+  for (const [k, v] of group) defaults[k] = v;
 
 function applyVar(key, val) {
   current[key] = val;
@@ -302,6 +310,16 @@ function normHex(hex) {
     return '#' + hex[1]+hex[1] + hex[2]+hex[2] + hex[3]+hex[3];
   }
   return hex;
+}
+
+function makeResetBtn(key, onReset) {
+  const btn = document.createElement('button');
+  btn.className = 'pg-reset';
+  btn.title = 'Reset to default (' + defaults[key] + ')';
+  btn.innerHTML = '&#x21ba;';  // ↺
+  btn.hidden = true;
+  btn.addEventListener('click', () => { onReset(defaults[key]); btn.hidden = true; });
+  return btn;
 }
 
 function buildColorRow(container, key, val, desc) {
@@ -322,20 +340,30 @@ function buildColorRow(container, key, val, desc) {
   hex.className = 'pg-hex';
   hex.value = val;
 
+  const reset = makeResetBtn(key, v => {
+    v = normHex(v);
+    picker.value = v; hex.value = v; applyVar(key, v);
+  });
+
+  function showReset() { reset.hidden = (current[key] === normHex(defaults[key])); }
+
   picker.addEventListener('input', () => {
     hex.value = picker.value;
     applyVar(key, picker.value);
+    showReset();
   });
   hex.addEventListener('input', () => {
     if (isColor(hex.value)) {
       picker.value = normHex(hex.value);
       applyVar(key, hex.value);
+      showReset();
     }
   });
 
-  row.append(label, picker, hex);
+  row.append(label, picker, hex, reset);
   container.appendChild(row);
   applyVar(key, val);
+  showReset();
 }
 
 function buildTextRow(container, key, val, desc) {
@@ -349,11 +377,18 @@ function buildTextRow(container, key, val, desc) {
   const input = document.createElement('input');
   input.type = 'text';
   input.value = val;
-  input.addEventListener('input', () => applyVar(key, input.value));
 
-  row.append(label, input);
+  const reset = makeResetBtn(key, v => { input.value = v; applyVar(key, v); });
+
+  input.addEventListener('input', () => {
+    applyVar(key, input.value);
+    reset.hidden = (input.value === defaults[key]);
+  });
+
+  row.append(label, input, reset);
   container.appendChild(row);
   applyVar(key, val);
+  reset.hidden = (val === defaults[key]);
 }
 
 // Try to load current theme.css from server (works when served by TibbitWiki).
