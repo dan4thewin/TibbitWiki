@@ -251,20 +251,24 @@ NB. SIGBUS on <a href="#" class="wikiword missing" data-title="MacOS">MacOS</a> 
 
 <script>
 // Theme variable definitions — grouped for the control panel.
+// Descriptions match defaults.yaml comments and show as tooltips.
 const THEME = {
   colors: [
     ['bg',           '#1a1a2e', 'Page background'],
-    ['fg',           '#e0e0e0', 'Main text'],
+    ['fg',           '#e0e0e0', 'Body text'],
+    ['title_fg',     '#e0e0e0', 'Note titles and page heading'],
     ['note_bg',      '#16213e', 'Note card background'],
     ['code_bg',      '#0d1117', 'Code/input backgrounds'],
-    ['accent',       '#6cacee', 'Links, active tabs'],
-    ['accent_hover', '#8ecaff', 'Hovered links'],
+    ['accent',       '#6cacee', 'WikiWord links, active tabs'],
+    ['accent_hover', '#8ecaff', 'Hovered WikiWord links'],
+    ['link',         '#6cacee', 'External URL links in note body'],
+    ['link_hover',   '#8ecaff', 'Hovered external URL links'],
     ['danger',       '#e06060', 'Missing links, errors'],
     ['button_bg',    '#2a2a4a', 'Button hover background'],
     ['border',       '#333333', 'Note outlines, dividers'],
     ['border_light', '#444444', 'Input borders, underlines'],
     ['muted',        '#666666', 'Dim text, inactive tabs'],
-    ['muted_light',  '#aaaaaa', 'Mid-tone text'],
+    ['muted_light',  '#aaaaaa', 'Toolbar icons, blockquotes, search snippets'],
   ],
   typography: [
     ['font_family', '-apple-system, BlinkMacSystemFont, sans-serif', 'Body font stack'],
