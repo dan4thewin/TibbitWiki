@@ -28,7 +28,8 @@ theme:
     border:       "#333"          # Note outlines, dividers
     border_light: "#444"          # Input borders, underlines
     muted:        "#666"          # Dim text, inactive tabs
-    muted_light:  "#aaa"          # Toolbar icons, blockquotes, search snippets
+    muted_light:  "#aaa"          # Toolbar icons, search snippets
+    blockquote:   "#888"          # Blockquote text
     # Typography
     font_family:  "-apple-system, BlinkMacSystemFont, sans-serif"  # Body font stack
     font_size:    "16px"          # Base text size
