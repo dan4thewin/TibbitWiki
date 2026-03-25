@@ -120,8 +120,23 @@ func splitPrefix(path string) (name, rest string) {
 // handleWikiSelector lists available wikis as links.
 func (s *Server) handleWikiSelector(w http.ResponseWriter, r *http.Request) {
 	names := s.hub.Names()
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprint(w, "<!DOCTYPE html><html><head><title>TibbitWiki</title></head><body>")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, `<!DOCTYPE html><html><head><meta charset="utf-8"><title>TibbitWiki</title>
+<style>
+:root {
+  --tw-bg: #1a1a2e; --tw-fg: #e0e0e0; --tw-note_bg: #16213e;
+  --tw-accent: #6cacee; --tw-accent_hover: #8ecaff;
+  --tw-border: #333; --tw-note_radius: 6px;
+  --tw-font_family: -apple-system, BlinkMacSystemFont, sans-serif;
+  --tw-title_fg: #e0e0e0;
+}
+body { margin: 0; padding: 40px; background: var(--tw-bg); color: var(--tw-fg); font-family: var(--tw-font_family); }
+h1 { color: var(--tw-title_fg, var(--tw-fg)); }
+ul { list-style: none; padding: 0; }
+li { margin-bottom: 8px; }
+li a { display: inline-block; padding: 10px 20px; background: var(--tw-note_bg); border: 1px solid var(--tw-border); border-radius: var(--tw-note_radius); color: var(--tw-accent); text-decoration: none; font-size: 18px; }
+li a:hover { color: var(--tw-accent_hover); border-color: var(--tw-accent); }
+</style></head><body>`)
 	fmt.Fprint(w, "<h1>TibbitWiki</h1><ul>")
 	for _, name := range names {
 		fmt.Fprintf(w, `<li><a href="/%s/">%s</a></li>`, name, name)
