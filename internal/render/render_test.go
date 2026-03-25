@@ -10,6 +10,9 @@ import (
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
+	"github.com/alecthomas/chroma/v2"
+	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
+	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -495,3 +498,68 @@ func TestDiffToHTMLEmpty(t *testing.T) {
 		t.Error("expected some HTML output even for empty diff")
 	}
 }
+
+// TestDiffToHTMLLexerNil verifies DiffToHTML falls back to
+// lexers.Fallback when lexers.Get returns nil (lines 219-221).
+func TestDiffToHTMLLexerNil(t *testing.T) {
+	patches := gomonkey.ApplyFunc(lexers.Get,
+		func(name string) chroma.Lexer { return nil },
+	)
+	defer patches.Reset()
+
+	diff := "--- a\n+++ b\n@@ -1 +1 @@\n-old\n+new\n"
+	got := DiffToHTML(diff)
+	// Should still produce HTML via the Fallback lexer, not <pre>.
+	if strings.HasPrefix(got, "<pre>") {
+		t.Error("should not fall back to <pre> when Fallback lexer is available")
+	}
+}
+
+// TestDiffToHTMLTokeniseError verifies DiffToHTML returns a <pre>
+// fallback when the lexer's Tokenise method fails (lines 226-228).
+func TestDiffToHTMLTokeniseError(t *testing.T) {
+	diff := "--- a\n+++ b\n"
+	// Patch Tokenise on the coalesced lexer to return an error.
+	// chroma.Coalesce wraps the lexer in a *chroma.CoalescingLexer;
+	// we patch chroma.Coalesce to return a lexer whose Tokenise fails.
+	patches := gomonkey.ApplyFunc(chroma.Coalesce,
+		func(lexer chroma.Lexer) chroma.Lexer {
+			return &failTokenLexer{}
+		},
+	)
+	defer patches.Reset()
+
+	got := DiffToHTML(diff)
+	if !strings.HasPrefix(got, "<pre>") {
+		t.Errorf("expected <pre> fallback, got: %s", got)
+	}
+}
+
+// TestDiffToHTMLFormatError verifies DiffToHTML returns a <pre>
+// fallback when the formatter's Format method fails (lines 230-232).
+func TestDiffToHTMLFormatError(t *testing.T) {
+	diff := "--- a\n+++ b\n"
+	patches := gomonkey.ApplyMethodFunc(
+		&chromahtml.Formatter{}, "Format",
+		func(w io.Writer, style *chroma.Style, iterator chroma.Iterator) error {
+			return fmt.Errorf("forced format error")
+		},
+	)
+	defer patches.Reset()
+
+	got := DiffToHTML(diff)
+	if !strings.HasPrefix(got, "<pre>") {
+		t.Errorf("expected <pre> fallback, got: %s", got)
+	}
+}
+
+// failTokenLexer is a chroma.Lexer stub that always fails Tokenise.
+type failTokenLexer struct{}
+
+func (f *failTokenLexer) Config() *chroma.Config { return &chroma.Config{Name: "fail"} }
+func (f *failTokenLexer) Tokenise(_ *chroma.TokeniseOptions, _ string) (chroma.Iterator, error) {
+	return nil, fmt.Errorf("forced tokenise error")
+}
+func (f *failTokenLexer) SetRegistry(_ *chroma.LexerRegistry) chroma.Lexer { return f }
+func (f *failTokenLexer) SetAnalyser(_ func(string) float32) chroma.Lexer  { return f }
+func (f *failTokenLexer) AnalyseText(_ string) float32                     { return 0 }

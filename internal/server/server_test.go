@@ -2059,3 +2059,16 @@ func TestPromoteMethodNotAllowed(t *testing.T) {
 		t.Errorf("status = %d, want 405", w.Code)
 	}
 }
+
+// TestPromoteNonexistentReturns404 verifies that POSTing promote for
+// a note title that has no file returns 404 (lines 511-513).
+func TestPromoteNonexistentReturns404(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	req := httptest.NewRequest("POST", "/test/revisions/NoSuchNote/promote", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", w.Code)
+	}
+}

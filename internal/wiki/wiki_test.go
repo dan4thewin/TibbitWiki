@@ -1878,3 +1878,337 @@ func TestScanRCSDetectsCheckout(t *testing.T) {
 		t.Errorf("ScanRCS: rcs = %q/%q, want 1.2/1.3", rev, head)
 	}
 }
+
+// TestScanRCSSkipsEmptyFilePath verifies that ScanRCS skips notes
+// whose store has no file path recorded (line 86).
+func TestScanRCSSkipsEmptyFilePath(t *testing.T) {
+	wk := testWiki(t)
+	// Add a note without a file path — only in the store.
+	wk.Store().Put(&tid.Note{Fields: map[string]string{
+		"title": "InMemory",
+	}})
+
+	// Should not panic or set RCS state.
+	wk.ScanRCS()
+	rev, head := wk.Store().RCS("InMemory")
+	if rev != "" || head != "" {
+		t.Errorf("expected empty RCS state, got %q/%q", rev, head)
+	}
+}
+
+// TestScanRCSSkipsWritableFile verifies that ScanRCS skips files
+// that are writable (not read-only), even if they have an RCS archive.
+func TestScanRCSSkipsWritableFile(t *testing.T) {
+	wk, _ := writeNoteWithRevisions(t, "Writable", []string{"V1.", "V2."})
+
+	// File is writable (at head) — ScanRCS should skip it.
+	wk.ScanRCS()
+	rev, head := wk.Store().RCS("Writable")
+	if rev != "" || head != "" {
+		t.Errorf("expected empty RCS for writable file, got %q/%q", rev, head)
+	}
+}
+
+// TestScanRCSSkipsNoCheckoutTag verifies that ScanRCS skips
+// read-only files that have no CHECKOUT tag (line 90 rev=="").
+func TestScanRCSSkipsNoCheckoutTag(t *testing.T) {
+	wk, path := writeNoteWithRevisions(t, "NoTag",
+		[]string{"V1.", "V2."})
+
+	// Make read-only WITHOUT setting tag.
+	rcs.Checkout(path, "1.1")
+
+	wk.ScanRCS()
+	rev, head := wk.Store().RCS("NoTag")
+	if rev != "" || head != "" {
+		t.Errorf("expected empty RCS (no tag), got %q/%q", rev, head)
+	}
+}
+
+// TestScanRCSCheckoutTagError verifies that ScanRCS skips files
+// when CheckoutTag returns an error (line 90 err!=nil).
+func TestScanRCSCheckoutTagError(t *testing.T) {
+	wk, path := writeNoteWithRevisions(t, "TagErr",
+		[]string{"V1.", "V2."})
+
+	// Make read-only.
+	rcs.Checkout(path, "1.1")
+	rcs.SetTag(path, "CHECKOUT", "1.1")
+
+	// Patch CheckoutTag to fail.
+	patches := gomonkey.ApplyFunc(rcs.CheckoutTag,
+		func(string, string) (string, error) {
+			return "", fmt.Errorf("forced tag error")
+		},
+	)
+	defer patches.Reset()
+
+	wk.ScanRCS()
+	rev, head := wk.Store().RCS("TagErr")
+	if rev != "" || head != "" {
+		t.Errorf("expected empty RCS after tag error, got %q/%q", rev, head)
+	}
+}
+
+// TestScanRCSHeadRevError verifies that ScanRCS skips files when
+// HeadRev fails (line 94-95).
+func TestScanRCSHeadRevError(t *testing.T) {
+	wk, path := writeNoteWithRevisions(t, "HeadErr",
+		[]string{"V1.", "V2."})
+
+	rcs.Checkout(path, "1.1")
+	rcs.SetTag(path, "CHECKOUT", "1.1")
+
+	// Patch HeadRev to fail.
+	patches := gomonkey.ApplyFunc(rcs.HeadRev,
+		func(string) (string, error) {
+			return "", fmt.Errorf("forced head error")
+		},
+	)
+	defer patches.Reset()
+
+	wk.ScanRCS()
+	rev, head := wk.Store().RCS("HeadErr")
+	if rev != "" || head != "" {
+		t.Errorf("expected empty RCS after head error, got %q/%q", rev, head)
+	}
+}
+
+// TestListSymlinkMissingNoteInOwner verifies that List silently
+// skips a symlinked title when the owner wiki has no matching note
+// (td == nil at line 245).
+func TestListSymlinkMissingNoteInOwner(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error { return nil })
+	defer patches.Reset()
+
+	// Owner wiki exists but does NOT have "Ghost" note.
+	work := testWiki(t)
+	writeNote(t, work, "Other", "other body")
+
+	// Local wiki has symlink for "Ghost" → "work".
+	local := testWiki(t)
+	writeNote(t, local, "Local", "local body")
+	local.SetSymlinks(map[string]string{"Ghost": "work"})
+	hub := NewHub(map[string]*Wiki{"work": work, "local": local})
+	local.SetHub(hub)
+
+	list := local.List()
+	for _, fields := range list {
+		if fields["title"] == "Ghost" {
+			t.Error("Ghost should not appear (owner has no such note)")
+		}
+	}
+	// Only "Local" should be in the list.
+	if len(list) != 1 {
+		t.Errorf("list len = %d, want 1", len(list))
+	}
+}
+
+// TestRevisionsHeadRevError verifies that Revisions returns an error
+// when rcs.HeadRev fails (lines 288-291).
+func TestRevisionsHeadRevError(t *testing.T) {
+	wk, _ := writeNoteWithRevisions(t, "HRErr",
+		[]string{"V1.", "V2."})
+
+	patches := gomonkey.ApplyFunc(rcs.HeadRev,
+		func(string) (string, error) {
+			return "", fmt.Errorf("forced headrev error")
+		},
+	)
+	defer patches.Reset()
+
+	_, err := wk.Revisions("HRErr", 10)
+	if err == nil {
+		t.Fatal("expected error from HeadRev failure")
+	}
+	if !strings.Contains(err.Error(), "forced headrev error") {
+		t.Errorf("error = %v, want 'forced headrev error'", err)
+	}
+}
+
+// TestPromoteNoFile verifies that PromoteRevision returns a "no file"
+// error for a note that has no file path (lines 348-351).
+func TestPromoteNoFile(t *testing.T) {
+	wk := testWiki(t)
+	err := wk.PromoteRevision("Ghost")
+	if err == nil {
+		t.Fatal("expected error for missing file")
+	}
+	if !strings.Contains(err.Error(), "no file") {
+		t.Errorf("error = %v, want 'no file'", err)
+	}
+}
+
+// TestPromoteCheckinError verifies that PromoteRevision returns
+// the rcs.Checkin error (lines 356-358).
+func TestPromoteCheckinError(t *testing.T) {
+	wk, path := writeNoteWithRevisions(t, "ChkErr",
+		[]string{"V1.", "V2."})
+
+	// Checkout old revision so file is read-only.
+	wk.CheckoutRevision("ChkErr", "1.1")
+	wk.Reload(path)
+	wk.Do(func() {})
+
+	patches := gomonkey.ApplyFunc(rcs.Checkin,
+		func(string) error {
+			return fmt.Errorf("forced checkin error")
+		},
+	)
+	defer patches.Reset()
+
+	err := wk.PromoteRevision("ChkErr")
+	if err == nil {
+		t.Fatal("expected error from Checkin failure")
+	}
+	if !strings.Contains(err.Error(), "forced checkin error") {
+		t.Errorf("error = %v, want 'forced checkin error'", err)
+	}
+}
+
+// TestBuildDiffHTMLDiffRangeError verifies that buildDiffHTML skips
+// pairs where rcs.DiffRange returns an error (line 398-399).
+func TestBuildDiffHTMLDiffRangeError(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.DiffRange,
+		func(path, r1, r2 string) (string, error) {
+			return "", fmt.Errorf("forced diff error")
+		},
+	)
+	defer patches.Reset()
+
+	revs := []string{"1.1", "1.2", "1.3"}
+	got := buildDiffHTML("/any/path", revs, 10)
+	// All pairs failed, so output should be empty.
+	if got != "" {
+		t.Errorf("expected empty diff HTML, got: %s", got)
+	}
+}
+
+// TestReloadFileSymlinkUnchanged verifies that reloadFile returns
+// early for a known symlink whose owner hasn't changed (line 585-587).
+func TestReloadFileSymlinkUnchanged(t *testing.T) {
+	parent := t.TempDir()
+	workDir := filepath.Join(parent, "work")
+	evernoteDir := filepath.Join(parent, "evernote")
+	os.Mkdir(workDir, 0755)
+	os.Mkdir(evernoteDir, 0755)
+
+	os.WriteFile(filepath.Join(workDir, "Shared.md"),
+		[]byte("title: Shared\n\nBody."), 0644)
+
+	// Create symlink in evernote.
+	linkPath := filepath.Join(evernoteDir, "Shared.md")
+	os.Symlink("../work/Shared.md", linkPath)
+
+	evernote := New("evernote", evernoteDir, nil, 100)
+	evernote.symlinks["Shared"] = "work" // already known
+	evernote.Start()
+	t.Cleanup(evernote.Stop)
+
+	// Reload should be a no-op (unchanged symlink).
+	evernote.Reload(linkPath)
+	evernote.do(func() {})
+
+	// Symlink still present, no store entry.
+	if evernote.symlinks["Shared"] != "work" {
+		t.Errorf("symlink should remain, got %q", evernote.symlinks["Shared"])
+	}
+	if evernote.store.Get("Shared") != nil {
+		t.Error("unchanged symlink should not add to store")
+	}
+}
+
+// TestReloadFileSymlinkReadError verifies that reloadFile handles
+// a read error on a new symlink (lines 590-593).
+func TestReloadFileSymlinkReadError(t *testing.T) {
+	parent := t.TempDir()
+	workDir := filepath.Join(parent, "work")
+	evernoteDir := filepath.Join(parent, "evernote")
+	os.Mkdir(workDir, 0755)
+	os.Mkdir(evernoteDir, 0755)
+
+	// Create unreadable symlink target.
+	os.WriteFile(filepath.Join(workDir, "Bad.md"),
+		[]byte("title: Bad\n\nBody."), 0000)
+
+	linkPath := filepath.Join(evernoteDir, "Bad.md")
+	os.Symlink("../work/Bad.md", linkPath)
+
+	evernote := New("evernote", evernoteDir, nil, 100)
+	evernote.Start()
+	t.Cleanup(evernote.Stop)
+	t.Cleanup(func() {
+		os.Chmod(filepath.Join(workDir, "Bad.md"), 0644)
+	})
+
+	// Reload: symlink is new but target is unreadable.
+	evernote.Reload(linkPath)
+	evernote.do(func() {})
+
+	// Should not panic; symlink not added.
+	if _, ok := evernote.symlinks["Bad"]; ok {
+		t.Error("unreadable symlink should not be added")
+	}
+}
+
+// TestReloadFileSymlinkParseError verifies that reloadFile handles
+// a parse error on a new symlink (lines 595-598).
+func TestReloadFileSymlinkParseError(t *testing.T) {
+	parent := t.TempDir()
+	workDir := filepath.Join(parent, "work")
+	evernoteDir := filepath.Join(parent, "evernote")
+	os.Mkdir(workDir, 0755)
+	os.Mkdir(evernoteDir, 0755)
+
+	// Create a file that tid.Parse will reject (no title).
+	os.WriteFile(filepath.Join(workDir, "NoTitle.md"),
+		[]byte("no title header\n\nBody."), 0644)
+
+	linkPath := filepath.Join(evernoteDir, "NoTitle.md")
+	os.Symlink("../work/NoTitle.md", linkPath)
+
+	evernote := New("evernote", evernoteDir, nil, 100)
+	evernote.Start()
+	t.Cleanup(evernote.Stop)
+
+	// Reload: symlink is new but content has no title.
+	evernote.Reload(linkPath)
+	evernote.do(func() {})
+
+	// Should not panic; no symlink added.
+	if _, ok := evernote.symlinks["NoTitle"]; ok {
+		t.Error("bad-parse symlink should not be added")
+	}
+}
+
+// TestIsUnchangedMetaDiffers verifies that isUnchanged returns false
+// when metadata fields differ (line 667-669).
+func TestIsUnchangedMetaDiffers(t *testing.T) {
+	wk := testWiki(t)
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error { return nil })
+	defer patches.Reset()
+
+	// Write initial note with tags.
+	writeNote(t, wk, "Meta", "body")
+
+	// Re-parse with different metadata (added "tags" field).
+	td := &tid.Note{Fields: map[string]string{
+		"title": "Meta",
+		"tags":  "NewTag",
+		"text":  "body",
+	}}
+	path := filepath.Join(wk.NoteDir(), tid.TitleToFilename("Meta"))
+	os.WriteFile(path, tid.Serialize(td), 0644)
+
+	wk.Reload(path)
+	wk.do(func() {})
+
+	// The reload should update the store because meta differs.
+	got := wk.Store().Get("Meta")
+	if got == nil {
+		t.Fatal("expected note in store")
+	}
+	if got.Fields["tags"] != "NewTag" {
+		t.Errorf("tags = %q, want %q", got.Fields["tags"], "NewTag")
+	}
+}

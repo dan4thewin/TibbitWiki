@@ -314,6 +314,67 @@ func TestLoadYAMLThemeWikiOnly(t *testing.T) {
 	}
 }
 
+// TestLoadYAMLThemeNull verifies that when a YAML config file
+// explicitly nulls the theme section, Load fills it from defaults.
+// This covers the cfg.Theme == nil branch (line 163).
+func TestLoadYAMLThemeNull(t *testing.T) {
+	content := "listen: \"127.0.0.1:9999\"\ntheme:\n"
+	f, err := os.CreateTemp("", "tibbitwiki-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString(content)
+	f.Close()
+
+	cfg, err := Load([]string{"--config", f.Name()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Theme should be filled from defaults despite YAML nulling it.
+	defaults := DefaultSharedTheme()
+	if cfg.Theme == nil {
+		t.Fatal("Theme should not be nil after Load")
+	}
+	if cfg.Theme["shared"]["bg"] != defaults["bg"] {
+		t.Errorf("Theme[shared][bg] = %q, want default %q",
+			cfg.Theme["shared"]["bg"], defaults["bg"])
+	}
+}
+
+// TestLoadYAMLThemeSharedNull verifies that when a YAML config has
+// a theme section but explicitly nulls the shared key, Load fills
+// shared from defaults. Covers cfg.Theme["shared"] == nil (line 165).
+func TestLoadYAMLThemeSharedNull(t *testing.T) {
+	content := "theme:\n  shared:\n  work:\n    accent: \"#00ff00\"\n"
+	f, err := os.CreateTemp("", "tibbitwiki-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString(content)
+	f.Close()
+
+	cfg, err := Load([]string{"--config", f.Name()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Theme is non-nil (has "work"), but shared was null → filled.
+	defaults := DefaultSharedTheme()
+	if cfg.Theme["shared"] == nil {
+		t.Fatal("shared should be filled from defaults")
+	}
+	if cfg.Theme["shared"]["bg"] != defaults["bg"] {
+		t.Errorf("shared bg = %q, want default %q",
+			cfg.Theme["shared"]["bg"], defaults["bg"])
+	}
+	// Wiki override preserved.
+	if cfg.Theme["work"]["accent"] != "#00ff00" {
+		t.Errorf("work accent = %q, want %q",
+			cfg.Theme["work"]["accent"], "#00ff00")
+	}
+}
+
 // TestLoadTWCorePathAndIndexHTMLFlags verifies that the --tw-core-path
 // and --index-html flags override the config values.
 func TestLoadTWCorePathAndIndexHTMLFlags(t *testing.T) {

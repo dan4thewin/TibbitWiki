@@ -314,3 +314,26 @@ func TestCheckoutTagBadPath(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+// TestHeadRevNoHeadLine verifies HeadRev returns an error when rlog
+// succeeds but its output contains no "head:" line. We place a fake
+// rlog script first on PATH that outputs valid-looking text without
+// a head line (avoids gomonkey + exec.Command SIGBUS on darwin/arm64).
+func TestHeadRevNoHeadLine(t *testing.T) {
+	// Create a fake rlog that outputs no "head:" line.
+	dir := t.TempDir()
+	script := filepath.Join(dir, "rlog")
+	os.WriteFile(script, []byte("#!/bin/sh\necho 'RCS file: test,v'\necho 'locks: strict'\n"), 0755)
+
+	// Prepend fake dir to PATH so our rlog is found first.
+	orig := os.Getenv("PATH")
+	t.Setenv("PATH", dir+":"+orig)
+
+	_, err := HeadRev("/any/file.md")
+	if err == nil {
+		t.Fatal("expected error for missing head line")
+	}
+	if !strings.Contains(err.Error(), "no head revision") {
+		t.Errorf("error = %v, want 'no head revision'", err)
+	}
+}
