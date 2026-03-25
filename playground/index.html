@@ -27,7 +27,7 @@ html { font-family: system-ui, sans-serif; font-size: 14px; background: #111; co
 
 /* --- Themed preview — real wiki CSS, scoped under .tw --- */
 .tw { display: flex; gap: 20px; font-family: var(--tw-font_family); font-size: var(--tw-font_size); color: var(--tw-fg); background: var(--tw-bg); border-radius: 8px; padding: 20px; min-height: 600px; position: relative; padding-bottom: 60px; }
-.tw h1 { margin-top: 0; color: var(--tw-fg); }
+.tw h1 { margin-top: 0; color: var(--tw-title_fg, var(--tw-fg)); }
 .tw #main { flex: 1; min-width: 0; }
 .tw #sidebar { width: var(--tw-sidebar_width); flex-shrink: 0; }
 /* Tab headers */
@@ -48,7 +48,7 @@ html { font-family: system-ui, sans-serif; font-size: 14px; background: #111; co
 .tw .tag-group-header:first-child { margin-top: 0; }
 .tw .note { border: 1px solid var(--tw-border); border-radius: var(--tw-note_radius); padding: 16px; margin-bottom: 16px; background: var(--tw-note_bg); }
 .tw .note-header { display: flex; align-items: center; justify-content: space-between; }
-.tw .note-header h2 { margin: 0; color: var(--tw-fg); }
+.tw .note-header h2 { margin: 0; color: var(--tw-title_fg, var(--tw-fg)); }
 .tw .note-date { margin-left: 12px; font-size: 13px; font-weight: 400; color: var(--tw-muted); }
 .tw .note-toolbar { display: flex; gap: 4px; }
 .tw .note-toolbar button { background: none; border: 1px solid var(--tw-border_light); border-radius: 4px; cursor: pointer; padding: 2px 8px; font-size: 16px; color: var(--tw-muted_light); }
@@ -67,6 +67,8 @@ html { font-family: system-ui, sans-serif; font-size: 14px; background: #111; co
 .tw a.wikiword { color: var(--tw-accent); text-decoration: none; }
 .tw a.wikiword:hover { text-decoration: underline; color: var(--tw-accent_hover); }
 .tw a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
+.tw .note-body a:not(.wikiword) { color: var(--tw-link, var(--tw-accent)); text-decoration: underline; }
+.tw .note-body a:not(.wikiword):hover { color: var(--tw-link_hover, var(--tw-accent_hover)); }
 .tw #top-bar { margin-bottom: 16px; display: flex; gap: 8px; }
 .tw #top-bar button { padding: 6px 14px; font-size: 14px; border: 1px solid var(--tw-border_light); border-radius: 4px; cursor: pointer; background: var(--tw-note_bg); color: var(--tw-fg); }
 .tw #top-bar button:hover { background: var(--tw-button_bg); }

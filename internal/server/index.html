@@ -7,8 +7,9 @@
 
 <style>
 :root {
-  --tw-bg: #1a1a2e; --tw-fg: #e0e0e0; --tw-note_bg: #16213e;
+  --tw-bg: #1a1a2e; --tw-fg: #e0e0e0; --tw-title_fg: #e0e0e0; --tw-note_bg: #16213e;
   --tw-code_bg: #0d1117; --tw-accent: #6cacee; --tw-accent_hover: #8ecaff;
+  --tw-link: #6cacee; --tw-link_hover: #8ecaff;
   --tw-danger: #e06060; --tw-button_bg: #2a2a4a; --tw-border: #333;
   --tw-border_light: #444; --tw-muted: #666; --tw-muted_light: #aaa;
   --tw-font_family: -apple-system, BlinkMacSystemFont, sans-serif;
@@ -18,7 +19,7 @@
 }
 body { font-family: var(--tw-font_family); font-size: var(--tw-font_size); margin: 0; padding: 20px; display: flex; gap: 20px; background: var(--tw-bg); color: var(--tw-fg); }
 svg { vertical-align: -.125em; }
-h1 { margin-top: 0; color: var(--tw-fg); }
+h1 { margin-top: 0; color: var(--tw-title_fg, var(--tw-fg)); }
 #main { flex: 1; min-width: 0; }
 #sidebar { width: var(--tw-sidebar_width); flex-shrink: 0; }
 
@@ -43,7 +44,7 @@ h1 { margin-top: 0; color: var(--tw-fg); }
 
 .note { border: 1px solid var(--tw-border); border-radius: var(--tw-note_radius); padding: 16px; margin-bottom: 16px; background: var(--tw-note_bg); }
 .note-header { display: flex; align-items: center; justify-content: space-between; }
-.note-header h2 { margin: 0; color: var(--tw-fg); }
+.note-header h2 { margin: 0; color: var(--tw-title_fg, var(--tw-fg)); }
 .note-date { margin-left: 12px; font-size: 13px; font-weight: 400; color: var(--tw-muted); }
 .note-toolbar { display: flex; gap: 4px; }
 .note-toolbar button { background: none; border: 1px solid var(--tw-border_light); border-radius: 4px; cursor: pointer; padding: 2px 8px; font-size: 16px; color: var(--tw-muted_light); }
@@ -63,6 +64,8 @@ h1 { margin-top: 0; color: var(--tw-fg); }
 a.wikiword { color: var(--tw-accent); text-decoration: none; }
 a.wikiword:hover { text-decoration: underline; color: var(--tw-accent_hover); }
 a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
+.note-body a:not(.wikiword) { color: var(--tw-link, var(--tw-accent)); text-decoration: underline; }
+.note-body a:not(.wikiword):hover { color: var(--tw-link_hover, var(--tw-accent_hover)); }
 #top-bar { margin-bottom: 16px; display: flex; gap: 8px; align-items: center; }
 #top-bar button { padding: 6px 14px; font-size: 14px; border: 1px solid var(--tw-border_light); border-radius: 4px; cursor: pointer; background: var(--tw-note_bg); color: var(--tw-fg); }
 #top-bar button:hover { background: var(--tw-button_bg); }
@@ -240,7 +243,9 @@ function linkifyWikiWords(html) {
   const parts = html.split(/(<a[^>]*>.*?<\/a>|<[^>]+>)/gs);
   return parts.map(part => {
     if (part.startsWith('<')) return part;
-    return part.replace(CAMEL, (match) => {
+    // ~WikiWord suppresses linking; replace CamelCase words with links.
+    return part.replace(/~?((?:[A-Z][a-z]+)(?:[A-Z][a-z0-9]*)+)\b/g, (full, match) => {
+      if (full.startsWith('~')) return match;
       const cls = knownTitles.has(match) ? 'wikiword' : 'wikiword missing';
       return `<a href="#" class="${cls}" data-title="${match}">${match}</a>`;
     });
