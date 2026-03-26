@@ -165,3 +165,63 @@ Install mk: `go install github.com/dcjones/mk@latest`
 
 See [TESTING.md](TESTING.md) for browser automation techniques.
 
+## Migrating from Evernote
+
+### 1. Export from Evernote
+
+Use [evernote-backup](https://github.com/vzhd1701/evernote-backup)
+to download your account as ENEX files:
+
+```bash
+python3 -m venv /tmp/evernote-env
+source /tmp/evernote-env/bin/activate
+pip install evernote-backup
+
+# Authenticate via OAuth (opens a browser)
+evernote-backup init-db --oauth
+
+# Sync all notes (downloads into a local SQLite DB)
+evernote-backup sync
+
+# Export to ENEX, one file per notebook
+evernote-backup export ~/evernote-export/enex/
+```
+
+This produces one `.enex` file per notebook in the export directory.
+
+### 2. Convert ENEX to .md notes
+
+`scripts/enex2tid` converts ENEX files to TibbitWiki `.md` format:
+
+```bash
+source /tmp/evernote-env/bin/activate   # needs markdownify
+pip install markdownify
+scripts/enex2tid ~/evernote-export/enex/ ~/notes/evernote/
+```
+
+The converter:
+- Parses ENML (Evernote's HTML variant) to markdown via markdownify
+- Extracts attachments to per-note subdirectories
+  (e.g., `MyNote/photo.jpg` alongside `MyNote.md`)
+- Converts Evernote timestamps to ISO 8601
+- Preserves Evernote tags and notebook name in the `tags:` header
+- Strips web-clip artifacts (inline SVGs, data URIs)
+- Detects clipped web pages and adds a "Clipped from" source link
+- Handles duplicate titles by appending the creation date
+- Truncates or hashes overlong attachment filenames
+- URL-encodes spaces in attachment links for goldmark compatibility
+
+Output is one `.md` file per note, ready to serve as a wiki directory.
+
+### 3. (Optional) Rename with meaningful WikiWord titles
+
+Evernote note titles are often long URLs, cryptic abbreviations,
+or raw filenames. `scripts/wikiname` uses a local LLM (via
+[Ollama](https://ollama.com)) to generate terse CamelCase WikiWord
+names and coarse classification tags.
+
+This is a separate batch step — it reads a TSV of titles and body
+excerpts, queries the model once per note, and writes a mapping
+TSV. A post-processing step guarantees CamelCase format compliance
+regardless of model output quality. See the script for usage.
+

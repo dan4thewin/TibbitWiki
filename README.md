@@ -242,6 +242,11 @@ testing techniques.
 format — timestamps, headers, wikitext→markdown, and journal
 filename conversion (e.g. "10th July 2023" → "2023-07-10").
 
+### Migrating from Evernote
+
+`scripts/enex2tid` converts Evernote ENEX exports to `.md` notes
+with attachments. See [SETUP.md](SETUP.md) for details.
+
 ## Known Limitations
 
 - **macOS file watching uses kqueue**, which opens a file descriptor per
