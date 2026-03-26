@@ -1,0 +1,279 @@
+#!/usr/bin/env python3
+"""enex2tid — convert Evernote ENEX exports to TibbitWiki .md notes.
+
+Usage: enex2tid <enex_dir> <output_dir>
+
+Reads all .enex files from enex_dir, writes .md note files and attachment
+subdirectories to output_dir.
+"""
+
+import base64
+import glob
+import hashlib
+import mimetypes
+import os
+import re
+import sys
+import xml.etree.ElementTree as ET
+from collections import Counter
+from urllib.parse import unquote
+from markdownify import MarkdownConverter
+
+
+def die(msg):
+    print(f"error: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+# --- Filename sanitization ---
+
+# Characters unsafe in filenames on macOS/Linux/Windows.
+UNSAFE_RE = re.compile(r'[/\\:*?"<>|]')
+
+
+def sanitize_filename(title):
+    """Replace filesystem-unsafe characters with hyphens, collapse runs."""
+    name = UNSAFE_RE.sub("-", title).strip(" .-")
+    name = re.sub(r"-{2,}", "-", name)
+    return name or "untitled"
+
+
+# --- ENML to Markdown conversion ---
+
+# Matches the --en-clipped-source-url CSS variable in style attributes.
+CLIP_URL_RE = re.compile(r"--en-clipped-source-url:\s*([^;\"']+)")
+CLIP_TITLE_RE = re.compile(r"--en-clipped-source-title:\s*([^;\"']+)")
+
+
+class EnmlConverter(MarkdownConverter):
+    """Custom markdownify converter that handles <en-media> tags."""
+
+    def __init__(self, resource_map, note_dir, **kwargs):
+        # resource_map: md5_hash -> (filename, mime_type)
+        self.resource_map = resource_map
+        self.note_dir = note_dir
+        super().__init__(**kwargs)
+
+    def convert_en_media(self, el, text, **kwargs):
+        """Convert <en-media hash="..." type="..."> to markdown links."""
+        h = el.get("hash", "")
+        if h not in self.resource_map:
+            return ""
+        filename, mime = self.resource_map[h]
+        path = f"{self.note_dir}/{filename}"
+        encoded_path = path.replace(" ", "%20")
+        if mime and mime.startswith("image/"):
+            return f"![{filename}]({encoded_path})"
+        return f"[{filename}]({encoded_path})"
+
+    def convert_en_note(self, el, text, **kwargs):
+        return text
+
+    convert_en_todo = None  # drop checkbox placeholders
+
+
+def extract_clip_url(content_html):
+    """Extract clipped source URL and title from ENML style attributes."""
+    url_match = CLIP_URL_RE.search(content_html)
+    title_match = CLIP_TITLE_RE.search(content_html)
+    if url_match:
+        url = url_match.group(1).strip()
+        title = title_match.group(1).strip() if title_match else url
+        title = unquote(title)
+        return url, title
+    return None, None
+
+
+def enml_to_markdown(content_html, resource_map, note_dir):
+    """Convert ENML content string to markdown."""
+    # Strip XML declaration and DOCTYPE.
+    html = re.sub(r"<\?xml[^>]*\?>", "", content_html)
+    html = re.sub(r"<!DOCTYPE[^>]*>", "", html)
+
+    converter = EnmlConverter(
+        resource_map=resource_map,
+        note_dir=note_dir,
+        heading_style="atx",
+        bullets="-",
+        strip=["en-crypt"],
+    )
+    md = converter.convert(html)
+
+    # Clean up: collapse 3+ blank lines to 2, strip trailing whitespace.
+    md = re.sub(r"\n{3,}", "\n\n", md)
+    md = re.sub(r"[ \t]+\n", "\n", md)
+    # Remove data:image/svg+xml inline images (Evernote web clip artifacts).
+    md = re.sub(r"!\[[^\]]*\]\(data:image/svg\+xml[^)]*\)", "", md)
+    # Remove empty image refs left over.
+    md = re.sub(r"!\[\]\(\s*\)", "", md)
+    # Strip residual SVG/XML fragment text from web clips.
+    md = re.sub(r"['\"]?\s*data-evernote-id=[^)]+\)", "", md)
+    md = re.sub(r"%3c[^%]*%3e", "", md, flags=re.IGNORECASE)
+    # Collapse runs of blank lines again after removals.
+    md = re.sub(r"\n{3,}", "\n\n", md)
+    md = re.sub(r"\n{3,}", "\n\n", md)
+    return md.strip()
+
+
+# --- ENEX parsing ---
+
+
+def parse_note(note_el, notebook):
+    """Parse a single <note> element, return a dict."""
+    title = note_el.findtext("title") or "untitled"
+    created = note_el.findtext("created") or ""
+    updated = note_el.findtext("updated") or ""
+    content = note_el.findtext("content") or ""
+    tags = [t.text for t in note_el.findall("tag") if t.text]
+
+    # Build resource map: md5 hash -> (filename, mime)
+    resources = []
+    resource_map = {}
+    for res in note_el.findall("resource"):
+        data_el = res.find("data")
+        if data_el is None or not data_el.text:
+            continue
+        raw = base64.b64decode(data_el.text)
+        md5 = hashlib.md5(raw).hexdigest()
+        mime = res.findtext("mime") or "application/octet-stream"
+        filename = res.findtext("resource-attributes/file-name")
+        if not filename:
+            ext = mimetypes.guess_extension(mime) or ".bin"
+            filename = md5[:12] + ext
+        # Sanitize and truncate (macOS filename limit is 255 bytes).
+        filename = sanitize_filename(filename)
+        if len(filename.encode("utf-8")) > 200:
+            ext = mimetypes.guess_extension(mime) or ".bin"
+            filename = md5[:12] + ext
+        resources.append({"filename": filename, "data": raw, "mime": mime})
+        resource_map[md5] = (filename, mime)
+
+    return {
+        "title": title,
+        "created": created,
+        "updated": updated,
+        "content": content,
+        "tags": tags,
+        "notebook": notebook,
+        "resources": resources,
+        "resource_map": resource_map,
+    }
+
+
+def parse_enex(path):
+    """Parse an .enex file, yield note dicts."""
+    notebook = os.path.splitext(os.path.basename(path))[0]
+    tree = ET.parse(path)
+    for note_el in tree.getroot().findall("note"):
+        yield parse_note(note_el, notebook)
+
+
+# --- .tid date format ---
+
+def format_date(evernote_date):
+    """Convert '20220308T182743Z' to ISO 8601 '2022-03-08T18:27:43Z'."""
+    # Strip the Evernote format to components.
+    d = evernote_date.replace("Z", "").replace("T", "")
+    if len(d) < 14:
+        return evernote_date
+    return f"{d[:4]}-{d[4:6]}-{d[6:8]}T{d[8:10]}:{d[10:12]}:{d[12:14]}Z"
+
+
+def date_suffix(evernote_date):
+    """Extract YYYYMMDD from '20220308T182743Z'."""
+    return evernote_date[:8] if len(evernote_date) >= 8 else "00000000"
+
+
+# --- Main ---
+
+
+def main():
+    if len(sys.argv) != 3:
+        die("usage: enex2tid <enex_dir> <output_dir>")
+
+    enex_dir, output_dir = sys.argv[1], sys.argv[2]
+    if not os.path.isdir(enex_dir):
+        die(f"input directory '{enex_dir}' does not exist")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # First pass: collect all notes to detect duplicate titles.
+    enex_files = sorted(glob.glob(os.path.join(enex_dir, "*.enex")))
+    if not enex_files:
+        die(f"no .enex files found in '{enex_dir}'")
+
+    print(f"Scanning {len(enex_files)} ENEX file(s)...")
+    all_notes = []
+    for path in enex_files:
+        for note in parse_enex(path):
+            all_notes.append(note)
+    print(f"  {len(all_notes)} notes found")
+
+    # Detect duplicate titles (case-insensitive for filesystem safety).
+    title_counts = Counter(n["title"].lower() for n in all_notes)
+    dupes = {t for t, c in title_counts.items() if c > 1}
+    if dupes:
+        print(f"  {len(dupes)} duplicate title(s), will suffix with date")
+
+    # Track filenames to handle collisions.
+    used_filenames = {}
+    converted = 0
+    attachment_count = 0
+
+    for note in all_notes:
+        title = note["title"]
+        safe_title = sanitize_filename(title)
+
+        # Suffix duplicates with creation date.
+        if title.lower() in dupes:
+            safe_title += " " + date_suffix(note["created"])
+
+        # Handle remaining collisions with a numeric suffix.
+        base = safe_title
+        seq = 1
+        while safe_title.lower() in used_filenames:
+            seq += 1
+            safe_title = f"{base} {seq}"
+        used_filenames[safe_title.lower()] = True
+
+        # Extract attachments — dir name matches the .md filename stem.
+        note_dir = safe_title
+        if note["resources"]:
+            att_dir = os.path.join(output_dir, note_dir)
+            os.makedirs(att_dir, exist_ok=True)
+            for res in note["resources"]:
+                att_path = os.path.join(att_dir, sanitize_filename(res["filename"]))
+                with open(att_path, "wb") as f:
+                    f.write(res["data"])
+                attachment_count += 1
+
+        # Convert ENML body to markdown.
+        clip_url, clip_title = extract_clip_url(note["content"])
+        body = enml_to_markdown(note["content"], note["resource_map"], note_dir)
+
+        # Prepend clipped source URL.
+        if clip_url:
+            link = f"[{clip_title}]({clip_url})"
+            body = f"Clipped from {link}\n\n{body}"
+
+        # Build tags: notebook + evernote tags.
+        tags = [note["notebook"]] + note["tags"]
+        tags_str = " ".join(tags)
+
+        # Write .md note file.
+        tid_path = os.path.join(output_dir, safe_title + ".md")
+        with open(tid_path, "w") as f:
+            f.write(f"title: {title}\n")
+            if note["created"]:
+                f.write(f"created: {format_date(note['created'])}\n")
+            if note["updated"]:
+                f.write(f"modified: {format_date(note['updated'])}\n")
+            f.write(f"tags: {tags_str}\n")
+            f.write(f"\n{body}\n")
+
+        converted += 1
+
+    print(f"\nDone: {converted} notes, {attachment_count} attachments")
+
+
+if __name__ == "__main__":
+    main()
