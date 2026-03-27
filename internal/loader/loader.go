@@ -105,7 +105,7 @@ func Load(dir string, s *store.Store, seeder BodySeeder) (int, map[string]string
 		if seeder != nil {
 			seeder.SeedBody(td.Title(), td.Text())
 		}
-		if !rcs.HasArchive(path) {
+		if rcs.NeedsCheckin(path) {
 			if err := rcs.Checkin(path); err != nil {
 				log.Printf("loader: rcs checkin %s: %v", path, err)
 			}

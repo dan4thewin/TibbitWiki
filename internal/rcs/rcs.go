@@ -59,6 +59,24 @@ func HasArchive(path string) bool {
 	return fileExists(filepath.Join(dir, "RCS", base+",v"))
 }
 
+// NeedsCheckin reports whether path should be checked in.
+// Returns true if no archive exists, or if the working file is
+// newer than the archive (edited while the server was down).
+func NeedsCheckin(path string) bool {
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+	archive := filepath.Join(dir, "RCS", base+",v")
+	ai, err := os.Stat(archive)
+	if err != nil {
+		return true // no archive
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return false // can't stat working file
+	}
+	return fi.ModTime().After(ai.ModTime())
+}
+
 // Log runs rlog on the given file and returns its output.
 func Log(path string) (string, error) {
 	cmd := exec.Command("rlog", path)

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestCheckinCreatesArchive verifies that the first Checkin creates
@@ -335,6 +336,77 @@ func TestHasArchive(t *testing.T) {
 	// Archive should now exist.
 	if !HasArchive(path) {
 		t.Error("HasArchive returned false after checkin")
+	}
+}
+
+// TestNeedsCheckinNoArchive verifies NeedsCheckin returns true
+// when no archive exists.
+func TestNeedsCheckinNoArchive(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte("title: Test\n\nBody."), 0644)
+
+	if !NeedsCheckin(path) {
+		t.Error("NeedsCheckin should return true when no archive exists")
+	}
+}
+
+// TestNeedsCheckinUpToDate verifies NeedsCheckin returns false
+// when the archive is newer than the working file (normal state
+// after a checkin).
+func TestNeedsCheckinUpToDate(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte("title: Test\n\nBody."), 0644)
+
+	if err := Checkin(path); err != nil {
+		t.Fatalf("Checkin: %v", err)
+	}
+
+	if NeedsCheckin(path) {
+		t.Error("NeedsCheckin should return false after a clean checkin")
+	}
+}
+
+// TestNeedsCheckinStaleArchive verifies NeedsCheckin returns true
+// when the working file is newer than the archive (edited while
+// the server was down).
+func TestNeedsCheckinStaleArchive(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte("title: Test\n\nVersion 1."), 0644)
+
+	if err := Checkin(path); err != nil {
+		t.Fatalf("Checkin: %v", err)
+	}
+
+	// Simulate an edit while the server is down: write new content
+	// and set mtime to the future to guarantee it's newer.
+	os.WriteFile(path, []byte("title: Test\n\nVersion 2."), 0644)
+	archive := filepath.Join(dir, "RCS", "test.md,v")
+	ai, _ := os.Stat(archive)
+	future := ai.ModTime().Add(2 * time.Second)
+	os.Chtimes(path, future, future)
+
+	if !NeedsCheckin(path) {
+		t.Error("NeedsCheckin should return true when file is newer than archive")
+	}
+}
+
+// TestNeedsCheckinMissingWorkFile verifies NeedsCheckin returns false
+// when the archive exists but the working file has been removed.
+func TestNeedsCheckinMissingWorkFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte("title: Test\n\nBody."), 0644)
+
+	if err := Checkin(path); err != nil {
+		t.Fatalf("Checkin: %v", err)
+	}
+	os.Remove(path)
+
+	if NeedsCheckin(path) {
+		t.Error("NeedsCheckin should return false when working file is missing")
 	}
 }
 

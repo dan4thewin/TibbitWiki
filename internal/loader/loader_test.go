@@ -14,7 +14,7 @@ import (
 // TestLoadValidDirectory verifies that Load reads all .md files
 // from a directory and populates the store.
 func TestLoadValidDirectory(t *testing.T) {
-	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	patches := gomonkey.ApplyFunc(rcs.NeedsCheckin, func(string) bool { return false })
 	defer patches.Reset()
 
 	dir := t.TempDir()
@@ -49,7 +49,7 @@ func TestLoadValidDirectory(t *testing.T) {
 // TestLoadSkipsMalformed verifies that malformed .md files are
 // skipped without error.
 func TestLoadSkipsMalformed(t *testing.T) {
-	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	patches := gomonkey.ApplyFunc(rcs.NeedsCheckin, func(string) bool { return false })
 	defer patches.Reset()
 
 	dir := t.TempDir()
@@ -96,7 +96,7 @@ func TestLoadBadDirectory(t *testing.T) {
 // TestLoadSkipsSubdirectories verifies that subdirectories are not
 // treated as note files.
 func TestLoadSkipsSubdirectories(t *testing.T) {
-	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	patches := gomonkey.ApplyFunc(rcs.NeedsCheckin, func(string) bool { return false })
 	defer patches.Reset()
 
 	dir := t.TempDir()
@@ -116,7 +116,7 @@ func TestLoadSkipsSubdirectories(t *testing.T) {
 // TestLoadSkipsUnreadableFile verifies that a .md file with no read
 // permissions is skipped without error (covers the os.ReadFile error path).
 func TestLoadSkipsUnreadableFile(t *testing.T) {
-	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	patches := gomonkey.ApplyFunc(rcs.NeedsCheckin, func(string) bool { return false })
 	defer patches.Reset()
 
 	if os.Getuid() == 0 {
@@ -152,7 +152,7 @@ func TestLoadSkipsUnreadableFile(t *testing.T) {
 // TestLoadWithSeeder verifies that the body seeder callback is
 // invoked for each loaded note.
 func TestLoadWithSeeder(t *testing.T) {
-	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	patches := gomonkey.ApplyFunc(rcs.NeedsCheckin, func(string) bool { return false })
 	defer patches.Reset()
 
 	dir := t.TempDir()
@@ -225,7 +225,7 @@ func TestLoadSymlinkReturnsInMap(t *testing.T) {
 // TestLoadRegularFileNoSymlinks verifies that a directory with no
 // symlinks returns an empty symlinks map.
 func TestLoadRegularFileNoSymlinks(t *testing.T) {
-	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	patches := gomonkey.ApplyFunc(rcs.NeedsCheckin, func(string) bool { return false })
 	defer patches.Reset()
 
 	dir := t.TempDir()
@@ -241,7 +241,7 @@ func TestLoadRegularFileNoSymlinks(t *testing.T) {
 // TestSymlinkOwnerNonRelative verifies that an absolute symlink
 // is loaded normally (not treated as delegation target).
 func TestSymlinkOwnerNonRelative(t *testing.T) {
-	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	patches := gomonkey.ApplyFunc(rcs.NeedsCheckin, func(string) bool { return false })
 	defer patches.Reset()
 
 	parent := t.TempDir()
@@ -308,7 +308,7 @@ func TestLoadDanglingSymlinkQuarantined(t *testing.T) {
 // TestQuarantineUnwritableDir verifies that quarantine logs gracefully
 // when lost+found/ cannot be created.
 func TestQuarantineUnwritableDir(t *testing.T) {
-	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	patches := gomonkey.ApplyFunc(rcs.NeedsCheckin, func(string) bool { return false })
 	defer patches.Reset()
 
 	if os.Getuid() == 0 {
@@ -340,7 +340,7 @@ func TestQuarantineUnwritableDir(t *testing.T) {
 // TestQuarantineRenameError verifies that quarantine logs gracefully
 // when the file cannot be moved (e.g. lost+found exists but rename fails).
 func TestQuarantineRenameError(t *testing.T) {
-	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	patches := gomonkey.ApplyFunc(rcs.NeedsCheckin, func(string) bool { return false })
 	defer patches.Reset()
 
 	if os.Getuid() == 0 {
@@ -461,10 +461,10 @@ func TestIsDanglingRegularFile(t *testing.T) {
 }
 
 // TestLoadChecksInNewFiles verifies that Load calls rcs.Checkin for
-// files that don't yet have an RCS archive.
+// files that need checkin (no archive or file newer than archive).
 func TestLoadChecksInNewFiles(t *testing.T) {
 	checkedIn := map[string]bool{}
-	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return false })
+	patches := gomonkey.ApplyFunc(rcs.NeedsCheckin, func(string) bool { return true })
 	patches.ApplyFunc(rcs.Checkin, func(path string) error {
 		checkedIn[filepath.Base(path)] = true
 		return nil
@@ -487,11 +487,11 @@ func TestLoadChecksInNewFiles(t *testing.T) {
 	}
 }
 
-// TestLoadSkipsCheckinForExistingArchive verifies that Load does NOT
-// call rcs.Checkin when an archive already exists.
+// TestLoadSkipsCheckinWhenUpToDate verifies that Load does NOT
+// call rcs.Checkin when the archive is already up to date.
 func TestLoadSkipsCheckinForExistingArchive(t *testing.T) {
 	called := false
-	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	patches := gomonkey.ApplyFunc(rcs.NeedsCheckin, func(string) bool { return false })
 	patches.ApplyFunc(rcs.Checkin, func(string) error {
 		called = true
 		return nil
@@ -511,7 +511,7 @@ func TestLoadSkipsCheckinForExistingArchive(t *testing.T) {
 // TestLoadCheckinErrorLogsButContinues verifies that an rcs.Checkin
 // error during load is logged but does not prevent loading.
 func TestLoadCheckinErrorLogsButContinues(t *testing.T) {
-	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return false })
+	patches := gomonkey.ApplyFunc(rcs.NeedsCheckin, func(string) bool { return true })
 	patches.ApplyFunc(rcs.Checkin, func(string) error {
 		return errors.New("simulated ci failure")
 	})
