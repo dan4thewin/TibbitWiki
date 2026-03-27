@@ -2,7 +2,9 @@ GOFLAGS=-gcflags=all=-l
 
 all:V: tibbitwiki
 
-tibbitwiki: main.go
+GOFILES=main.go internal/config/config.go internal/config/defaults.yaml internal/editor/editor.go internal/loader/loader.go internal/rcs/rcs.go internal/render/render.go internal/search/search.go internal/server/server.go internal/server/index.html internal/store/store.go internal/tid/tid.go internal/watcher/watcher.go internal/wiki/hub.go internal/wiki/wiki.go internal/wiki/atime_darwin.go internal/wiki/atime_linux.go
+
+tibbitwiki: $GOFILES
 	go build -o $target .
 
 build:V:
