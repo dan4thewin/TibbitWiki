@@ -397,6 +397,28 @@ CSS files at wiki_path level — invisible to rg (runs inside wiki subdirs).
 
 ---
 
+## v9: Hardening and Fixes
+
+### Completed
+
+- [x] `mkfile` — track all .go and go:embed files as deps (was only
+  main.go, causing stale binaries after editing internal/ packages)
+- [x] RCS on load — `NeedsCheckin()` mtime comparison so files
+  edited while server is down get checked in on restart
+- [x] Symlink Get() delegation — `Get()` now delegates to owning
+  wiki (was 404; `List()` already worked)
+- [x] `tw2md` inline transform fix — links, bold, italic, images
+  inside list items, headings, blockquotes, and definition lists
+  were silently skipped due to `next` before inline regexes.
+  Extracted `tw_inline()` sub called in all branches.
+- [x] One-off link fixup — 32 files in ~/notes patched (140 links)
+- [x] Evernote migration docs (README + SETUP)
+- [x] `scripts/enex2tid` committed
+- [x] PLAN.md future considerations (watcher fd alternatives)
+- [x] copilot-instructions.md updated with full architecture notes
+
+---
+
 ## Future Considerations
 
 ### Watcher: eliminate per-file fd overhead
