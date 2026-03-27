@@ -1403,6 +1403,55 @@ func TestListSkipsMissingOwnerWiki(t *testing.T) {
 	}
 }
 
+// TestGetDelegatesSymlinkedNote verifies that Get() delegates to the
+// owning wiki when the requested title is a symlink, returning the
+// full note with owner field set.
+func TestGetDelegatesSymlinkedNote(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error { return nil })
+	defer patches.Reset()
+
+	// "work" wiki owns the real note.
+	work := testWiki(t)
+	writeNote(t, work, "Meeting", "meeting body")
+
+	// "evernote" wiki has a symlink to work's Meeting.
+	evernote := testWiki(t)
+	evernote.SetSymlinks(map[string]string{"Meeting": "work"})
+	hub := NewHub(map[string]*Wiki{"work": work, "evernote": evernote})
+	evernote.SetHub(hub)
+
+	// Get via the evernote wiki should delegate to work.
+	result := evernote.Get("Meeting", false)
+	if result == nil {
+		t.Fatal("expected non-nil result for symlinked note")
+	}
+	if result["title"] != "Meeting" {
+		t.Errorf("title = %q, want Meeting", result["title"])
+	}
+	if result["owner"] != "work" {
+		t.Errorf("owner = %q, want work", result["owner"])
+	}
+	if result["text"] != "meeting body" {
+		t.Errorf("text = %q, want %q", result["text"], "meeting body")
+	}
+	if result["html"] == "" {
+		t.Error("expected rendered html")
+	}
+}
+
+// TestGetSymlinkMissingOwnerReturnsNil verifies that Get() returns
+// nil when a symlink points to a non-existent wiki.
+func TestGetSymlinkMissingOwnerReturnsNil(t *testing.T) {
+	wk := testWiki(t)
+	wk.SetSymlinks(map[string]string{"Ghost": "nonexistent"})
+	hub := NewHub(map[string]*Wiki{"test": wk})
+	wk.SetHub(hub)
+
+	if result := wk.Get("Ghost", false); result != nil {
+		t.Errorf("expected nil for missing owner wiki, got %v", result)
+	}
+}
+
 // TestReloadFileDetectsNewSymlink verifies that when a symlink
 // appears at runtime, reloadFile adds it to the symlinks map
 // instead of loading it into the store.

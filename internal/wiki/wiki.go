@@ -132,43 +132,59 @@ func (w *Wiki) do(fn func()) {
 
 // Get returns a note's fields with rendered HTML, or nil if not found.
 // Body is loaded from LRU cache or disk on miss.
+// Symlinked notes are delegated to their owning wiki.
 func (w *Wiki) Get(title string, renderPlain bool) map[string]string {
 	var result map[string]string
+	var owner string
 	w.do(func() {
 		td := w.store.Get(title)
 		if td == nil {
+			owner = w.symlinks[title]
 			return
 		}
-		if fp := w.store.FilePath(title); fp != "" {
-			touchAtime(fp)
-		}
-		result = make(map[string]string, len(td.Fields)+3)
-		for k, v := range td.Fields {
-			result[k] = v
-		}
-		text := w.fetchBody(title)
-		result["text"] = text
-		result["revision"] = fmt.Sprintf("%d", w.store.Revision(title))
-		if fp := w.store.FilePath(title); fp != "" && isReadOnly(fp) {
-			result["readOnly"] = "true"
-		}
-		if rev, head := w.store.RCS(title); rev != "" {
-			result["rcsRev"] = rev
-			result["rcsHead"] = head
-		}
-		if text != "" {
-			if renderPlain {
-				result["html"] = render.ToPlainHTML(text)
-			} else {
-				result["html"] = render.ToHTML(text)
+		result = w.buildNote(title, td, renderPlain)
+	})
+	if result == nil && owner != "" {
+		if ow := w.hub.Wiki(owner); ow != nil {
+			result = ow.Get(title, renderPlain)
+			if result != nil {
+				result["owner"] = owner
 			}
 		}
-	})
+	}
+	return result
+}
+
+// buildNote assembles a full note response. Must be called inside w.do.
+func (w *Wiki) buildNote(title string, td *tid.Note, renderPlain bool) map[string]string {
+	if fp := w.store.FilePath(title); fp != "" {
+		touchAtime(fp)
+	}
+	result := make(map[string]string, len(td.Fields)+3)
+	for k, v := range td.Fields {
+		result[k] = v
+	}
+	text := w.fetchBody(title)
+	result["text"] = text
+	result["revision"] = fmt.Sprintf("%d", w.store.Revision(title))
+	if fp := w.store.FilePath(title); fp != "" && isReadOnly(fp) {
+		result["readOnly"] = "true"
+	}
+	if rev, head := w.store.RCS(title); rev != "" {
+		result["rcsRev"] = rev
+		result["rcsHead"] = head
+	}
+	if text != "" {
+		if renderPlain {
+			result["html"] = render.ToPlainHTML(text)
+		} else {
+			result["html"] = render.ToHTML(text)
+		}
+	}
 	return result
 }
 
 // Put saves a note. clientRev is the client's last-known revision
-// (empty if new). Returns the new revision and whether a conflict
 // was detected.
 func (w *Wiki) Put(title string, fields map[string]string, clientRev string) (int, bool) {
 	var rev int
