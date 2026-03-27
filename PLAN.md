@@ -394,3 +394,33 @@ CSS files at wiki_path level — invisible to rg (runs inside wiki subdirs).
 - [x] Line-edit cancel: Escape and click-away (blur) dismiss input
 - [x] Removed hardcoded `openNote('ToDo')` startup; `alert→console.warn`
 - [x] Integration tests: 37/37 (API + Safari DOM)
+
+---
+
+## Future Considerations
+
+### Watcher: eliminate per-file fd overhead
+
+The current watcher uses fsnotify, which on macOS/BSD opens one
+kqueue fd per file (not just per directory). With hundreds of notes
+this is fine, but thousands would hit the per-process fd limit
+(default ~10K on macOS). Two alternatives:
+
+**Option A: Directory-only kqueue + mtime scan.**
+Drop fsnotify. Use raw kqueue with a single fd on the wiki
+directory. kqueue's `NOTE_WRITE` fires when any file in the
+directory is created, deleted, or modified. On that strobe, scan
+the directory for files with `mtime > last_check` and reload
+those. One fd per wiki instead of one per file. Still
+event-driven (no wasted work when nothing changes), but requires
+platform-specific syscall code (kqueue on macOS/BSD, inotify on
+Linux — inotify already does directory-level watching natively).
+
+**Option B: Pure mtime polling.**
+Drop fsnotify entirely. A goroutine does `os.ReadDir` + `os.Stat`
+every N seconds (matching the browser poll interval), compares
+mtimes against a map, and reloads changed files. Zero platform
+dependencies, zero fd overhead, identical behavior on every OS.
+Cost: one readdir + N stat calls per interval — for 500 files
+this is <1ms, negligible. Latency up to one poll interval (already
+accepted for the browser). Simplest possible implementation.
