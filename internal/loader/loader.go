@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dan4thewin/tibbitwiki/internal/rcs"
 	"github.com/dan4thewin/tibbitwiki/internal/store"
 	"github.com/dan4thewin/tibbitwiki/internal/tid"
 )
@@ -103,6 +104,11 @@ func Load(dir string, s *store.Store, seeder BodySeeder) (int, map[string]string
 		s.PutWithPath(td, path)
 		if seeder != nil {
 			seeder.SeedBody(td.Title(), td.Text())
+		}
+		if !rcs.HasArchive(path) {
+			if err := rcs.Checkin(path); err != nil {
+				log.Printf("loader: rcs checkin %s: %v", path, err)
+			}
 		}
 		count++
 	}

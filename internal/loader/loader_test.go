@@ -7,12 +7,16 @@ import (
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
+	"github.com/dan4thewin/tibbitwiki/internal/rcs"
 	"github.com/dan4thewin/tibbitwiki/internal/store"
 )
 
 // TestLoadValidDirectory verifies that Load reads all .md files
 // from a directory and populates the store.
 func TestLoadValidDirectory(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	defer patches.Reset()
+
 	dir := t.TempDir()
 
 	// Write two valid .md files.
@@ -45,6 +49,9 @@ func TestLoadValidDirectory(t *testing.T) {
 // TestLoadSkipsMalformed verifies that malformed .md files are
 // skipped without error.
 func TestLoadSkipsMalformed(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	defer patches.Reset()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "Good.md", "title: Good\n\nBody.")
 	writeFile(t, dir, "Bad.md", "no title here\n\nOops.")
@@ -89,6 +96,9 @@ func TestLoadBadDirectory(t *testing.T) {
 // TestLoadSkipsSubdirectories verifies that subdirectories are not
 // treated as note files.
 func TestLoadSkipsSubdirectories(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	defer patches.Reset()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "Valid.md", "title: Valid\n\nBody.")
 	os.Mkdir(filepath.Join(dir, "subdir"), 0755)
@@ -106,6 +116,9 @@ func TestLoadSkipsSubdirectories(t *testing.T) {
 // TestLoadSkipsUnreadableFile verifies that a .md file with no read
 // permissions is skipped without error (covers the os.ReadFile error path).
 func TestLoadSkipsUnreadableFile(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	defer patches.Reset()
+
 	if os.Getuid() == 0 {
 		t.Skip("skipping: running as root")
 	}
@@ -139,6 +152,9 @@ func TestLoadSkipsUnreadableFile(t *testing.T) {
 // TestLoadWithSeeder verifies that the body seeder callback is
 // invoked for each loaded note.
 func TestLoadWithSeeder(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	defer patches.Reset()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "Note.md", "title: Note\n\nBody text.")
 
@@ -209,6 +225,9 @@ func TestLoadSymlinkReturnsInMap(t *testing.T) {
 // TestLoadRegularFileNoSymlinks verifies that a directory with no
 // symlinks returns an empty symlinks map.
 func TestLoadRegularFileNoSymlinks(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	defer patches.Reset()
+
 	dir := t.TempDir()
 	writeFile(t, dir, "Note.md", "title: Note\n\nBody.")
 
@@ -222,6 +241,9 @@ func TestLoadRegularFileNoSymlinks(t *testing.T) {
 // TestSymlinkOwnerNonRelative verifies that an absolute symlink
 // is loaded normally (not treated as delegation target).
 func TestSymlinkOwnerNonRelative(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	defer patches.Reset()
+
 	parent := t.TempDir()
 	target := filepath.Join(parent, "target")
 	os.Mkdir(target, 0755)
@@ -286,6 +308,9 @@ func TestLoadDanglingSymlinkQuarantined(t *testing.T) {
 // TestQuarantineUnwritableDir verifies that quarantine logs gracefully
 // when lost+found/ cannot be created.
 func TestQuarantineUnwritableDir(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	defer patches.Reset()
+
 	if os.Getuid() == 0 {
 		t.Skip("skipping: running as root")
 	}
@@ -315,6 +340,9 @@ func TestQuarantineUnwritableDir(t *testing.T) {
 // TestQuarantineRenameError verifies that quarantine logs gracefully
 // when the file cannot be moved (e.g. lost+found exists but rename fails).
 func TestQuarantineRenameError(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	defer patches.Reset()
+
 	if os.Getuid() == 0 {
 		t.Skip("skipping: running as root")
 	}
@@ -429,6 +457,79 @@ func TestIsDanglingRegularFile(t *testing.T) {
 	os.WriteFile(path, []byte("data"), 0644)
 	if isDangling(path) {
 		t.Error("regular file should not be dangling")
+	}
+}
+
+// TestLoadChecksInNewFiles verifies that Load calls rcs.Checkin for
+// files that don't yet have an RCS archive.
+func TestLoadChecksInNewFiles(t *testing.T) {
+	checkedIn := map[string]bool{}
+	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return false })
+	patches.ApplyFunc(rcs.Checkin, func(path string) error {
+		checkedIn[filepath.Base(path)] = true
+		return nil
+	})
+	defer patches.Reset()
+
+	dir := t.TempDir()
+	writeFile(t, dir, "New.md", "title: New\n\nBody.")
+
+	s := store.New()
+	n, _, err := Load(dir, s, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("loaded %d, want 1", n)
+	}
+	if !checkedIn["New.md"] {
+		t.Error("expected rcs.Checkin to be called for New.md")
+	}
+}
+
+// TestLoadSkipsCheckinForExistingArchive verifies that Load does NOT
+// call rcs.Checkin when an archive already exists.
+func TestLoadSkipsCheckinForExistingArchive(t *testing.T) {
+	called := false
+	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return true })
+	patches.ApplyFunc(rcs.Checkin, func(string) error {
+		called = true
+		return nil
+	})
+	defer patches.Reset()
+
+	dir := t.TempDir()
+	writeFile(t, dir, "Old.md", "title: Old\n\nBody.")
+
+	s := store.New()
+	Load(dir, s, nil)
+	if called {
+		t.Error("rcs.Checkin should not be called when archive exists")
+	}
+}
+
+// TestLoadCheckinErrorLogsButContinues verifies that an rcs.Checkin
+// error during load is logged but does not prevent loading.
+func TestLoadCheckinErrorLogsButContinues(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.HasArchive, func(string) bool { return false })
+	patches.ApplyFunc(rcs.Checkin, func(string) error {
+		return errors.New("simulated ci failure")
+	})
+	defer patches.Reset()
+
+	dir := t.TempDir()
+	writeFile(t, dir, "Fail.md", "title: Fail\n\nBody.")
+
+	s := store.New()
+	n, _, err := Load(dir, s, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("loaded %d, want 1", n)
+	}
+	if s.Get("Fail") == nil {
+		t.Error("expected Fail in store despite checkin error")
 	}
 }
 

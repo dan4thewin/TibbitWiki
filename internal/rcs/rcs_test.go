@@ -315,6 +315,29 @@ func TestCheckoutTagBadPath(t *testing.T) {
 	}
 }
 
+// TestHasArchive verifies HasArchive returns true when an RCS
+// archive exists and false when it does not.
+func TestHasArchive(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte("title: Test\n\nBody."), 0644)
+
+	// No archive yet.
+	if HasArchive(path) {
+		t.Error("HasArchive returned true before any checkin")
+	}
+
+	// Create archive via Checkin.
+	if err := Checkin(path); err != nil {
+		t.Fatalf("Checkin: %v", err)
+	}
+
+	// Archive should now exist.
+	if !HasArchive(path) {
+		t.Error("HasArchive returned false after checkin")
+	}
+}
+
 // TestHeadRevNoHeadLine verifies HeadRev returns an error when rlog
 // succeeds but its output contains no "head:" line. We place a fake
 // rlog script first on PATH that outputs valid-looking text without

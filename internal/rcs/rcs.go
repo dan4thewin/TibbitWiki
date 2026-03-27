@@ -52,6 +52,13 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
+// HasArchive reports whether an RCS archive exists for path.
+func HasArchive(path string) bool {
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+	return fileExists(filepath.Join(dir, "RCS", base+",v"))
+}
+
 // Log runs rlog on the given file and returns its output.
 func Log(path string) (string, error) {
 	cmd := exec.Command("rlog", path)
