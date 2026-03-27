@@ -193,67 +193,74 @@ sub tw_to_md {
         # Headings: ! → #
         if ($line =~ /^(!{1,6})\s*(.*)/) {
             my $level = '#' x length($1);
-            push @out, "$level $2";
+            push @out, "$level " . tw_inline($2);
             next;
         }
 
         # TW blockquote: <<< → >
         if ($line =~ /^<<<\s*(.*)/) {
             my $rest = $1;
-            push @out, length($rest) ? "> $rest" : "";
+            push @out, length($rest) ? "> " . tw_inline($rest) : "";
             next;
         }
 
         # Nested ordered lists: ## → indented 1.
         if ($line =~ /^(#{1,6})\s*(.*)/) {
             my $indent = '   ' x (length($1) - 1);
-            push @out, "${indent}1. $2";
+            push @out, "${indent}1. " . tw_inline($2);
             next;
         }
 
         # Nested unordered lists: ** → indented -
         if ($line =~ /^(\*{1,6})\s*(.*)/) {
             my $indent = '   ' x (length($1) - 1);
-            push @out, "${indent}- $2";
+            push @out, "${indent}- " . tw_inline($2);
             next;
         }
-
-        # Bold: ''text'' → **text**
-        $line =~ s/''([^']+)''/**$1**/g;
-
-        # Italic: //text// → *text*
-        $line =~ s{//([^/]+)//}{*$1*}g;
-
-        # Underline: __text__ → <u>text</u>
-        $line =~ s/__([^_]+)__/<u>$1<\/u>/g;
-
-        # Strikethrough: ~~text~~ → ~~text~~ (same)
-
-        # Superscript: ^^text^^ → <sup>text</sup>
-        $line =~ s/\^\^([^^]+)\^\^/<sup>$1<\/sup>/g;
-
-        # Subscript: ,,text,, → <sub>text</sub>
-        $line =~ s/,,([^,]+),,/<sub>$1<\/sub>/g;
-
-        # Links: [[display|target]] → [display](target)
-        $line =~ s/\[\[([^|\]]+)\|([^\]]+)\]\]/[$1]($2)/g;
-
-        # CamelCase/[[plain]] wiki links — keep as-is, client handles them
-
-        # Images: [img[tooltip|url]] → ![tooltip](url)
-        $line =~ s/\[img\[([^|\]]+)\|([^\]]+)\]\]/![$1]($2)/g;
-        # Images: [img[url]] → ![](url)
-        $line =~ s/\[img\[([^\]]+)\]\]/![]($1)/g;
 
         # Definition lists: ;term :definition → **term** — definition
         if ($line =~ /^;(.+?)\s*:(.+)/) {
-            push @out, "**$1** — $2";
+            push @out, "**$1** — " . tw_inline($2);
             next;
         }
 
-        push @out, $line;
+        push @out, tw_inline($line);
     }
 
     return join("\n", @out);
+}
+
+# tw_inline — apply inline wikitext→markdown transforms to a string.
+sub tw_inline {
+    my ($s) = @_;
+
+    # Bold: ''text'' → **text**
+    $s =~ s/''([^']+)''/**$1**/g;
+
+    # Italic: //text// → *text*
+    $s =~ s{//([^/]+)//}{*$1*}g;
+
+    # Underline: __text__ → <u>text</u>
+    $s =~ s/__([^_]+)__/<u>$1<\/u>/g;
+
+    # Strikethrough: ~~text~~ → ~~text~~ (same)
+
+    # Superscript: ^^text^^ → <sup>text</sup>
+    $s =~ s/\^\^([^^]+)\^\^/<sup>$1<\/sup>/g;
+
+    # Subscript: ,,text,, → <sub>text</sub>
+    $s =~ s/,,([^,]+),,/<sub>$1<\/sub>/g;
+
+    # Links: [[display|target]] → [display](target)
+    $s =~ s/\[\[([^|\]]+)\|([^\]]+)\]\]/[$1]($2)/g;
+
+    # CamelCase/[[plain]] wiki links — keep as-is, client handles them
+
+    # Images: [img[tooltip|url]] → ![tooltip](url)
+    $s =~ s/\[img\[([^|\]]+)\|([^\]]+)\]\]/![$1]($2)/g;
+    # Images: [img[url]] → ![](url)
+    $s =~ s/\[img\[([^\]]+)\]\]/![]($1)/g;
+
+    return $s;
 }
 
