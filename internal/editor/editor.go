@@ -13,7 +13,7 @@ type Editor struct {
 }
 
 // New creates an Editor with the given command template.
-// The template must contain exactly one %s placeholder which will
+// The template must contain at least one %s placeholder which will
 // be replaced with the file path. Templates should include "--"
 // before %s to prevent flag injection (e.g. "neovide -- %s").
 func New(cmdTemplate string) (*Editor, error) {

@@ -5,6 +5,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -346,7 +347,7 @@ func (s *Server) handleEditExternal(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := wikiFrom(r).EditExternal(title); err != nil {
 		status := http.StatusInternalServerError
-		if strings.Contains(err.Error(), "no file") {
+		if errors.Is(err, wiki.ErrNoFile) {
 			status = http.StatusNotFound
 		}
 		http.Error(w, err.Error(), status)
@@ -429,9 +430,9 @@ func (s *Server) handleLineEdit(w http.ResponseWriter, r *http.Request) {
 	html, rev, err := wikiFrom(r).LineEdit(title, req.Line, req.Text, req.Insert)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if strings.Contains(err.Error(), "out of range") {
+		if errors.Is(err, wiki.ErrOutOfRange) {
 			status = http.StatusBadRequest
-		} else if strings.Contains(err.Error(), "no file") {
+		} else if errors.Is(err, wiki.ErrNoFile) {
 			status = http.StatusNotFound
 		}
 		http.Error(w, err.Error(), status)
@@ -477,7 +478,7 @@ func (s *Server) getRevisions(w http.ResponseWriter, r *http.Request, title stri
 	result, err := wikiFrom(r).Revisions(title, s.maxDiffs)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if strings.Contains(err.Error(), "no file") {
+		if errors.Is(err, wiki.ErrNoFile) {
 			status = http.StatusNotFound
 		}
 		http.Error(w, err.Error(), status)
@@ -499,7 +500,7 @@ func (s *Server) checkoutRevision(w http.ResponseWriter, r *http.Request, title 
 	}
 	if err := wikiFrom(r).CheckoutRevision(title, rev); err != nil {
 		status := http.StatusInternalServerError
-		if strings.Contains(err.Error(), "no file") {
+		if errors.Is(err, wiki.ErrNoFile) {
 			status = http.StatusNotFound
 		}
 		http.Error(w, err.Error(), status)
@@ -515,9 +516,9 @@ func (s *Server) promoteRevision(w http.ResponseWriter, r *http.Request, title s
 	}
 	if err := wikiFrom(r).PromoteRevision(title); err != nil {
 		status := http.StatusInternalServerError
-		if strings.Contains(err.Error(), "no file") {
+		if errors.Is(err, wiki.ErrNoFile) {
 			status = http.StatusNotFound
-		} else if strings.Contains(err.Error(), "already at head") {
+		} else if errors.Is(err, wiki.ErrAtHead) {
 			status = http.StatusConflict
 		}
 		http.Error(w, err.Error(), status)

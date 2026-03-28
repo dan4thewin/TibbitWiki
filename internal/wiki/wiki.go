@@ -3,6 +3,7 @@
 package wiki
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -26,6 +27,14 @@ var NowFunc = time.Now
 
 // searchFunc wraps search.Search for testability (gomonkey + -coverprofile SIGBUS).
 var searchFunc = search.Search
+
+// Sentinel errors for wiki operations. Server uses errors.Is() to
+// map these to HTTP status codes.
+var (
+	ErrNoFile     = errors.New("no file for note")
+	ErrOutOfRange = errors.New("line out of range")
+	ErrAtHead     = errors.New("note is already at head")
+)
 
 func isoNow() string {
 	return NowFunc().UTC().Format(time.RFC3339)
@@ -305,7 +314,7 @@ func (w *Wiki) Revisions(title string, maxDiffs int) (RevisionsResult, error) {
 	w.do(func() {
 		fp := w.store.FilePath(title)
 		if fp == "" {
-			err = fmt.Errorf("no file for note")
+			err = ErrNoFile
 			return
 		}
 		head, e := rcs.HeadRev(fp)
@@ -329,7 +338,7 @@ func (w *Wiki) CheckoutRevision(title, rev string) error {
 	w.do(func() {
 		fp := w.store.FilePath(title)
 		if fp == "" {
-			err = fmt.Errorf("no file for note")
+			err = ErrNoFile
 			return
 		}
 		if rev == "" {
@@ -370,11 +379,11 @@ func (w *Wiki) PromoteRevision(title string) error {
 	w.do(func() {
 		fp := w.store.FilePath(title)
 		if fp == "" {
-			err = fmt.Errorf("no file for note")
+			err = ErrNoFile
 			return
 		}
 		if !isReadOnly(fp) {
-			err = fmt.Errorf("note is already at head")
+			err = ErrAtHead
 			return
 		}
 		if err = rcs.Checkin(fp); err != nil {
@@ -471,7 +480,7 @@ func (w *Wiki) LineEdit(title string, line int, text string, insert bool) (strin
 	w.do(func() {
 		fp := w.store.FilePath(title)
 		if fp == "" {
-			err = fmt.Errorf("no file for note")
+			err = ErrNoFile
 			return
 		}
 		newData, e := spliceFileLine(fp, line, text, insert)
@@ -507,7 +516,7 @@ func (w *Wiki) EditExternal(title string) error {
 	w.do(func() {
 		fp := w.store.FilePath(title)
 		if fp == "" {
-			err = fmt.Errorf("no file path for note")
+			err = fmt.Errorf("no file path for note: %w", ErrNoFile)
 			return
 		}
 		if w.editor == nil {
@@ -582,6 +591,12 @@ func (w *Wiki) applySkinny(title string, f map[string]string) {
 	}
 }
 
+// persistNote saves a note to disk and RCS, then updates the store.
+// Deliberate design choice: disk/RCS failures are logged but do not
+// fail the operation — the in-memory store is always updated. This
+// favors availability (note is accessible until restart) over strict
+// durability. Disk failures at this layer indicate a systemic problem
+// (full disk, permissions) that logging is the appropriate response to.
 func (w *Wiki) persistNote(td *tid.Note, title string) {
 	w.body.Add(title, td.Text())
 	filePath := w.store.FilePath(title)
@@ -809,7 +824,7 @@ func spliceFileLine(filePath string, line int, text string, insert bool) ([]byte
 	}
 	absLine := bodyStart + line
 	if absLine > len(lines) {
-		return nil, fmt.Errorf("line %d out of range", line)
+		return nil, fmt.Errorf("line %d: %w", line, ErrOutOfRange)
 	}
 	if insert {
 		newLines := make([]string, 0, len(lines)+1)
