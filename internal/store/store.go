@@ -72,12 +72,18 @@ func stripText(t *tid.Note) *tid.Note {
 	return meta
 }
 
-// Get returns a note by title, or nil if not found.
+// Get returns a copy of the note for title, or nil if not found.
+// The returned Note is a shallow copy — safe for the caller to read.
 func (s *Store) Get(title string) *tid.Note {
-	if e := s.entries[title]; e != nil {
-		return e.note
+	e := s.entries[title]
+	if e == nil || e.note == nil {
+		return nil
 	}
-	return nil
+	cp := &tid.Note{Fields: make(map[string]string, len(e.note.Fields))}
+	for k, v := range e.note.Fields {
+		cp.Fields[k] = v
+	}
+	return cp
 }
 
 // Delete removes a note by title. Returns true if it existed.

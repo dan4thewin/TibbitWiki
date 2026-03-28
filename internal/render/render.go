@@ -223,6 +223,9 @@ func WriteThemeFile(theme map[string]string, path string) error {
 	return os.WriteFile(path, []byte(GenerateThemeCSS(theme)), 0644)
 }
 
+// coalesceFunc wraps chroma.Coalesce; replaceable for testing.
+var coalesceFunc = chroma.Coalesce
+
 // DiffToHTML renders unified diff text as syntax-highlighted HTML
 // using the chroma Diff lexer and OneDark theme.
 func DiffToHTML(diff string) string {
@@ -230,7 +233,7 @@ func DiffToHTML(diff string) string {
 	if lexer == nil {
 		lexer = lexers.Fallback
 	}
-	lexer = chroma.Coalesce(lexer)
+	lexer = coalesceFunc(lexer)
 	style := styles.Get("onedark")
 	formatter := chromahtml.New(chromahtml.WithClasses(true))
 	iter, err := lexer.Tokenise(nil, diff)

@@ -516,18 +516,15 @@ func TestDiffToHTMLLexerNil(t *testing.T) {
 }
 
 // TestDiffToHTMLTokeniseError verifies DiffToHTML returns a <pre>
-// fallback when the lexer's Tokenise method fails (lines 226-228).
+// fallback when the lexer's Tokenise method fails.
 func TestDiffToHTMLTokeniseError(t *testing.T) {
 	diff := "--- a\n+++ b\n"
-	// Patch Tokenise on the coalesced lexer to return an error.
-	// chroma.Coalesce wraps the lexer in a *chroma.CoalescingLexer;
-	// we patch chroma.Coalesce to return a lexer whose Tokenise fails.
-	patches := gomonkey.ApplyFunc(chroma.Coalesce,
-		func(lexer chroma.Lexer) chroma.Lexer {
-			return &failTokenLexer{}
-		},
-	)
-	defer patches.Reset()
+	// Replace coalesceFunc to return a lexer whose Tokenise fails.
+	orig := coalesceFunc
+	coalesceFunc = func(lexer chroma.Lexer) chroma.Lexer {
+		return &failTokenLexer{}
+	}
+	defer func() { coalesceFunc = orig }()
 
 	got := DiffToHTML(diff)
 	if !strings.HasPrefix(got, "<pre>") {
@@ -602,13 +599,12 @@ func TestGenerateThemeCSSInjection(t *testing.T) {
 // TestDiffToHTMLXSS verifies that the <pre> fallback escapes
 // HTML in the diff text to prevent XSS.
 func TestDiffToHTMLXSS(t *testing.T) {
-	// Patch Coalesce to force the tokenise-error fallback path.
-	patches := gomonkey.ApplyFunc(chroma.Coalesce,
-		func(lexer chroma.Lexer) chroma.Lexer {
-			return &failTokenLexer{}
-		},
-	)
-	defer patches.Reset()
+	// Replace coalesceFunc to force the tokenise-error fallback path.
+	orig := coalesceFunc
+	coalesceFunc = func(lexer chroma.Lexer) chroma.Lexer {
+		return &failTokenLexer{}
+	}
+	defer func() { coalesceFunc = orig }()
 
 	xss := `<script>alert("xss")</script>`
 	got := DiffToHTML(xss)

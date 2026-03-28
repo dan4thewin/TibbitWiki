@@ -116,6 +116,9 @@ func Load(dir string, s *store.Store, seeder BodySeeder) (int, map[string]string
 	return count, symlinks, nil
 }
 
+// readlinkFunc is the os.Readlink implementation; replaceable for testing.
+var readlinkFunc = os.Readlink
+
 // SymlinkOwner returns the owning wiki name if path is a symlink
 // to a sibling directory (e.g. ../work/Note.md → "work").
 // Returns "" for regular files or unresolvable symlinks.
@@ -124,7 +127,7 @@ func SymlinkOwner(path string) string {
 	if err != nil || info.Mode()&os.ModeSymlink == 0 {
 		return ""
 	}
-	target, err := os.Readlink(path)
+	target, err := readlinkFunc(path)
 	if err != nil {
 		return ""
 	}

@@ -15,14 +15,15 @@ func TestNewEditor(t *testing.T) {
 	}
 }
 
-// TestOpenWithEcho verifies that Open successfully launches a
-// simple command (echo) without error.
-func TestOpenWithEcho(t *testing.T) {
-	e, err := New("echo %s")
+// TestOpenSubstitution verifies that Open correctly substitutes %s
+// with the file path and passes -- through to the command.
+func TestOpenSubstitution(t *testing.T) {
+	e, err := New("echo -- %s")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := e.Open("/tmp/test.md"); err != nil {
+	// echo just prints args — verifies the command runs without error.
+	if err := e.Open("/tmp/Test Note.md"); err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
 }

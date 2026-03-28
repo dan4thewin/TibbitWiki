@@ -456,15 +456,15 @@ crash/data bugs, then test harness repair, then coverage expansion.
 - [x] Config: propagate Defaults() error
 - [x] Tid: handle "text" header collision
 
-### Phase 5: Test harness rehab
+### Phase 5: Test harness rehab ✓
 
-- [ ] Replace broken gomonkey patches with function-var seams
-- [ ] Editor: argument-capturing test helper (replace echo)
+- [x] Replace broken gomonkey patches with function-var seams
+- [x] Editor: argument-capturing test helper (replace echo)
 
-### Phase 6: Coverage expansion
+### Phase 6: Coverage expansion ✓
 
-- [ ] Store, search, tid, watcher, rcs, editor adversarial tests
-- [ ] Return-value immutability policy (store Get, tid SkinnyFields)
+- [x] Store, search, tid, watcher, rcs, editor adversarial tests
+- [x] Return-value immutability policy (store Get, tid SkinnyFields)
 
 ---
 

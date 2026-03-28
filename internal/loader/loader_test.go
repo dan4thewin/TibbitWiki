@@ -442,10 +442,11 @@ func TestSymlinkOwnerReadlinkError(t *testing.T) {
 	writeFile(t, work, "Note.md", "title: Note\n\nBody.")
 	os.Symlink("../work/Note.md", filepath.Join(src, "Note.md"))
 
-	patches := gomonkey.ApplyFunc(os.Readlink, func(string) (string, error) {
+	orig := readlinkFunc
+	readlinkFunc = func(string) (string, error) {
 		return "", errors.New("simulated readlink error")
-	})
-	defer patches.Reset()
+	}
+	defer func() { readlinkFunc = orig }()
 
 	if got := SymlinkOwner(filepath.Join(src, "Note.md")); got != "" {
 		t.Errorf("SymlinkOwner = %q, want empty on readlink error", got)

@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/agiledragon/gomonkey/v2"
 )
 
 // --- parseMPattern ---
@@ -587,11 +585,12 @@ func TestSearchNegatedQueryGlobError(t *testing.T) {
 	dir := makeTidDir(t,
 		"A.md", "title: A\n\nalpha text.",
 	)
-	// Mock filepath.Glob to return an error when called for allTidFiles.
-	patches := gomonkey.ApplyFunc(filepath.Glob, func(pattern string) ([]string, error) {
+	// Replace globFunc to return an error when allTidFiles is called.
+	orig := globFunc
+	globFunc = func(pattern string) ([]string, error) {
 		return nil, fmt.Errorf("glob exploded")
-	})
-	defer patches.Reset()
+	}
+	defer func() { globFunc = orig }()
 
 	// A NOT-only query triggers allTidFiles to initialize the result set.
 	_, err := Search(dir, "!alpha")

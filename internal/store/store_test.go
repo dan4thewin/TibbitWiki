@@ -328,3 +328,23 @@ func TestGhostEntryGetReturnsNil(t *testing.T) {
 		t.Errorf("Get(Ghost) = %v, want nil", n)
 	}
 }
+
+// TestGetReturnsCopy verifies that mutating the Note returned by
+// Get does not corrupt the store's internal state.
+func TestGetReturnsCopy(t *testing.T) {
+	s := New()
+	s.Put(makeNote("Immutable", ""))
+
+	got := s.Get("Immutable")
+	if got == nil {
+		t.Fatal("expected note")
+	}
+	// Mutate the returned copy.
+	got.Fields["tags"] = "hacked"
+
+	// The store's copy should be untouched.
+	again := s.Get("Immutable")
+	if again.Fields["tags"] == "hacked" {
+		t.Error("Get returned internal pointer — mutation corrupted store")
+	}
+}

@@ -322,8 +322,11 @@ func isHeaderLine(line string) bool {
 	return false
 }
 
+// globFunc is the glob implementation; replaceable for testing.
+var globFunc = filepath.Glob
+
 func allTidFiles(dir string) ([]string, error) {
-	matches, err := filepath.Glob(filepath.Join(dir, "*.md"))
+	matches, err := globFunc(filepath.Join(dir, "*.md"))
 	if err != nil {
 		return nil, err
 	}
