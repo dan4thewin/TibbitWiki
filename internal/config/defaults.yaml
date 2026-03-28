@@ -7,6 +7,8 @@ editor_cmd: "neovide -- %s"
 poll_interval: 3s
 cache_size: 200
 max_diffs: 10
+# Suffixes to hide from the note attachment listing.
+# Empty = show all files.  Example: [".pdf.md", ".bak"]
 attachment_exclude: []
 
 # Theme applies live on save.

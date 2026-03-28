@@ -30,6 +30,8 @@ and RCS version control.
   tweaks with color pickers and live preview
 - **LRU body cache** — bounded memory; metadata always in RAM,
   note bodies cached with configurable size (default 200)
+- **Attachment listings** — notes with a subdirectory show a collapsible
+  list of files; configurable suffix exclusions via `attachment_exclude`
 - **Simple configuration** — YAML config file with CLI flag overrides;
   auto-created on first run with commented defaults
 
@@ -116,6 +118,13 @@ config file < CLI flags.
 | `--poll-interval` | Browser poll interval |
 | `--cache-size` | LRU body cache size per wiki |
 
+### Attachment listings
+
+Notes with a subdirectory of the same name automatically show a
+collapsible **Attachments** section. Files in that subdirectory are
+listed as clickable links. Use `attachment_exclude` in config.yaml
+to hide files by suffix (e.g. `[".pdf.md"]` to hide shadow files).
+
 ### config.yaml
 
 ```yaml
@@ -125,6 +134,8 @@ listen: 127.0.0.1:8080
 editor_cmd: "neovide -- %s"
 poll_interval: 3s
 cache_size: 200
+max_diffs: 10
+attachment_exclude: []       # suffixes to hide, e.g. [".pdf.md"]
 
 # Theme applies live on save:
 theme:
