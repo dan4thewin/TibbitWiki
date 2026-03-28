@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""pdf2md — convert PDFs to shadow .md files for search indexing.
+
+Pipeline: pdftotext extracts raw text, ollama cleans it into markdown.
+The shadow file sits alongside the PDF as <name>.pdf.md and is
+indexed by rg but excluded from the note store (subdir files are
+never loaded as notes).
+
+Usage:
+    pdf2md <pdf_file>                   # convert one PDF
+    pdf2md --batch <wiki_dir>           # convert all unconverted PDFs
+    pdf2md --batch <wiki_dir> --dry-run # show what would be converted
+
+Options:
+    --model MODEL    ollama model (default: qwen2.5:14b)
+    --host  HOST     ollama API host (default: localhost:11434)
+    --batch DIR      find all PDFs under DIR lacking a .pdf.md sibling
+    --dry-run        with --batch, list files without converting
+    --force          overwrite existing .pdf.md files
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import urllib.request
+import urllib.error
+
+PROMPT = """Clean up this raw PDF text extraction into well-structured markdown.
+
+Rules:
+- Fix OCR artifacts, broken words, and line-wrap noise
+- Preserve all factual content — do not summarize or omit
+- Use markdown headings, lists, and tables where appropriate
+- Remove headers, footers, and page numbers
+- If the text is too garbled to clean up, return it as-is in a code block
+- Output ONLY the cleaned markdown, no commentary"""
+
+
+def pdftotext(path):
+    """Extract text from a PDF using pdftotext."""
+    try:
+        result = subprocess.run(
+            ["pdftotext", "-layout", path, "-"],
+            capture_output=True, text=True, timeout=60,
+        )
+    except FileNotFoundError:
+        print("error: pdftotext not found (install poppler-utils)", file=sys.stderr)
+        sys.exit(1)
+    if result.returncode != 0:
+        return None, result.stderr.strip()
+    return result.stdout, None
+
+
+def ollama_generate(text, model, host):
+    """Send text to ollama for cleanup, return cleaned markdown."""
+    url = f"http://{host}/api/generate"
+    payload = json.dumps({
+        "model": model,
+        "prompt": f"{PROMPT}\n\n---\n\n{text}",
+        "stream": False,
+        "options": {"temperature": 0.1, "num_ctx": 8192},
+    }).encode()
+    req = urllib.request.Request(
+        url, data=payload,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            data = json.loads(resp.read())
+            return data.get("response", ""), None
+    except urllib.error.URLError as e:
+        return None, f"ollama error: {e}"
+    except TimeoutError:
+        return None, "ollama timeout (300s)"
+
+
+def convert_one(pdf_path, model, host, force=False):
+    """Convert a single PDF to a shadow .pdf.md file."""
+    shadow = pdf_path + ".md"
+    if os.path.exists(shadow) and not force:
+        print(f"  skip (exists): {shadow}")
+        return True
+
+    # Extract text.
+    text, err = pdftotext(pdf_path)
+    if err or not text or not text.strip():
+        print(f"  FAIL pdftotext: {pdf_path}: {err or 'empty output'}", file=sys.stderr)
+        return False
+
+    # Truncate very long PDFs to avoid overwhelming the model.
+    max_chars = 30000
+    truncated = False
+    if len(text) > max_chars:
+        text = text[:max_chars]
+        truncated = True
+
+    # Clean up via ollama.
+    cleaned, err = ollama_generate(text, model, host)
+    if err or not cleaned:
+        # Fallback: write raw text so the PDF is at least searchable.
+        print(f"  WARN ollama failed, using raw text: {err}", file=sys.stderr)
+        cleaned = text
+
+    if truncated:
+        cleaned += "\n\n---\n*[Content truncated — original PDF is longer]*\n"
+
+    # Write shadow file.
+    with open(shadow, "w") as f:
+        f.write(cleaned)
+    print(f"  ok: {shadow}")
+    return True
+
+
+def find_unconverted(wiki_dir):
+    """Find all PDFs under wiki_dir that lack a sibling .pdf.md."""
+    pdfs = []
+    for root, _dirs, files in os.walk(wiki_dir):
+        for name in files:
+            if name.lower().endswith(".pdf"):
+                pdf_path = os.path.join(root, name)
+                shadow = pdf_path + ".md"
+                if not os.path.exists(shadow):
+                    pdfs.append(pdf_path)
+    pdfs.sort()
+    return pdfs
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Convert PDFs to shadow .md files for search indexing.",
+    )
+    parser.add_argument("pdf", nargs="?", help="PDF file to convert")
+    parser.add_argument("--model", default="qwen2.5:14b", help="ollama model")
+    parser.add_argument("--host", default="localhost:11434", help="ollama API host")
+    parser.add_argument("--batch", metavar="DIR", help="convert all unconverted PDFs under DIR")
+    parser.add_argument("--dry-run", action="store_true", help="list files without converting")
+    parser.add_argument("--force", action="store_true", help="overwrite existing .pdf.md files")
+    args = parser.parse_args()
+
+    if args.batch:
+        pdfs = find_unconverted(args.batch)
+        if not pdfs:
+            print("no unconverted PDFs found")
+            return
+        print(f"found {len(pdfs)} unconverted PDFs")
+        if args.dry_run:
+            for p in pdfs:
+                print(f"  {p}")
+            return
+        ok = 0
+        fail = 0
+        for i, pdf in enumerate(pdfs, 1):
+            print(f"[{i}/{len(pdfs)}] {os.path.basename(pdf)}")
+            if convert_one(pdf, args.model, args.host, args.force):
+                ok += 1
+            else:
+                fail += 1
+        print(f"\ndone: {ok} converted, {fail} failed")
+    elif args.pdf:
+        if not os.path.isfile(args.pdf):
+            print(f"error: not a file: {args.pdf}", file=sys.stderr)
+            sys.exit(1)
+        convert_one(args.pdf, args.model, args.host, args.force)
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
