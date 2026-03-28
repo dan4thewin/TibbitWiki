@@ -419,6 +419,55 @@ CSS files at wiki_path level — invisible to rg (runs inside wiki subdirs).
 
 ---
 
+## v10: Remediation (from adversarial audit)
+
+An adversarial test audit (5 models × 10 packages, 270 findings, 0
+false alarms) revealed that 100% statement coverage hides significant
+test quality gaps, 8 production bugs, and 8 security findings. Full
+lab notebook: `AdversarialTestAudit` in the hold wiki.
+
+Three models independently composed remediation plans (Opus 4.6,
+GPT-5.4, Opus 4.5 arbiter). The reconciled plan prioritizes security
+boundaries first (they are prerequisites for trustworthy tests), then
+crash/data bugs, then test harness repair, then coverage expansion.
+
+### Phase 1: Command boundaries
+
+- [ ] RCS: `--` before paths, validate rev with `^\d+\.\d+$`
+- [ ] Search: `--` before dir arg, regex-aware OR parser
+- [ ] Editor: enforce `%s` contract, require `--` in template
+
+### Phase 2: Output encoding
+
+- [ ] Render: `html.EscapeString` on diff fallback
+- [ ] Server: escape wiki names in selector HTML
+- [ ] Render: sanitize theme CSS values
+
+### Phase 3: Core invariants
+
+- [ ] Store: prevent ghost entries from SetFilePath/SetRCS
+- [ ] Wiki: move symlinks read inside w.do()
+- [ ] Wiki: compare content before ci -l on reload
+
+### Phase 4: Persistence/config
+
+- [ ] Tid: fix percent-encoding roundtrip (`%2F` corruption)
+- [ ] RCS: propagate MkdirAll error
+- [ ] Config: propagate Defaults() error
+- [ ] Tid: handle "text" header collision
+
+### Phase 5: Test harness rehab
+
+- [ ] Replace broken gomonkey patches with function-var seams
+- [ ] Editor: argument-capturing test helper (replace echo)
+
+### Phase 6: Coverage expansion
+
+- [ ] Store, search, tid, watcher, rcs, editor adversarial tests
+- [ ] Return-value immutability policy (store Get, tid SkinnyFields)
+
+---
+
 ## Future Considerations
 
 ### Watcher: eliminate per-file fd overhead
@@ -446,3 +495,12 @@ dependencies, zero fd overhead, identical behavior on every OS.
 Cost: one readdir + N stat calls per interval — for 500 files
 this is <1ms, negligible. Latency up to one poll interval (already
 accepted for the browser). Simplest possible implementation.
+
+### Search: make PDF attachments searchable
+
+Explore making PDF files in note attachment subdirectories visible
+to rg-based search. rg only searches text — PDFs are binary. Options
+include extracting text at import time (e.g. `pdftotext` sidecar
+`.txt` files alongside the PDF), or a pre-search hook that indexes
+attachments into a searchable form. Goal: when a search term appears
+in a PDF attachment, the parent note shows up in results.

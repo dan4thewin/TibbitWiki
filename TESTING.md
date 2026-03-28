@@ -274,3 +274,65 @@ experiment's index.html, and takes a screenshot.
 - **Poll timing.** After triggering a change, wait at least 5-6
   seconds: ~1s for the watcher to fire, up to 3s for the next poll
   cycle, plus network/render time.
+
+## Adversarial test audit methodology
+
+An audit of all 11 packages using 5 LLM models (50 runs total) found
+that 100% statement coverage hides significant test quality gaps: 8
+production bugs, 8 security findings, and 270 total findings with 0
+false alarms. The full lab notebook is `AdversarialTestAudit` in the
+hold wiki.
+
+### What statement coverage misses
+
+- **Hollow tests** — assertions that pass for the wrong reason (e.g.,
+  `echo` exits 0 regardless of arguments, so editor tests pass even
+  if `%s` substitution is broken)
+- **Live pointer returns** — `store.Get()` returns internal `*tid.Note`;
+  callers can mutate store state without going through `Put()`
+- **Missing cross-method invariants** — `SetFilePath` before `Put`
+  creates a ghost entry that panics in `All()`
+- **No adversarial inputs** — tests use benign paths like `/tmp/test.md`,
+  never flag-like (`-c.md`), percent-encoded (`%2F`), or spaced paths
+
+### Audit prompt template
+
+The prompt that produced zero false alarms across 270 findings:
+
+```
+Review the test quality of internal/{package}. For each test, answer:
+
+1. What does the test claim to verify? (one sentence)
+2. Could the test still pass if the code under test had a subtle bug?
+   Construct a specific, realistic scenario where the test passes but
+   the production code is wrong.
+3. Are there important behaviors the tests don't cover at all?
+
+For each issue found, provide:
+- The specific test function and what it claims to verify
+- Why it might not actually verify that claim
+- A concrete scenario (not hypothetical) that would expose the gap
+- Severity: HIGH (test provably passes for wrong reason or misses a
+  crash/data-loss path) vs MEDIUM (weak assertion, missing edge case)
+  vs LOW (cosmetic, unlikely)
+
+Focus on: (a) tests that pass for the wrong reason, (b) missing
+adversarial/boundary inputs, (c) broken mocks/patches that don't
+intercept, (d) cross-cutting interactions the unit tests miss.
+```
+
+For packages with shell exec or user input (server, search, rcs,
+editor, render), add item 6: security-relevant behaviors.
+
+### Multi-model findings
+
+Every model found unique issues in every package. No single model
+subsumes another:
+
+| Model | Character | Best for |
+|-------|-----------|----------|
+| GPT-5.4 | Fewest findings, highest hit rate | Prioritization, signal-to-noise |
+| Opus 4.5 | Cross-cutting, architectural | System-level design issues |
+| Sonnet 4 | Most findings, broadest sweep | Initial coverage audit |
+| GPT-5.3-codex | Runs commands, traces paths | Evidence-based verification |
+| GPT-5.2-codex | Conservative, never wrong | Reliable minimum bar |
