@@ -10,8 +10,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
+
+var validRev = regexp.MustCompile(`^\d+\.\d+$`)
+
+// ValidRevision reports whether rev looks like an RCS revision (e.g. "1.5").
+func ValidRevision(rev string) bool {
+	return validRev.MatchString(rev)
+}
 
 // Checkin runs ci -l on the given file, creating the ,v archive on
 // first use inside the RCS/ subdirectory. On first checkin, sets -ko
@@ -26,7 +34,9 @@ func Checkin(path string) error {
 
 	first := !fileExists(archive)
 	if first {
-		os.MkdirAll(rcsDir, 0755)
+		if err := os.MkdirAll(rcsDir, 0755); err != nil {
+			return fmt.Errorf("mkdir RCS %s: %w", rcsDir, err)
+		}
 	}
 
 	cmd := exec.Command("ci", "-l", path)
@@ -106,6 +116,12 @@ func HeadRev(path string) (string, error) {
 // DiffRange runs rcsdiff -u between two revisions and returns the
 // unified diff output. An empty diff (exit 0) returns "".
 func DiffRange(path, rev1, rev2 string) (string, error) {
+	if !ValidRevision(rev1) {
+		return "", fmt.Errorf("invalid revision %q", rev1)
+	}
+	if !ValidRevision(rev2) {
+		return "", fmt.Errorf("invalid revision %q", rev2)
+	}
 	cmd := exec.Command("rcsdiff", "-u", "-r"+rev1, "-r"+rev2, path)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -124,6 +140,9 @@ func DiffRange(path, rev1, rev2 string) (string, error) {
 // Checkout checks out a specific revision without a lock (read-only).
 // The working file becomes 0444.
 func Checkout(path, rev string) error {
+	if !ValidRevision(rev) {
+		return fmt.Errorf("invalid revision %q", rev)
+	}
 	cmd := exec.Command("co", "-f", "-r"+rev, path)
 	cmd.Stdin = nil
 	cmd.Stdout = nil
@@ -148,6 +167,9 @@ func CheckoutHead(path string) error {
 
 // SetTag assigns the symbolic name to a revision (rcs -n<name>:<rev>).
 func SetTag(path, name, rev string) error {
+	if !ValidRevision(rev) {
+		return fmt.Errorf("invalid revision %q", rev)
+	}
 	cmd := exec.Command("rcs", "-n"+name+":"+rev, path)
 	cmd.Stdin = nil
 	cmd.Stdout = nil

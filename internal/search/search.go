@@ -106,26 +106,26 @@ func classifyToken(f string) (int, string) {
 	return tokLiteral, f
 }
 
-// toRgPattern converts a token to an rg pattern and flags.
-func toRgPattern(t token) (pattern string, caseInsensitive bool) {
+// toRgPattern converts a token to rg pattern(s) and flags.
+// Literal OR tokens (a|b) return multiple patterns for -e args.
+func toRgPattern(t token) (patterns []string, caseInsensitive bool) {
 	switch t.kind {
 	case tokTag, tokNotTag:
-		return `^tags:.*\b` + regexp.QuoteMeta(t.pattern) + `\b`, false
+		return []string{`^tags:.*\b` + regexp.QuoteMeta(t.pattern) + `\b`}, false
 	case tokTitle, tokNotTitle:
-		return `^title:.*` + regexp.QuoteMeta(t.pattern), true
+		return []string{`^title:.*` + regexp.QuoteMeta(t.pattern)}, true
 	case tokRegex, tokNotRegex:
-		return t.pattern, false
+		return []string{t.pattern}, false
 	default:
-		// Literals with | are OR queries — escape each alternative separately
-		// so rgSearch can split on the unescaped |.
 		if strings.Contains(t.pattern, "|") {
 			parts := strings.Split(t.pattern, "|")
+			pats := make([]string, len(parts))
 			for i, p := range parts {
-				parts[i] = regexp.QuoteMeta(p)
+				pats[i] = regexp.QuoteMeta(p)
 			}
-			return strings.Join(parts, "|"), true
+			return pats, true
 		}
-		return regexp.QuoteMeta(t.pattern), true
+		return []string{regexp.QuoteMeta(t.pattern)}, true
 	}
 }
 
@@ -146,8 +146,8 @@ func Search(dir, query string) ([]Result, error) {
 	var result map[string]bool
 
 	for _, tok := range tokens {
-		pattern, ci := toRgPattern(tok)
-		hits, err := rgSearch(dir, pattern, ci)
+		patterns, ci := toRgPattern(tok)
+		hits, err := rgSearch(dir, patterns, ci)
 		if err != nil {
 			return nil, err
 		}
@@ -236,20 +236,19 @@ type rgText struct {
 	Text string `json:"text"`
 }
 
-func rgSearch(dir, pattern string, caseInsensitive bool) ([]Result, error) {
+func rgSearch(dir string, patterns []string, caseInsensitive bool) ([]Result, error) {
 	args := []string{"--json"}
 	if caseInsensitive {
 		args = append(args, "-i")
 	}
-	if strings.Contains(pattern, "|") && !strings.HasPrefix(pattern, "^") {
-		parts := strings.Split(pattern, "|")
-		for _, p := range parts {
+	if len(patterns) > 1 {
+		for _, p := range patterns {
 			args = append(args, "-e", p)
 		}
 	} else {
-		args = append(args, pattern)
+		args = append(args, patterns[0])
 	}
-	args = append(args, dir)
+	args = append(args, "--", dir)
 
 	cmd := exec.Command("rg", args...)
 	out, err := cmd.Output()

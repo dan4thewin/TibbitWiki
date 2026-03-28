@@ -51,7 +51,11 @@ func main() {
 
 	var ed *editor.Editor
 	if cfg.EditorCmd != "" {
-		ed = editor.New(cfg.EditorCmd)
+		var err error
+		ed, err = editor.New(cfg.EditorCmd)
+		if err != nil {
+			log.Fatalf("editor: %v", err)
+		}
 		log.Printf("editor: %s", cfg.EditorCmd)
 	}
 

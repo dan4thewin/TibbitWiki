@@ -432,3 +432,90 @@ func TestHeadRevNoHeadLine(t *testing.T) {
 		t.Errorf("error = %v, want 'no head revision'", err)
 	}
 }
+
+// TestValidRevision verifies the revision format validator.
+func TestValidRevision(t *testing.T) {
+	valid := []string{"1.1", "1.2", "2.10", "99.99"}
+	for _, r := range valid {
+		if !ValidRevision(r) {
+			t.Errorf("ValidRevision(%q) = false, want true", r)
+		}
+	}
+	invalid := []string{
+		"", "abc", "1", "1.", ".1", "1.1.1", "-r1.1",
+		"1.1; rm -rf /", "1.1\n", "--version",
+	}
+	for _, r := range invalid {
+		if ValidRevision(r) {
+			t.Errorf("ValidRevision(%q) = true, want false", r)
+		}
+	}
+}
+
+// TestDiffRangeInvalidRevision verifies DiffRange rejects bad revisions.
+func TestDiffRangeInvalidRevision(t *testing.T) {
+	// Bad first rev.
+	_, err := DiffRange("/any", "bad", "1.1")
+	if err == nil || !strings.Contains(err.Error(), "invalid revision") {
+		t.Errorf("DiffRange bad rev1: err = %v", err)
+	}
+	// Bad second rev.
+	_, err = DiffRange("/any", "1.1", "bad")
+	if err == nil || !strings.Contains(err.Error(), "invalid revision") {
+		t.Errorf("DiffRange bad rev2: err = %v", err)
+	}
+}
+
+// TestCheckoutInvalidRevision verifies Checkout rejects bad revisions.
+func TestCheckoutInvalidRevision(t *testing.T) {
+	err := Checkout("/any", "injected;cmd")
+	if err == nil || !strings.Contains(err.Error(), "invalid revision") {
+		t.Errorf("Checkout bad rev: err = %v", err)
+	}
+}
+
+// TestSetTagInvalidRevision verifies SetTag rejects bad revisions.
+func TestSetTagInvalidRevision(t *testing.T) {
+	err := SetTag("/any", "TAG", "--version")
+	if err == nil || !strings.Contains(err.Error(), "invalid revision") {
+		t.Errorf("SetTag bad rev: err = %v", err)
+	}
+}
+
+// TestCheckinMkdirError verifies that a MkdirAll failure in Checkin
+// propagates the error (e.g. when RCS dir can't be created).
+func TestCheckinMkdirError(t *testing.T) {
+	dir := t.TempDir()
+	// Create a regular file named "RCS" to block MkdirAll.
+	rcsBlocker := filepath.Join(dir, "RCS")
+	os.WriteFile(rcsBlocker, []byte("blocker"), 0644)
+
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte("title: Test\n\nBody."), 0644)
+
+	err := Checkin(path)
+	if err == nil {
+		t.Fatal("expected MkdirAll error, got nil")
+	}
+	if !strings.Contains(err.Error(), "mkdir RCS") {
+		t.Errorf("error = %v, want 'mkdir RCS'", err)
+	}
+}
+
+// TestCheckinCiError verifies the ci command error path — MkdirAll
+// succeeds but the file is unsuitable for ci (e.g. nonexistent).
+func TestCheckinCiError(t *testing.T) {
+	dir := t.TempDir()
+	// File doesn't exist, but RCS dir is already present,
+	// so MkdirAll succeeds (archive not found → first=true,
+	// MkdirAll on existing dir is no-op).
+	path := filepath.Join(dir, "ghost.md")
+
+	err := Checkin(path)
+	if err == nil {
+		t.Fatal("expected ci error, got nil")
+	}
+	if !strings.Contains(err.Error(), "ci") {
+		t.Errorf("error = %v, want 'ci' in message", err)
+	}
+}

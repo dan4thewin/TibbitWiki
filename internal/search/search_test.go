@@ -257,56 +257,82 @@ func TestIsNegated(t *testing.T) {
 
 // TestToRgPatternTag verifies tag tokens produce header-anchored patterns.
 func TestToRgPatternTag(t *testing.T) {
-	pat, ci := toRgPattern(token{kind: tokTag, pattern: "Journal"})
+	pats, ci := toRgPattern(token{kind: tokTag, pattern: "Journal"})
 	if ci {
 		t.Error("tag search should be case-sensitive")
 	}
-	if !strings.Contains(pat, "^tags:") {
-		t.Errorf("expected ^tags: prefix, got %q", pat)
+	if len(pats) != 1 || !strings.Contains(pats[0], "^tags:") {
+		t.Errorf("expected ^tags: prefix, got %v", pats)
 	}
 }
 
 // TestToRgPatternTitle verifies title tokens produce title-anchored patterns.
 func TestToRgPatternTitle(t *testing.T) {
-	pat, ci := toRgPattern(token{kind: tokTitle, pattern: "ToDo"})
+	pats, ci := toRgPattern(token{kind: tokTitle, pattern: "ToDo"})
 	if !ci {
 		t.Error("title search should be case-insensitive")
 	}
-	if !strings.Contains(pat, "^title:") {
-		t.Errorf("expected ^title: prefix, got %q", pat)
+	if len(pats) != 1 || !strings.Contains(pats[0], "^title:") {
+		t.Errorf("expected ^title: prefix, got %v", pats)
 	}
 }
 
 // TestToRgPatternRegex verifies regex tokens pass through unchanged.
 func TestToRgPatternRegex(t *testing.T) {
-	pat, ci := toRgPattern(token{kind: tokRegex, pattern: "foo.*bar"})
+	pats, ci := toRgPattern(token{kind: tokRegex, pattern: "foo.*bar"})
 	if ci {
 		t.Error("regex should be case-sensitive")
 	}
-	if pat != "foo.*bar" {
-		t.Errorf("expected raw pattern, got %q", pat)
+	if len(pats) != 1 || pats[0] != "foo.*bar" {
+		t.Errorf("expected raw pattern, got %v", pats)
 	}
 }
 
 // TestToRgPatternNotTag verifies negated tag tokens.
 func TestToRgPatternNotTag(t *testing.T) {
-	pat, ci := toRgPattern(token{kind: tokNotTag, pattern: "Draft"})
+	pats, ci := toRgPattern(token{kind: tokNotTag, pattern: "Draft"})
 	if ci {
 		t.Error("not-tag search should be case-sensitive")
 	}
-	if !strings.Contains(pat, "^tags:") {
-		t.Errorf("expected ^tags: prefix, got %q", pat)
+	if len(pats) != 1 || !strings.Contains(pats[0], "^tags:") {
+		t.Errorf("expected ^tags: prefix, got %v", pats)
 	}
 }
 
 // TestToRgPatternNotRegex verifies negated regex tokens.
 func TestToRgPatternNotRegex(t *testing.T) {
-	pat, ci := toRgPattern(token{kind: tokNotRegex, pattern: "baz"})
+	pats, ci := toRgPattern(token{kind: tokNotRegex, pattern: "baz"})
 	if ci {
 		t.Error("not-regex should be case-sensitive")
 	}
-	if pat != "baz" {
-		t.Errorf("expected raw pattern, got %q", pat)
+	if len(pats) != 1 || pats[0] != "baz" {
+		t.Errorf("expected raw pattern, got %v", pats)
+	}
+}
+
+// TestToRgPatternLiteralOR verifies literal OR (a|b) returns
+// multiple patterns (one per alternative), while regex OR stays
+// as a single pattern.
+func TestToRgPatternLiteralOR(t *testing.T) {
+	// Literal "foo|bar" should produce 2 escaped patterns.
+	pats, ci := toRgPattern(token{kind: tokLiteral, pattern: "foo|bar"})
+	if !ci {
+		t.Error("literal OR should be case-insensitive")
+	}
+	if len(pats) != 2 {
+		t.Fatalf("expected 2 patterns, got %d: %v", len(pats), pats)
+	}
+	if pats[0] != "foo" || pats[1] != "bar" {
+		t.Errorf("patterns = %v, want [foo bar]", pats)
+	}
+
+	// Regex "foo(a|b)" must stay as a single pattern — NOT split.
+	rpats, rci := toRgPattern(token{kind: tokRegex, pattern: "foo(a|b)"})
+	if rci {
+		t.Error("regex should be case-sensitive")
+	}
+	if len(rpats) != 1 || rpats[0] != "foo(a|b)" {
+		t.Errorf("regex OR should not split, got %v", rpats)
 	}
 }
 

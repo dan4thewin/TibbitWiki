@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 
 	"github.com/dan4thewin/tibbitwiki/internal/editor"
+	"github.com/dan4thewin/tibbitwiki/internal/rcs"
 	"github.com/dan4thewin/tibbitwiki/internal/wiki"
 )
 
@@ -490,6 +491,10 @@ func (s *Server) checkoutRevision(w http.ResponseWriter, r *http.Request, title 
 		return
 	}
 	rev := r.URL.Query().Get("rev")
+	if rev != "" && !rcs.ValidRevision(rev) {
+		http.Error(w, "invalid revision", http.StatusBadRequest)
+		return
+	}
 	if err := wikiFrom(r).CheckoutRevision(title, rev); err != nil {
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "no file") {

@@ -29,7 +29,7 @@ import (
 func newTestServer(t *testing.T) (*Server, *wiki.Wiki) {
 	t.Helper()
 	dir := t.TempDir()
-	ed := editor.New("echo %s")
+	ed, _ := editor.New("echo %s")
 	wk := wiki.New("test", dir, ed, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
@@ -625,7 +625,7 @@ func TestDeleteNoteWithDiskFile(t *testing.T) {
 func TestHandleEditExternalEditorFails(t *testing.T) {
 	dir := t.TempDir()
 	// Use a nonexistent binary so exec.Command.Start returns an error.
-	ed := editor.New("/nonexistent/editor %s")
+	ed, _ := editor.New("/nonexistent/editor %s")
 	wk := wiki.New("test", dir, ed, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
@@ -1404,7 +1404,7 @@ func TestHandleEditConfig(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
 	os.WriteFile(configPath, []byte("listen: :8080\n"), 0644)
-	ed := editor.New("echo %s")
+	ed, _ := editor.New("echo %s")
 
 	wk := wiki.New("test", dir, nil, 100)
 	wk.Start()
@@ -1442,7 +1442,7 @@ func TestHandleEditConfigNoEditor(t *testing.T) {
 // TestHandleEditConfigNoPath verifies edit-config returns 404
 // when no config path was provided.
 func TestHandleEditConfigNoPath(t *testing.T) {
-	ed := editor.New("echo %s")
+	ed, _ := editor.New("echo %s")
 	wk := wiki.New("test", t.TempDir(), nil, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
@@ -1478,7 +1478,7 @@ func TestHandleEditConfigEditorError(t *testing.T) {
 	configPath := filepath.Join(dir, "config.yaml")
 	os.WriteFile(configPath, []byte("listen: :8080\n"), 0644)
 
-	ed := editor.New("/nonexistent/editor %s")
+	ed, _ := editor.New("/nonexistent/editor %s")
 	wk := wiki.New("test", dir, nil, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
@@ -2007,6 +2007,22 @@ func TestCheckoutRevisionMethodNotAllowed(t *testing.T) {
 
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("status = %d, want 405", w.Code)
+	}
+}
+
+// TestCheckoutRevisionBadRev verifies that an invalid rev parameter
+// returns 400 Bad Request.
+func TestCheckoutRevisionBadRev(t *testing.T) {
+	srv, wk := newTestServer(t)
+	writeNoteWithRCS(t, wk, "Pin", []string{"V1."})
+
+	req := httptest.NewRequest("POST",
+		"/test/revisions/Pin/checkout?rev=INJECTED", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", w.Code)
 	}
 }
 

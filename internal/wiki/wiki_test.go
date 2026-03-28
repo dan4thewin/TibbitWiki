@@ -933,7 +933,7 @@ func TestWikiLineEditParseError(t *testing.T) {
 // successfully when everything is configured.
 func TestWikiEditExternalSuccess(t *testing.T) {
 	dir := t.TempDir()
-	ed := editor.New("echo %s")
+	ed, _ := editor.New("echo %s")
 	wk := New("test", dir, ed, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
@@ -1232,7 +1232,7 @@ func TestRescan(t *testing.T) {
 // returns its path.
 func TestNewDraft(t *testing.T) {
 	dir := t.TempDir()
-	ed := editor.New("echo %s")
+	ed, _ := editor.New("echo %s")
 	wk := New("test", dir, ed, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
@@ -1258,7 +1258,7 @@ func TestNewDraft(t *testing.T) {
 // an existing Draft.md file.
 func TestNewDraftAlreadyExists(t *testing.T) {
 	dir := t.TempDir()
-	ed := editor.New("echo %s")
+	ed, _ := editor.New("echo %s")
 	wk := New("test", dir, ed, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
@@ -1294,7 +1294,7 @@ func TestNewDraftWriteError(t *testing.T) {
 	dir := t.TempDir()
 	os.Chmod(dir, 0555)
 	t.Cleanup(func() { os.Chmod(dir, 0755) })
-	ed := editor.New("echo %s")
+	ed, _ := editor.New("echo %s")
 	wk := New("test", dir, ed, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
