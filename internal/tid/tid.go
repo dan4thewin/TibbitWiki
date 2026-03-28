@@ -64,6 +64,10 @@ func Parse(data []byte) (*Note, error) {
 		if !ok {
 			return nil, fmt.Errorf("invalid header line: %q", line)
 		}
+		// "text" is reserved for the body — ignore if in headers.
+		if key == "text" {
+			continue
+		}
 		fields[key] = val
 	}
 
@@ -121,12 +125,13 @@ func TitleToFilename(title string) string {
 }
 
 // FilenameToTitle converts a .md filename back to a note title.
-// URL-encoded names are decoded.
+// Only names containing %2F (encoded slash) are decoded, matching
+// the encoding done by TitleToFilename. Other percent sequences
+// are left as-is to avoid corrupting titles with literal %XX.
 func FilenameToTitle(filename string) string {
 	name := strings.TrimSuffix(filepath.Base(filename), ".md")
 
-	// Try URL-decoding for names with percent-encoded characters.
-	if strings.Contains(name, "%") {
+	if strings.Contains(name, "%2F") || strings.Contains(name, "%2f") {
 		decoded, err := url.PathUnescape(name)
 		if err == nil {
 			return decoded

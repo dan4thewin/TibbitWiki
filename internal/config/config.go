@@ -37,9 +37,12 @@ type Config struct {
 }
 
 // Defaults returns a Config parsed from the embedded defaults.yaml.
+// Panics if the embedded YAML is invalid (indicates a broken build).
 func Defaults() Config {
 	var cfg Config
-	yaml.Unmarshal(DefaultYAML, &cfg)
+	if err := yaml.Unmarshal(DefaultYAML, &cfg); err != nil {
+		panic("defaults.yaml: " + err.Error())
+	}
 	return cfg
 }
 

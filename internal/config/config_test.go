@@ -4,7 +4,24 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/agiledragon/gomonkey/v2"
 )
+
+// TestDefaultsBadYAMLPanics verifies that Defaults panics when the
+// embedded YAML is corrupt (a broken binary safety check).
+func TestDefaultsBadYAMLPanics(t *testing.T) {
+	patches := gomonkey.ApplyGlobalVar(&DefaultYAML, []byte("{{invalid yaml"))
+	defer patches.Reset()
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic for bad embedded YAML")
+		}
+	}()
+	Defaults()
+}
 
 // TestDefaults verifies that Defaults returns expected values.
 func TestDefaults(t *testing.T) {

@@ -304,6 +304,8 @@ func TestFilenameToTitleBadPercent(t *testing.T) {
 func TestTitleFilenameRoundTrip(t *testing.T) {
 	titles := []string{
 		"Simple Title",
+		"path/with/slashes",
+		"100%25 Done",
 	}
 	for _, title := range titles {
 		t.Run(title, func(t *testing.T) {
@@ -313,5 +315,18 @@ func TestTitleFilenameRoundTrip(t *testing.T) {
 				t.Errorf("round-trip failed: %q → %q → %q", title, filename, got)
 			}
 		})
+	}
+}
+
+// TestParseTextHeaderIgnored verifies that a "text:" header line
+// is ignored — "text" is reserved for the body field.
+func TestParseTextHeaderIgnored(t *testing.T) {
+	input := "title: Test\ntext: shouldBeIgnored\n\nActual body."
+	note, err := Parse([]byte(input))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if note.Text() != "Actual body." {
+		t.Errorf("Text() = %q, want %q", note.Text(), "Actual body.")
 	}
 }
