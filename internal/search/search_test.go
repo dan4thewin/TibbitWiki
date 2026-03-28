@@ -649,15 +649,15 @@ func TestSearchRgNonExitError(t *testing.T) {
 func TestParseRgJSONMalformedData(t *testing.T) {
 	// Valid rgMatch envelope with type "match" but garbage data field.
 	input := `{"type":"match","data":"not-an-object"}` + "\n"
-	results := parseRgJSON([]byte(input))
+	results := parseRgJSON([]byte(input), "/wiki")
 	if len(results) != 0 {
 		t.Errorf("expected 0 results for malformed data, got %d", len(results))
 	}
 }
 
-// TestNormalizeHitPathMdPassthrough verifies .md files pass through.
+// TestNormalizeHitPathMdPassthrough verifies top-level .md files pass through.
 func TestNormalizeHitPathMdPassthrough(t *testing.T) {
-	got := normalizeHitPath("/wiki/GoTesting.md")
+	got := normalizeHitPath("/wiki/GoTesting.md", "/wiki")
 	if got != "/wiki/GoTesting.md" {
 		t.Errorf("got %q, want /wiki/GoTesting.md", got)
 	}
@@ -665,7 +665,7 @@ func TestNormalizeHitPathMdPassthrough(t *testing.T) {
 
 // TestNormalizeHitPathSubdirAttachment maps subdir file to parent note.
 func TestNormalizeHitPathSubdirAttachment(t *testing.T) {
-	got := normalizeHitPath("/wiki/GoTesting/spec.txt")
+	got := normalizeHitPath("/wiki/GoTesting/spec.txt", "/wiki")
 	if got != "/wiki/GoTesting.md" {
 		t.Errorf("got %q, want /wiki/GoTesting.md", got)
 	}
@@ -674,19 +674,26 @@ func TestNormalizeHitPathSubdirAttachment(t *testing.T) {
 // TestNormalizeHitPathTopLevelNonMdDropped verifies top-level non-.md
 // files return empty string so the caller can skip them.
 func TestNormalizeHitPathTopLevelNonMdDropped(t *testing.T) {
-	for _, path := range []string{"config.yaml", "/config.yaml"} {
-		got := normalizeHitPath(path)
-		if got != "" {
-			t.Errorf("normalizeHitPath(%q) = %q, want empty", path, got)
-		}
+	got := normalizeHitPath("/wiki/config.yaml", "/wiki")
+	if got != "" {
+		t.Errorf("normalizeHitPath = %q, want empty", got)
+	}
+}
+
+// TestNormalizeHitPathSubdirShadowMd maps a shadow .pdf.md in a
+// subdirectory back to the parent note, not treated as its own note.
+func TestNormalizeHitPathSubdirShadowMd(t *testing.T) {
+	got := normalizeHitPath("/wiki/TaxReturn/doc.pdf.md", "/wiki")
+	if got != "/wiki/TaxReturn.md" {
+		t.Errorf("got %q, want /wiki/TaxReturn.md", got)
 	}
 }
 
 // TestParseRgJSONSkipsTopLevelNonMd verifies that rg matches in
 // top-level non-.md files are dropped from results.
 func TestParseRgJSONSkipsTopLevelNonMd(t *testing.T) {
-	input := `{"type":"match","data":{"path":{"text":"config.yaml"},"lines":{"text":"theme: dark\n"}}}` + "\n"
-	results := parseRgJSON([]byte(input))
+	input := `{"type":"match","data":{"path":{"text":"/wiki/config.yaml"},"lines":{"text":"theme: dark\n"}}}` + "\n"
+	results := parseRgJSON([]byte(input), "/wiki")
 	if len(results) != 0 {
 		t.Errorf("expected 0 results for top-level non-.md hit, got %d", len(results))
 	}

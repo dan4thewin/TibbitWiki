@@ -96,6 +96,13 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
 .note-body th, .note-body td { border: 1px solid var(--tw-border_light); padding: 6px 12px; text-align: left; }
 .note-body th { background: var(--tw-code_bg); font-weight: 600; }
 .note-body tr:nth-child(even) { background: rgba(255,255,255,0.03); }
+.note-attachments { margin-top: 8px; border-top: 1px solid var(--tw-border); padding-top: 6px; }
+.note-attachments summary { cursor: pointer; font-size: 13px; color: var(--tw-muted_light); user-select: none; }
+.note-attachments summary:hover { color: var(--tw-fg); }
+.note-attachments ul { list-style: none; padding: 0; margin: 4px 0 0; }
+.note-attachments li { padding: 2px 0; }
+.note-attachments a { color: var(--tw-link, var(--tw-accent)); text-decoration: none; font-size: 13px; }
+.note-attachments a:hover { text-decoration: underline; color: var(--tw-link_hover, var(--tw-accent_hover)); }
 #search-bar { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--tw-code_bg); border-top: 1px solid var(--tw-border_light); padding: 8px 16px; z-index: 100; }
 #search-bar.active { display: flex; align-items: center; gap: 8px; }
 #search-bar label { color: var(--tw-accent); font-size: 16px; font-family: var(--tw-code_font); }
@@ -373,6 +380,33 @@ function renderNote(t) {
     attachCodeBlockEditing(body, t.title);
   }
   card.appendChild(body);
+
+  // Attachment listing: collapsible section with links to subdir files.
+  if (t.attachments) {
+    try {
+      const files = JSON.parse(t.attachments);
+      if (files.length > 0) {
+        const details = document.createElement('details');
+        details.className = 'note-attachments';
+        const summary = document.createElement('summary');
+        summary.textContent = 'Attachments (' + files.length + ')';
+        details.appendChild(summary);
+        const ul = document.createElement('ul');
+        for (const f of files) {
+          const li = document.createElement('li');
+          const a = document.createElement('a');
+          a.href = PREFIX + '/' + encodeURIComponent(t.title) + '/' + encodeURIComponent(f);
+          a.target = '_blank';
+          a.textContent = f;
+          li.appendChild(a);
+          ul.appendChild(li);
+        }
+        details.appendChild(ul);
+        card.appendChild(details);
+      }
+    } catch(e) {}
+  }
+
   return card;
 }
 

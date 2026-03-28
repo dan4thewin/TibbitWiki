@@ -258,10 +258,10 @@ func rgSearch(dir string, patterns []string, caseInsensitive bool) ([]Result, er
 		}
 		return nil, err
 	}
-	return parseRgJSON(out), nil
+	return parseRgJSON(out, dir), nil
 }
 
-func parseRgJSON(out []byte) []Result {
+func parseRgJSON(out []byte, dir string) []Result {
 	byFile := map[string][]string{}
 	// Track all files that had any match (including header-only).
 	filesSeen := map[string]bool{}
@@ -278,7 +278,7 @@ func parseRgJSON(out []byte) []Result {
 		if json.Unmarshal(m.Data, &d) != nil {
 			continue
 		}
-		filePath := normalizeHitPath(d.Path.Text)
+		filePath := normalizeHitPath(d.Path.Text, dir)
 		if filePath == "" {
 			continue
 		}
@@ -298,17 +298,25 @@ func parseRgJSON(out []byte) []Result {
 }
 
 // normalizeHitPath maps attachment hits back to the parent note.
-// e.g. /path/GoTesting/spec.txt → /path/GoTesting.md
-// Regular .md files pass through unchanged.
-// Top-level non-.md files (no subdir component) return "" — caller skips them.
-func normalizeHitPath(path string) string {
-	if strings.HasSuffix(path, ".md") {
-		return path
-	}
-	parent := filepath.Dir(path)
-	if parent == "." || parent == "/" {
+// dir is the search root (wiki directory).
+// e.g. /wiki/GoTesting/spec.txt → /wiki/GoTesting.md
+//
+//	/wiki/GoTesting/doc.pdf.md → /wiki/GoTesting.md
+//
+// Top-level .md files (direct children of dir) pass through unchanged.
+// Top-level non-.md files return "" — caller skips them.
+func normalizeHitPath(path, dir string) string {
+	// Strip the search root to get a path relative to the wiki dir.
+	rel := strings.TrimPrefix(path, dir+string(filepath.Separator))
+	// Top-level file: no path separator in the relative path.
+	if !strings.Contains(rel, string(filepath.Separator)) {
+		if strings.HasSuffix(rel, ".md") {
+			return path
+		}
 		return ""
 	}
+	// File in a subdirectory: map to parent note.
+	parent := filepath.Dir(path)
 	return parent + ".md"
 }
 

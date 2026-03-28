@@ -1,6 +1,7 @@
 package wiki
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -2294,5 +2295,109 @@ func TestIsUnchangedCacheMiss(t *testing.T) {
 
 	if checkins != before {
 		t.Errorf("phantom checkin: checkins went from %d to %d", before, checkins)
+	}
+}
+
+// --- Attachment listing tests ---
+
+// TestNoteAttachmentsWithFiles verifies that buildNote includes an
+// attachments JSON array when the note has a subdirectory with files.
+func TestNoteAttachmentsWithFiles(t *testing.T) {
+	wk := testWiki(t)
+	writeNote(t, wk, "Report", "body text")
+
+	// Create subdir with attachments.
+	subdir := filepath.Join(wk.NoteDir(), "Report")
+	os.MkdirAll(subdir, 0755)
+	os.WriteFile(filepath.Join(subdir, "chart.png"), []byte("img"), 0644)
+	os.WriteFile(filepath.Join(subdir, "data.pdf"), []byte("pdf"), 0644)
+	// Shadow file should be excluded.
+	os.WriteFile(filepath.Join(subdir, "data.pdf.md"), []byte("shadow"), 0644)
+
+	result := wk.Get("Report", false)
+	if result == nil {
+		t.Fatal("expected note, got nil")
+	}
+	a := result["attachments"]
+	if a == "" {
+		t.Fatal("expected attachments, got empty")
+	}
+	var names []string
+	if err := json.Unmarshal([]byte(a), &names); err != nil {
+		t.Fatalf("bad attachments JSON: %v", err)
+	}
+	if len(names) != 2 {
+		t.Fatalf("expected 2 attachments, got %d: %v", len(names), names)
+	}
+}
+
+// TestNoteAttachmentsNoSubdir verifies that notes without a
+// subdirectory have no attachments field.
+func TestNoteAttachmentsNoSubdir(t *testing.T) {
+	wk := testWiki(t)
+	writeNote(t, wk, "Plain", "no attachments")
+
+	result := wk.Get("Plain", false)
+	if result == nil {
+		t.Fatal("expected note, got nil")
+	}
+	if a := result["attachments"]; a != "" {
+		t.Errorf("expected no attachments, got %q", a)
+	}
+}
+
+// TestNoteAttachmentsEmptySubdir verifies that an empty subdirectory
+// produces no attachments field.
+func TestNoteAttachmentsEmptySubdir(t *testing.T) {
+	wk := testWiki(t)
+	writeNote(t, wk, "Empty", "body")
+	os.MkdirAll(filepath.Join(wk.NoteDir(), "Empty"), 0755)
+
+	result := wk.Get("Empty", false)
+	if result == nil {
+		t.Fatal("expected note, got nil")
+	}
+	if a := result["attachments"]; a != "" {
+		t.Errorf("expected no attachments for empty subdir, got %q", a)
+	}
+}
+
+// TestNoteAttachmentsNoDirWiki verifies that a wiki with no noteDir
+// (in-memory only) returns no attachments.
+func TestNoteAttachmentsNoDirWiki(t *testing.T) {
+	wk := New("test", "", nil, 100)
+	wk.Start()
+	defer wk.Stop()
+	td := &tid.Note{Fields: map[string]string{"title": "InMem"}}
+	wk.Store().Put(td)
+	wk.SeedBody("InMem", "text")
+
+	result := wk.Get("InMem", false)
+	if result == nil {
+		t.Fatal("expected note, got nil")
+	}
+	if a := result["attachments"]; a != "" {
+		t.Errorf("expected no attachments for no-dir wiki, got %q", a)
+	}
+}
+
+// TestNoteAttachmentsSkipsSubdirs verifies that subdirectories inside
+// the note's attachment directory are excluded from the listing.
+func TestNoteAttachmentsSkipsSubdirs(t *testing.T) {
+	wk := testWiki(t)
+	writeNote(t, wk, "Mixed", "body")
+
+	subdir := filepath.Join(wk.NoteDir(), "Mixed")
+	os.MkdirAll(filepath.Join(subdir, "nested"), 0755)
+	os.WriteFile(filepath.Join(subdir, "file.txt"), []byte("ok"), 0644)
+
+	result := wk.Get("Mixed", false)
+	if result == nil {
+		t.Fatal("expected note, got nil")
+	}
+	var names []string
+	json.Unmarshal([]byte(result["attachments"]), &names)
+	if len(names) != 1 || names[0] != "file.txt" {
+		t.Errorf("expected [file.txt], got %v", names)
 	}
 }

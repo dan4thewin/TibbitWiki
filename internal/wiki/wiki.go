@@ -3,6 +3,7 @@
 package wiki
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -190,7 +191,40 @@ func (w *Wiki) buildNote(title string, td *tid.Note, renderPlain bool) map[strin
 			result["html"] = render.ToHTML(text)
 		}
 	}
+	if a := w.noteAttachments(title); a != "" {
+		result["attachments"] = a
+	}
 	return result
+}
+
+// noteAttachments returns a JSON array of attachment file names for a
+// note, or "" if the note has no subdirectory or no files in it.
+// Shadow .pdf.md files are excluded.
+func (w *Wiki) noteAttachments(title string) string {
+	if w.noteDir == "" {
+		return ""
+	}
+	subdir := filepath.Join(w.noteDir, title)
+	entries, err := os.ReadDir(subdir)
+	if err != nil {
+		return ""
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if strings.HasSuffix(name, ".pdf.md") {
+			continue
+		}
+		names = append(names, name)
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	data, _ := json.Marshal(names)
+	return string(data)
 }
 
 // Put saves a note. clientRev is the client's last-known revision
