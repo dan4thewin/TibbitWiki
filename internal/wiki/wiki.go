@@ -236,6 +236,7 @@ func (w *Wiki) Delete(title string) {
 // Symlinked notes are fetched live from their owning wikis.
 func (w *Wiki) List() []map[string]string {
 	var result []map[string]string
+	var syms map[string]string
 	w.do(func() {
 		all := w.store.All()
 		result = make([]map[string]string, 0, len(all)+len(w.symlinks))
@@ -249,9 +250,16 @@ func (w *Wiki) List() []map[string]string {
 			}
 			result = append(result, fields)
 		}
+		// Snapshot symlinks under the event loop lock.
+		if len(w.symlinks) > 0 {
+			syms = make(map[string]string, len(w.symlinks))
+			for k, v := range w.symlinks {
+				syms[k] = v
+			}
+		}
 	})
 	// Append symlinked notes from owner wikis.
-	for title, owner := range w.symlinks {
+	for title, owner := range syms {
 		ow := w.hub.Wiki(owner)
 		if ow == nil {
 			continue
@@ -683,8 +691,14 @@ func (w *Wiki) isUnchanged(td *tid.Note) bool {
 	if !metaFieldsEqual(existing.Fields, td.Fields) {
 		return false
 	}
+	// Check body against cache. If the body was evicted, metadata
+	// match alone is sufficient — a watcher echo of our own write
+	// should not create a phantom RCS revision.
 	cached, ok := w.body.Get(td.Title())
-	return ok && cached == td.Text()
+	if !ok {
+		return true
+	}
+	return cached == td.Text()
 }
 
 // rescan clears all state and re-reads every .md file from noteDir.

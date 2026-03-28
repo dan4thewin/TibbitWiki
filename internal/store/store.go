@@ -127,11 +127,14 @@ func (s *Store) RCS(title string) (rev, head string) {
 	return "", ""
 }
 
-// All returns all notes sorted by title.
+// All returns all notes sorted by title. Entries that have
+// metadata (filePath, RCS) but no note yet are excluded.
 func (s *Store) All() []*tid.Note {
 	result := make([]*tid.Note, 0, len(s.entries))
 	for _, e := range s.entries {
-		result = append(result, e.note)
+		if e.note != nil {
+			result = append(result, e.note)
+		}
 	}
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Title() < result[j].Title()
@@ -139,7 +142,14 @@ func (s *Store) All() []*tid.Note {
 	return result
 }
 
-// Count returns the number of notes in the store.
+// Count returns the number of notes in the store, excluding
+// ghost entries that only have metadata.
 func (s *Store) Count() int {
-	return len(s.entries)
+	n := 0
+	for _, e := range s.entries {
+		if e.note != nil {
+			n++
+		}
+	}
+	return n
 }

@@ -293,3 +293,38 @@ func TestDeleteClearsRCS(t *testing.T) {
 		t.Errorf("rcs after delete = %q/%q, want empty", rev, head)
 	}
 }
+
+// TestGhostEntryAllSafe verifies that SetFilePath/SetRCS without
+// a prior Put does not cause All() to panic on nil notes.
+func TestGhostEntryAllSafe(t *testing.T) {
+	s := New()
+	s.SetFilePath("Ghost", "/tmp/Ghost.md")
+	s.SetRCS("Ghost2", "1.1", "1.3")
+
+	// All should not panic and should return empty — ghosts excluded.
+	notes := s.All()
+	if len(notes) != 0 {
+		t.Errorf("All() returned %d notes, want 0 (ghosts excluded)", len(notes))
+	}
+}
+
+// TestGhostEntryCountExcluded verifies Count excludes ghost entries.
+func TestGhostEntryCountExcluded(t *testing.T) {
+	s := New()
+	s.Put(makeNote("Real", ""))
+	s.SetFilePath("Ghost", "/tmp/Ghost.md")
+
+	if c := s.Count(); c != 1 {
+		t.Errorf("Count() = %d, want 1 (ghost excluded)", c)
+	}
+}
+
+// TestGhostEntryGetReturnsNil verifies Get on a ghost entry
+// returns nil (no note yet).
+func TestGhostEntryGetReturnsNil(t *testing.T) {
+	s := New()
+	s.SetFilePath("Ghost", "/tmp/Ghost.md")
+	if n := s.Get("Ghost"); n != nil {
+		t.Errorf("Get(Ghost) = %v, want nil", n)
+	}
+}

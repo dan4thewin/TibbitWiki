@@ -2261,3 +2261,38 @@ func TestIsUnchangedMetaDiffers(t *testing.T) {
 		t.Errorf("tags = %q, want %q", got.Fields["tags"], "NewTag")
 	}
 }
+
+// TestIsUnchangedCacheMiss verifies that isUnchanged returns true
+// when metadata matches but body was evicted from cache (preventing
+// phantom RCS checkins from watcher echo).
+func TestIsUnchangedCacheMiss(t *testing.T) {
+	// cacheSize=2 so third note evicts the first.
+	wk := New("test", t.TempDir(), nil, 2)
+	wk.Start()
+	defer wk.Stop()
+
+	checkins := 0
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error {
+		checkins++
+		return nil
+	})
+	defer patches.Reset()
+
+	// Write 3 notes — first body gets evicted from LRU cache.
+	writeNote(t, wk, "A", "alpha")
+	writeNote(t, wk, "B", "bravo")
+	writeNote(t, wk, "C", "charlie")
+
+	// Record checkins so far (3 from writeNote + Put flow).
+	before := checkins
+
+	// Trigger reload of A (same content on disk) — should be detected
+	// as unchanged even without cache hit, avoiding phantom checkin.
+	path := filepath.Join(wk.NoteDir(), tid.TitleToFilename("A"))
+	wk.Reload(path)
+	wk.Do(func() {})
+
+	if checkins != before {
+		t.Errorf("phantom checkin: checkins went from %d to %d", before, checkins)
+	}
+}
