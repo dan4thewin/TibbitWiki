@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S python3 -u
 """pdf2md — convert PDFs to shadow .md files for search indexing.
 
 Pipeline: pdftotext extracts raw text, ollama cleans it into markdown.
@@ -60,20 +60,20 @@ def ollama_generate(text, model, host):
         "model": model,
         "prompt": f"{PROMPT}\n\n---\n\n{text}",
         "stream": False,
-        "options": {"temperature": 0.1, "num_ctx": 8192},
+        "options": {"temperature": 0.1, "num_ctx": 4096},
     }).encode()
     req = urllib.request.Request(
         url, data=payload,
         headers={"Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=300) as resp:
+        with urllib.request.urlopen(req, timeout=120) as resp:
             data = json.loads(resp.read())
             return data.get("response", ""), None
     except urllib.error.URLError as e:
         return None, f"ollama error: {e}"
     except TimeoutError:
-        return None, "ollama timeout (300s)"
+        return None, "ollama timeout (120s)"
 
 
 def convert_one(pdf_path, model, host, force=False):
@@ -90,7 +90,7 @@ def convert_one(pdf_path, model, host, force=False):
         return False
 
     # Truncate very long PDFs to avoid overwhelming the model.
-    max_chars = 30000
+    max_chars = 15000
     truncated = False
     if len(text) > max_chars:
         text = text[:max_chars]
