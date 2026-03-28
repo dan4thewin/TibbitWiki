@@ -26,6 +26,7 @@ import (
 var md = goldmark.New(
 	goldmark.WithExtensions(
 		extension.Linkify,
+		extension.Table,
 		highlighting.NewHighlighting(
 			highlighting.WithStyle("onedark"),
 			highlighting.WithFormatOptions(
