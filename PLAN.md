@@ -431,30 +431,30 @@ GPT-5.4, Opus 4.5 arbiter). The reconciled plan prioritizes security
 boundaries first (they are prerequisites for trustworthy tests), then
 crash/data bugs, then test harness repair, then coverage expansion.
 
-### Phase 1: Command boundaries
+### Phase 1: Command boundaries ✓
 
-- [ ] RCS: `--` before paths, validate rev with `^\d+\.\d+$`
-- [ ] Search: `--` before dir arg, regex-aware OR parser
-- [ ] Editor: enforce `%s` contract, require `--` in template
+- [x] RCS: `--` before paths, validate rev with `^\d+\.\d+$`
+- [x] Search: `--` before dir arg, regex-aware OR parser
+- [x] Editor: enforce `%s` contract, require `--` in template
 
-### Phase 2: Output encoding
+### Phase 2: Output encoding ✓
 
-- [ ] Render: `html.EscapeString` on diff fallback
-- [ ] Server: escape wiki names in selector HTML
-- [ ] Render: sanitize theme CSS values
+- [x] Render: `html.EscapeString` on diff fallback
+- [x] Server: escape wiki names in selector HTML
+- [x] Render: sanitize theme CSS values
 
-### Phase 3: Core invariants
+### Phase 3: Core invariants ✓
 
-- [ ] Store: prevent ghost entries from SetFilePath/SetRCS
-- [ ] Wiki: move symlinks read inside w.do()
-- [ ] Wiki: compare content before ci -l on reload
+- [x] Store: prevent ghost entries from SetFilePath/SetRCS
+- [x] Wiki: move symlinks read inside w.do()
+- [x] Wiki: compare content before ci -l on reload
 
-### Phase 4: Persistence/config
+### Phase 4: Persistence/config ✓
 
-- [ ] Tid: fix percent-encoding roundtrip (`%2F` corruption)
-- [ ] RCS: propagate MkdirAll error
-- [ ] Config: propagate Defaults() error
-- [ ] Tid: handle "text" header collision
+- [x] Tid: fix percent-encoding roundtrip (`%2F` corruption)
+- [x] RCS: propagate MkdirAll error
+- [x] Config: propagate Defaults() error
+- [x] Tid: handle "text" header collision
 
 ### Phase 5: Test harness rehab
 
