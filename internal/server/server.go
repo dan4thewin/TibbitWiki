@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"os"
@@ -140,7 +141,8 @@ li a:hover { color: var(--tw-accent_hover); border-color: var(--tw-accent); }
 </style></head><body>`)
 	fmt.Fprint(w, "<h1>TibbitWiki</h1><ul>")
 	for _, name := range names {
-		fmt.Fprintf(w, `<li><a href="/%s/">%s</a></li>`, name, name)
+		esc := html.EscapeString(name)
+		fmt.Fprintf(w, `<li><a href="/%s/">%s</a></li>`, esc, esc)
 	}
 	fmt.Fprint(w, "</ul></body></html>")
 }

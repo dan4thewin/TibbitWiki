@@ -563,3 +563,59 @@ func (f *failTokenLexer) Tokenise(_ *chroma.TokeniseOptions, _ string) (chroma.I
 func (f *failTokenLexer) SetRegistry(_ *chroma.LexerRegistry) chroma.Lexer { return f }
 func (f *failTokenLexer) SetAnalyser(_ func(string) float32) chroma.Lexer  { return f }
 func (f *failTokenLexer) AnalyseText(_ string) float32                     { return 0 }
+
+// TestSanitizeCSSValue verifies that dangerous characters are
+// stripped from CSS values to prevent injection.
+func TestSanitizeCSSValue(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"#1a1a2e", "#1a1a2e"},
+		{"red", "red"},
+		{"}</style><script>alert(1)</script>", "/stylescriptalert(1)/script"},
+		{"foo;bar", "foobar"},
+		{"foo\nbar", "foobar"},
+	}
+	for _, tc := range cases {
+		got := sanitizeCSSValue(tc.in)
+		if got != tc.want {
+			t.Errorf("sanitizeCSSValue(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestGenerateThemeCSSInjection verifies that malicious theme
+// values cannot break out of the CSS property context.
+func TestGenerateThemeCSSInjection(t *testing.T) {
+	theme := map[string]string{
+		"bg": "}</style><script>alert(1)</script>",
+	}
+	css := GenerateThemeCSS(theme)
+	if strings.Contains(css, "<script>") {
+		t.Error("CSS injection: <script> tag found in output")
+	}
+	if strings.Contains(css, "}") && strings.Contains(css, "</style>") {
+		t.Error("CSS injection: breakout sequence found")
+	}
+}
+
+// TestDiffToHTMLXSS verifies that the <pre> fallback escapes
+// HTML in the diff text to prevent XSS.
+func TestDiffToHTMLXSS(t *testing.T) {
+	// Patch Coalesce to force the tokenise-error fallback path.
+	patches := gomonkey.ApplyFunc(chroma.Coalesce,
+		func(lexer chroma.Lexer) chroma.Lexer {
+			return &failTokenLexer{}
+		},
+	)
+	defer patches.Reset()
+
+	xss := `<script>alert("xss")</script>`
+	got := DiffToHTML(xss)
+	if strings.Contains(got, "<script>") {
+		t.Errorf("XSS in DiffToHTML fallback: got %s", got)
+	}
+	if !strings.Contains(got, "&lt;script&gt;") {
+		t.Errorf("expected escaped output, got %s", got)
+	}
+}

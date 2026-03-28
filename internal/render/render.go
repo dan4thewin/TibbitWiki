@@ -4,8 +4,10 @@ package render
 import (
 	"bytes"
 	"fmt"
+	stdhtml "html"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/alecthomas/chroma/v2"
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
@@ -184,6 +186,14 @@ func ThemeCSS() string {
 	return buf.String()
 }
 
+// sanitizeCSSValue strips characters that could break out of a CSS
+// property value context: }, <, >, ;, {, and newlines.
+func sanitizeCSSValue(s string) string {
+	return strings.NewReplacer(
+		"}", "", "{", "", "<", "", ">", "", ";", "", "\n", "", "\r", "",
+	).Replace(s)
+}
+
 // GenerateThemeCSS produces a complete CSS file: custom properties
 // from the theme map on :root, followed by chroma syntax highlighting.
 func GenerateThemeCSS(theme map[string]string) string {
@@ -198,7 +208,8 @@ func GenerateThemeCSS(theme map[string]string) string {
 	sort.Strings(keys)
 
 	for _, k := range keys {
-		fmt.Fprintf(&buf, "  --tw-%s: %s;\n", k, theme[k])
+		fmt.Fprintf(&buf, "  --tw-%s: %s;\n",
+			sanitizeCSSValue(k), sanitizeCSSValue(theme[k]))
 	}
 	buf.WriteString("}\n")
 
@@ -224,11 +235,11 @@ func DiffToHTML(diff string) string {
 	formatter := chromahtml.New(chromahtml.WithClasses(true))
 	iter, err := lexer.Tokenise(nil, diff)
 	if err != nil {
-		return "<pre>" + diff + "</pre>"
+		return "<pre>" + stdhtml.EscapeString(diff) + "</pre>"
 	}
 	var buf bytes.Buffer
 	if err := formatter.Format(&buf, style, iter); err != nil {
-		return "<pre>" + diff + "</pre>"
+		return "<pre>" + stdhtml.EscapeString(diff) + "</pre>"
 	}
 	return buf.String()
 }
