@@ -43,15 +43,16 @@ func isoNow() string {
 
 // Wiki manages notes in a directory with a serialized event loop.
 type Wiki struct {
-	Name     string
-	noteDir  string
-	store    *store.Store
-	editor   *editor.Editor
-	body     *lru.Cache[string, string]
-	ops      chan func()
-	done     chan struct{}
-	symlinks map[string]string // title → owner wiki name
-	hub      *Hub
+	Name          string
+	noteDir       string
+	store         *store.Store
+	editor        *editor.Editor
+	body          *lru.Cache[string, string]
+	ops           chan func()
+	done          chan struct{}
+	symlinks      map[string]string // title → owner wiki name
+	hub           *Hub
+	attachExclude []string
 }
 
 // New creates a Wiki for the given directory.
@@ -86,6 +87,9 @@ func (w *Wiki) SetSymlinks(m map[string]string) { w.symlinks = m }
 // SetHub gives this wiki access to the hub for symlink delegation.
 // Called once after all wikis are created.
 func (w *Wiki) SetHub(h *Hub) { w.hub = h }
+
+// SetAttachExclude sets the list of suffixes to hide from attachment listings.
+func (w *Wiki) SetAttachExclude(exts []string) { w.attachExclude = exts }
 
 // ScanRCS detects notes checked out at non-head revisions by
 // looking for read-only files with a CHECKOUT symbolic tag.
@@ -199,7 +203,7 @@ func (w *Wiki) buildNote(title string, td *tid.Note, renderPlain bool) map[strin
 
 // noteAttachments returns a JSON array of attachment file names for a
 // note, or "" if the note has no subdirectory or no files in it.
-// Shadow .pdf.md files are excluded.
+// Files matching any suffix in w.attachExclude are hidden.
 func (w *Wiki) noteAttachments(title string) string {
 	if w.noteDir == "" {
 		return ""
@@ -215,7 +219,7 @@ func (w *Wiki) noteAttachments(title string) string {
 			continue
 		}
 		name := e.Name()
-		if strings.HasSuffix(name, ".pdf.md") {
+		if w.excluded(name) {
 			continue
 		}
 		names = append(names, name)
@@ -225,6 +229,16 @@ func (w *Wiki) noteAttachments(title string) string {
 	}
 	data, _ := json.Marshal(names)
 	return string(data)
+}
+
+// excluded returns true if name matches any suffix in attachExclude.
+func (w *Wiki) excluded(name string) bool {
+	for _, ext := range w.attachExclude {
+		if strings.HasSuffix(name, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 // Put saves a note. clientRev is the client's last-known revision

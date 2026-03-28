@@ -7,6 +7,7 @@ editor_cmd: "neovide -- %s"
 poll_interval: 3s
 cache_size: 200
 max_diffs: 10
+attachment_exclude: []
 
 # Theme applies live on save.
 # "shared" is the base for all wikis.  Add a section named after

@@ -86,6 +86,7 @@ func main() {
 	hub := wiki.NewHub(wikis)
 	for _, wk := range wikis {
 		wk.SetHub(hub)
+		wk.SetAttachExclude(cfg.AttachmentExclude)
 	}
 	srv := server.New(hub, ed, &themeRev, pollMS, cfg.MaxDiffs, cfg.IndexHTML, cfg.WikiPath, configPath)
 	httpSrv := &http.Server{Addr: cfg.Listen, Handler: srv}

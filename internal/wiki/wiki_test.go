@@ -2302,6 +2302,7 @@ func TestIsUnchangedCacheMiss(t *testing.T) {
 
 // TestNoteAttachmentsWithFiles verifies that buildNote includes an
 // attachments JSON array when the note has a subdirectory with files.
+// With no exclusion list, all files appear including .pdf.md shadows.
 func TestNoteAttachmentsWithFiles(t *testing.T) {
 	wk := testWiki(t)
 	writeNote(t, wk, "Report", "body text")
@@ -2311,7 +2312,6 @@ func TestNoteAttachmentsWithFiles(t *testing.T) {
 	os.MkdirAll(subdir, 0755)
 	os.WriteFile(filepath.Join(subdir, "chart.png"), []byte("img"), 0644)
 	os.WriteFile(filepath.Join(subdir, "data.pdf"), []byte("pdf"), 0644)
-	// Shadow file should be excluded.
 	os.WriteFile(filepath.Join(subdir, "data.pdf.md"), []byte("shadow"), 0644)
 
 	result := wk.Get("Report", false)
@@ -2326,6 +2326,33 @@ func TestNoteAttachmentsWithFiles(t *testing.T) {
 	if err := json.Unmarshal([]byte(a), &names); err != nil {
 		t.Fatalf("bad attachments JSON: %v", err)
 	}
+	// Default: no exclusions, all 3 files visible.
+	if len(names) != 3 {
+		t.Fatalf("expected 3 attachments, got %d: %v", len(names), names)
+	}
+}
+
+// TestNoteAttachmentsExclude verifies that attachment_exclude
+// hides files matching configured suffixes.
+func TestNoteAttachmentsExclude(t *testing.T) {
+	wk := testWiki(t)
+	wk.SetAttachExclude([]string{".pdf.md", ".bak"})
+	writeNote(t, wk, "Report", "body text")
+
+	subdir := filepath.Join(wk.NoteDir(), "Report")
+	os.MkdirAll(subdir, 0755)
+	os.WriteFile(filepath.Join(subdir, "chart.png"), []byte("img"), 0644)
+	os.WriteFile(filepath.Join(subdir, "data.pdf"), []byte("pdf"), 0644)
+	os.WriteFile(filepath.Join(subdir, "data.pdf.md"), []byte("shadow"), 0644)
+	os.WriteFile(filepath.Join(subdir, "old.bak"), []byte("backup"), 0644)
+
+	result := wk.Get("Report", false)
+	if result == nil {
+		t.Fatal("expected note, got nil")
+	}
+	var names []string
+	json.Unmarshal([]byte(result["attachments"]), &names)
+	// .pdf.md and .bak excluded, chart.png and data.pdf remain.
 	if len(names) != 2 {
 		t.Fatalf("expected 2 attachments, got %d: %v", len(names), names)
 	}

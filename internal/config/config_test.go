@@ -44,6 +44,11 @@ func TestDefaults(t *testing.T) {
 	if cfg.MaxDiffs != 10 {
 		t.Errorf("MaxDiffs = %d, want 10", cfg.MaxDiffs)
 	}
+	if cfg.AttachmentExclude == nil {
+		// YAML [] unmarshals as nil; both nil and empty mean "no exclusions".
+	} else if len(cfg.AttachmentExclude) != 0 {
+		t.Errorf("AttachmentExclude = %v, want empty", cfg.AttachmentExclude)
+	}
 	// Theme must have a "shared" section with wiki_title.
 	theme := DefaultTheme()
 	if theme["shared"] == nil {
@@ -407,5 +412,33 @@ func TestLoadTWCorePathAndIndexHTMLFlags(t *testing.T) {
 	}
 	if cfg.IndexHTML != "/index.html" {
 		t.Errorf("IndexHTML = %q, want %q", cfg.IndexHTML, "/index.html")
+	}
+}
+
+// TestLoadYAMLAttachmentExclude verifies that attachment_exclude
+// is parsed from the YAML config file.
+func TestLoadYAMLAttachmentExclude(t *testing.T) {
+	content := `attachment_exclude: [".pdf.md", ".bak"]
+`
+	f, err := os.CreateTemp("", "tibbitwiki-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString(content)
+	f.Close()
+
+	cfg, err := Load([]string{"--config", f.Name()})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.AttachmentExclude) != 2 {
+		t.Fatalf("AttachmentExclude len = %d, want 2", len(cfg.AttachmentExclude))
+	}
+	if cfg.AttachmentExclude[0] != ".pdf.md" {
+		t.Errorf("AttachmentExclude[0] = %q, want %q", cfg.AttachmentExclude[0], ".pdf.md")
+	}
+	if cfg.AttachmentExclude[1] != ".bak" {
+		t.Errorf("AttachmentExclude[1] = %q, want %q", cfg.AttachmentExclude[1], ".bak")
 	}
 }
