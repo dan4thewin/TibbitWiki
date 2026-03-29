@@ -652,9 +652,12 @@ func TestAttachmentToHTMLConvertError(t *testing.T) {
 			return fmt.Errorf("forced error")
 		})
 	defer patches.Reset()
-	got := AttachmentToHTML("test")
-	if got != "test" {
-		t.Errorf("expected raw source on error, got: %s", got)
+	got := AttachmentToHTML("<script>xss</script>")
+	if strings.Contains(got, "<script>") {
+		t.Errorf("error fallback must escape HTML, got: %s", got)
+	}
+	if !strings.Contains(got, "&lt;script&gt;") {
+		t.Errorf("expected escaped HTML, got: %s", got)
 	}
 }
 

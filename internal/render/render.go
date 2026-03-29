@@ -246,7 +246,7 @@ var attachMd = goldmark.New(
 func AttachmentToHTML(source string) string {
 	var buf bytes.Buffer
 	if err := attachMd.Convert([]byte(source), &buf); err != nil {
-		return source
+		return stdhtml.EscapeString(source)
 	}
 	return buf.String()
 }

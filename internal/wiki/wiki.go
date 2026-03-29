@@ -280,7 +280,8 @@ func (w *Wiki) enqueuePdfs(paths []string) {
 			log.Printf("pdf enqueue %s: %v", filepath.Base(p), err)
 			continue
 		}
-		go cmd.Wait()
+		// Child double-forks and exits immediately; no Wait needed.
+		// The brief zombie is harmless (reaped on next child spawn or exit).
 	}
 }
 

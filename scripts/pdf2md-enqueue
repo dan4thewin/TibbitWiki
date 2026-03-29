@@ -41,9 +41,11 @@ main() {
 
 	mkdir -p "$queue_dir"
 
-	# Symlink the PDF into the queue (basename collision is fine —
-	# same file means same conversion needed).
-	ln -sf "$pdf_path" "$queue_dir/${pdf_path##*/}" 2>/dev/null || true
+	# Symlink the PDF into the queue.  Use a mangled name
+	# (slashes → %%) to avoid basename collisions when different
+	# notes have identically named attachments.
+	local key=${pdf_path//\//%}
+	ln -sf "$pdf_path" "$queue_dir/$key" 2>/dev/null || true
 
 	# Try to become the queue runner (non-blocking flock).
 	local pidfile=$queue_dir/.pid
@@ -53,19 +55,36 @@ main() {
 		exit 0
 	fi
 
-	# We hold the lock. Process every symlink in the queue.
-	local link target shadow
-	for link in "$queue_dir"/*.pdf; do
-		[[ -e $link ]] || continue
-		target=$(readlink "$link" 2>/dev/null) || target=$link
-		shadow=${target}.md
-		if [[ -f $shadow ]]; then
+	# Double fork: background the runner so the Go parent's
+	# cmd.Wait() returns immediately.  The subshell inherits
+	# fd 9 and the flock — lock held until the queue is drained.
+	run_queue "$@" &
+}
+
+# Process every symlink in the queue.  Runs as a backgrounded
+# grandchild, reparented to init when the parent exits.
+# Rescans until empty so late enqueues are not missed.
+run_queue() {
+	shopt -s nocaseglob nullglob
+	local found=true
+	while $found; do
+		found=false
+		local link target shadow
+		for link in "$queue_dir"/*; do
+			[[ -L $link ]] || continue
+			found=true
+			target=$(readlink "$link" 2>/dev/null) || target=$link
+			shadow=${target}.md
+			if [[ -f $shadow ]]; then
+				rm -f "$link"
+				continue
+			fi
+			pr "converting ${target##*/}"
+			if ! "$scriptdir/pdf2md" "$target" "$@"; then
+				pr "WARN: pdf2md failed for ${target##*/}"
+			fi
 			rm -f "$link"
-			continue
-		fi
-		pr "converting ${target##*/}"
-		"$scriptdir/pdf2md" "$target" "$@" || true
-		rm -f "$link"
+		done
 	done
 }
 
