@@ -264,6 +264,9 @@ ripgrep` or `apt install ripgrep`).
 | `a\|b` | OR |
 | `a b` | AND (space = set intersection) |
 
+Space separates tokens — no quoting. To match a literal space in a
+regex use `\s` or `\x20` (e.g. `/hello\sworld/`).
+
 ## Architecture
 
 ```

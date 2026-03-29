@@ -135,3 +135,6 @@ notes. Clicking a missing link creates the note.
 | `/regex/` | regular expression |
 | `a\|b` | either term (OR, no spaces) |
 | `a b` | both terms (AND) |
+
+Space separates tokens — no quoting. To match a literal space
+use `\s` or `\x20` in a regex (e.g. `/hello\sworld/`).

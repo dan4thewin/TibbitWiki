@@ -66,6 +66,9 @@ tag pill to search for all notes with that tag.
 | `a\|b` | either term (no spaces) |
 | `a b` | both terms |
 
+Space separates tokens. Use `\s` in a regex to match a literal
+space (e.g. `/hello\sworld/`).
+
 ## Theme
 
 Edit `config.yaml` (click ⚙ → Edit config) to change colors,
