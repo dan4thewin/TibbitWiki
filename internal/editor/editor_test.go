@@ -6,12 +6,12 @@ import (
 
 // TestNewEditor verifies that New stores the command template.
 func TestNewEditor(t *testing.T) {
-	e, err := New("neovide -- %s")
+	e, err := New("open /Applications/Neovide.app --args %s")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if e.Command() != "neovide -- %s" {
-		t.Errorf("Command() = %q, want %q", e.Command(), "neovide -- %s")
+	if e.Command() != "open /Applications/Neovide.app --args %s" {
+		t.Errorf("Command() = %q, want %q", e.Command(), "open /Applications/Neovide.app --args %s")
 	}
 }
 

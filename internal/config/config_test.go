@@ -32,8 +32,8 @@ func TestDefaults(t *testing.T) {
 	if cfg.WikiPath != "." {
 		t.Errorf("WikiPath = %q, want %q", cfg.WikiPath, ".")
 	}
-	if cfg.EditorCmd != "neovide -- %s" {
-		t.Errorf("EditorCmd = %q, want %q", cfg.EditorCmd, "neovide -- %s")
+	if cfg.EditorCmd != "open /Applications/Neovide.app --args %s" {
+		t.Errorf("EditorCmd = %q, want %q", cfg.EditorCmd, "open /Applications/Neovide.app --args %s")
 	}
 	if cfg.PollInterval != 3*time.Second {
 		t.Errorf("PollInterval = %v, want %v", cfg.PollInterval, 3*time.Second)

@@ -9,13 +9,13 @@ import (
 
 // Editor manages launching an external editor process.
 type Editor struct {
-	cmdTemplate string // e.g. "neovide -- %s"
+	cmdTemplate string // e.g. "open /Applications/Neovide.app --args %s"
 }
 
 // New creates an Editor with the given command template.
 // The template must contain at least one %s placeholder which will
 // be replaced with the file path. Templates should include "--"
-// before %s to prevent flag injection (e.g. "neovide -- %s").
+// before %s to prevent flag injection (e.g. "open /Applications/Neovide.app --args %s").
 func New(cmdTemplate string) (*Editor, error) {
 	parts := strings.Fields(cmdTemplate)
 	if len(parts) == 0 {
