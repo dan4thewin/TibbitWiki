@@ -2431,10 +2431,10 @@ func TestNoteAttachmentsSkipsSubdirs(t *testing.T) {
 }
 
 // TestNoteAttachmentsEnqueuePdf verifies that unconverted PDFs
-// trigger the configured enqueue command.
+// trigger the configured enqueue command with template expansion.
 func TestNoteAttachmentsEnqueuePdf(t *testing.T) {
 	wk := testWiki(t)
-	wk.SetPdfConvertCmd("/bin/echo")
+	wk.SetPdfConvertCmd("/bin/echo %s %d/.pdf-queue")
 	writeNote(t, wk, "Report", "body")
 
 	subdir := filepath.Join(wk.NoteDir(), "Report")
@@ -2442,10 +2442,12 @@ func TestNoteAttachmentsEnqueuePdf(t *testing.T) {
 	os.WriteFile(filepath.Join(subdir, "scan.pdf"), []byte("pdf"), 0644)
 
 	// Capture exec calls via the package-level variable.
-	var called []string
+	var calledName string
+	var calledArgs []string
 	orig := execCommand
 	execCommand = func(name string, args ...string) *exec.Cmd {
-		called = append(called, args[0])
+		calledName = name
+		calledArgs = args
 		return exec.Command("true")
 	}
 	defer func() { execCommand = orig }()
@@ -2459,8 +2461,18 @@ func TestNoteAttachmentsEnqueuePdf(t *testing.T) {
 	if len(names) != 1 || names[0] != "scan.pdf" {
 		t.Errorf("expected [scan.pdf], got %v", names)
 	}
-	if len(called) != 1 || !strings.HasSuffix(called[0], "scan.pdf") {
-		t.Errorf("expected enqueue of scan.pdf, got %v", called)
+	if calledName != "/bin/echo" {
+		t.Errorf("command = %q, want /bin/echo", calledName)
+	}
+	if len(calledArgs) != 2 {
+		t.Fatalf("args = %v, want 2 args", calledArgs)
+	}
+	if !strings.HasSuffix(calledArgs[0], "scan.pdf") {
+		t.Errorf("arg[0] = %q, want path ending in scan.pdf", calledArgs[0])
+	}
+	wantQueue := wk.NoteDir() + "/.pdf-queue"
+	if calledArgs[1] != wantQueue {
+		t.Errorf("arg[1] = %q, want %q", calledArgs[1], wantQueue)
 	}
 }
 
@@ -2468,7 +2480,7 @@ func TestNoteAttachmentsEnqueuePdf(t *testing.T) {
 // sibling .pdf.md are NOT enqueued for conversion.
 func TestNoteAttachmentsSkipConvertedPdf(t *testing.T) {
 	wk := testWiki(t)
-	wk.SetPdfConvertCmd("/bin/echo")
+	wk.SetPdfConvertCmd("/bin/echo %s")
 	writeNote(t, wk, "Done", "body")
 
 	subdir := filepath.Join(wk.NoteDir(), "Done")
@@ -2479,7 +2491,7 @@ func TestNoteAttachmentsSkipConvertedPdf(t *testing.T) {
 	var called []string
 	orig := execCommand
 	execCommand = func(name string, args ...string) *exec.Cmd {
-		called = append(called, args[0])
+		called = append(called, args...)
 		return exec.Command("true")
 	}
 	defer func() { execCommand = orig }()
@@ -2519,7 +2531,7 @@ func TestNoteAttachmentsNoConvertCmdDisabled(t *testing.T) {
 // but does not prevent attachment listing from returning.
 func TestEnqueuePdfsCmdError(t *testing.T) {
 	wk := testWiki(t)
-	wk.SetPdfConvertCmd("/nonexistent-binary")
+	wk.SetPdfConvertCmd("/nonexistent-binary %s")
 	writeNote(t, wk, "Bad", "body")
 
 	subdir := filepath.Join(wk.NoteDir(), "Bad")
@@ -2539,5 +2551,41 @@ func TestEnqueuePdfsCmdError(t *testing.T) {
 	json.Unmarshal([]byte(result["attachments"]), &names)
 	if len(names) != 1 || names[0] != "fail.pdf" {
 		t.Errorf("expected [fail.pdf], got %v", names)
+	}
+}
+
+// TestEnqueuePdfsWikiNameExpansion verifies that %n expands to the
+// wiki name in the convert command template.
+func TestEnqueuePdfsWikiNameExpansion(t *testing.T) {
+	wk := testWiki(t)
+	wk.SetPdfConvertCmd("/bin/echo --wiki %n %s")
+	writeNote(t, wk, "Img", "body")
+
+	subdir := filepath.Join(wk.NoteDir(), "Img")
+	os.MkdirAll(subdir, 0755)
+	os.WriteFile(filepath.Join(subdir, "pic.pdf"), []byte("pdf"), 0644)
+
+	var calledArgs []string
+	orig := execCommand
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		calledArgs = args
+		return exec.Command("true")
+	}
+	defer func() { execCommand = orig }()
+
+	wk.Get("Img", false)
+	// Template: /bin/echo --wiki %n %s
+	// Expect args: ["--wiki", "test", "<path>/pic.pdf"]
+	if len(calledArgs) != 3 {
+		t.Fatalf("args = %v, want 3 args", calledArgs)
+	}
+	if calledArgs[0] != "--wiki" {
+		t.Errorf("arg[0] = %q, want --wiki", calledArgs[0])
+	}
+	if calledArgs[1] != wk.Name {
+		t.Errorf("arg[1] = %q, want wiki name %q", calledArgs[1], wk.Name)
+	}
+	if !strings.HasSuffix(calledArgs[2], "pic.pdf") {
+		t.Errorf("arg[2] = %q, want path ending in pic.pdf", calledArgs[2])
 	}
 }

@@ -84,7 +84,7 @@ editor_cmd: "open /Applications/Neovide.app --args %s"
 poll_interval: 3s
 cache_size: 200
 attachment_exclude: [".pdf.md"]  # hide PDF shadow files
-pdf_convert_cmd: ""              # e.g. "pdf2md-enqueue" (see below)
+pdf_convert_cmd: ""              # e.g. "pdf2md-enqueue %s %d/.pdf-queue"
 
 theme:
   bg:     "#1a1a2e"
@@ -176,9 +176,14 @@ shadow files. This makes PDF content findable via ripgrep search.
    ```
 3. Enable in config.yaml:
    ```yaml
-   pdf_convert_cmd: "pdf2md-enqueue"
+   pdf_convert_cmd: "pdf2md-enqueue %s %d/.pdf-queue"
    attachment_exclude: [".pdf.md"]
    ```
+
+   Template specifiers: `%s` = PDF path, `%n` = wiki name,
+   `%d` = wiki note directory. Use these to control where the
+   queue lives (e.g. `pdf2md-enqueue %s /run/tw-queue/%n` for
+   an ephemeral queue).
 
 ### How it works
 

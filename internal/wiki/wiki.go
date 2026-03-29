@@ -269,13 +269,19 @@ func (w *Wiki) excluded(name string) bool {
 }
 
 // enqueuePdfs fires off the configured convert command for each PDF path.
+// Template specifiers: %s = PDF path, %n = wiki name, %d = wiki note dir.
 // Each invocation is fire-and-forget: errors are logged, not propagated.
 var execCommand = exec.Command
 
 func (w *Wiki) enqueuePdfs(paths []string) {
-	queueDir := filepath.Join(w.noteDir, ".pdf-queue")
 	for _, p := range paths {
-		cmd := execCommand(w.pdfConvertCmd, p, queueDir)
+		parts := strings.Fields(w.pdfConvertCmd)
+		for i, tok := range parts {
+			tok = strings.Replace(tok, "%n", w.Name, -1)
+			tok = strings.Replace(tok, "%d", w.noteDir, -1)
+			parts[i] = strings.Replace(tok, "%s", p, -1)
+		}
+		cmd := execCommand(parts[0], parts[1:]...)
 		if err := cmd.Start(); err != nil {
 			log.Printf("pdf enqueue %s: %v", filepath.Base(p), err)
 			continue

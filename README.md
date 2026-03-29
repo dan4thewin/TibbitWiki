@@ -162,7 +162,7 @@ poll_interval: 3s
 cache_size: 200
 max_diffs: 10
 attachment_exclude: []       # suffixes to hide, e.g. [".pdf.md"]
-pdf_convert_cmd: ""         # e.g. "pdf2md-enqueue" (empty = disabled)
+pdf_convert_cmd: ""         # template: %s=path %n=wiki %d=dir
 
 # Theme applies live on save:
 theme:

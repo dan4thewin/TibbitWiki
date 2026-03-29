@@ -11,7 +11,8 @@ max_diffs: 10
 # Empty = show all files.  Example: [".pdf.md", ".bak"]
 attachment_exclude: []
 # Command to enqueue unconverted PDFs (empty = disabled).
-# Example: "scripts/pdf2md-enqueue"
+# Template: %s = PDF path, %n = wiki name, %d = wiki note dir.
+# Example: "pdf2md-enqueue %s %d/.pdf-queue"
 pdf_convert_cmd: ""
 
 # Theme applies live on save.
