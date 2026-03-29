@@ -79,7 +79,7 @@ html { font-family: system-ui, sans-serif; font-size: 14px; background: #111; co
 .tw .note-body p { margin: 1em 0; }
 .tw .note-body p:first-child { margin-top: 0; }
 .tw .note-body code { background: var(--tw-code_bg); padding: 2px 6px; border-radius: 3px; font-size: 0.9em; font-family: var(--tw-code_font); }
-.tw .note-body pre { background: var(--tw-code_bg); padding: 12px; border-radius: var(--tw-note_radius); overflow-x: auto; position: relative; cursor: pointer; font-family: var(--tw-code_font); }
+.tw .note-body pre { background: var(--tw-code_bg); padding: 12px; border-radius: var(--tw-note_radius); overflow-x: auto; position: relative; cursor: pointer; font-family: var(--tw-code_font); tab-size: var(--tw-code_tab_size); }
 .tw .note-body pre:hover::after { content: 'click to edit'; position: absolute; top: 4px; right: 8px; font-size: 11px; color: var(--tw-accent); opacity: 0.6; font-family: sans-serif; }
 .tw .note-body pre.editing { cursor: default; }
 .tw .note-body pre.editing:hover::after { display: none; }
@@ -280,6 +280,7 @@ const THEME = {
     ['font_family', '-apple-system, BlinkMacSystemFont, sans-serif', 'Body font stack'],
     ['font_size',   '16px',   'Base text size'],
     ['code_font',   'SF Mono, Consolas, monospace', 'Monospace font'],
+    ['code_tab_size', '4',    'Tab width in code blocks'],
     ['line_height', '1.6',    'Body line spacing'],
   ],
   layout: [

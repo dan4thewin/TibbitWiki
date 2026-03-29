@@ -40,6 +40,7 @@ theme:
     font_family:  "-apple-system, BlinkMacSystemFont, sans-serif"  # Body font stack
     font_size:    "16px"          # Base text size
     code_font:    "SF Mono, Consolas, monospace"  # Monospace font
+    code_tab_size: "4"            # Tab width in code blocks
     line_height:  "1.6"           # Body line spacing
     # Layout
     note_radius:    "6px"         # Card corner radius

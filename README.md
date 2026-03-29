@@ -194,6 +194,30 @@ CLI flags override config file values.
 | POST | `/{wiki}/revisions/{title}/checkout?rev=1.3` | Checkout revision (or head if no rev) |
 | POST | `/{wiki}/revisions/{title}/promote` | Promote checked-out revision as new head |
 
+## Note format
+
+Notes are `.md` files with RFC 822-style headers, a blank line, and a
+markdown body:
+
+```
+title: My Note
+tags: code example
+tab-size: 8
+
+# Heading
+
+Body text with **markdown**.
+```
+
+Standard headers: `title`, `tags`, `created`, `modified`.
+
+Any custom header is preserved through the API as a top-level JSON
+field. The client currently recognises one custom header:
+
+| Header | Effect |
+|--------|--------|
+| `tab-size` | Override the theme default (`code_tab_size`) for code blocks in this note. Useful for notes containing Go or Makefile snippets that use 8-space tabs. |
+
 ## Editing notes
 
 Two ways:

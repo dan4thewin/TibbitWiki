@@ -82,7 +82,7 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
 .note-body { line-height: var(--tw-line_height); }
 .note-body img { max-width: 100%; height: auto; }
 .note-body code { background: var(--tw-code_bg); padding: 2px 6px; border-radius: 3px; font-size: 0.9em; font-family: var(--tw-code_font); }
-.note-body pre { background: var(--tw-code_bg); padding: 12px; border-radius: var(--tw-note_radius); overflow-x: auto; position: relative; cursor: pointer; font-family: var(--tw-code_font); }
+.note-body pre { background: var(--tw-code_bg); padding: 12px; border-radius: var(--tw-note_radius); overflow-x: auto; position: relative; cursor: pointer; font-family: var(--tw-code_font); tab-size: var(--tw-code_tab_size); }
 .note-body pre:hover::after { content: 'click to edit'; position: absolute; top: 4px; right: 8px; font-size: 11px; color: var(--tw-accent); opacity: 0.6; font-family: sans-serif; }
 .note-body pre.editing { cursor: default; }
 .note-body pre.editing:hover::after { display: none; }
@@ -374,6 +374,7 @@ function renderNote(t) {
 
   const body = document.createElement('div');
   body.className = 'note-body';
+  if (t['tab-size']) body.style.tabSize = t['tab-size'];
   body.innerHTML = linkifyWikiWords(t.html || t.text || '');
   if (t.readOnly !== 'true') {
     injectLineIcons(body, t.title);
@@ -562,6 +563,8 @@ function refreshNote(title) {
       header.after(tagDiv);
       // Update body.
       const body = card.querySelector('.note-body');
+      if (t['tab-size']) body.style.tabSize = t['tab-size'];
+      else body.style.tabSize = '';
       body.innerHTML = linkifyWikiWords(t.html || t.text || '');
       if (!isReadOnly) {
         injectLineIcons(body, t.title);
