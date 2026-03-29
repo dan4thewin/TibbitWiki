@@ -133,5 +133,5 @@ notes. Clicking a missing link creates the note.
 | `#tag` | notes with tag |
 | `@title` | match title only |
 | `/regex/` | regular expression |
-| `a \| b` | either term (OR) |
+| `a\|b` | either term (OR, no spaces) |
 | `a b` | both terms (AND) |

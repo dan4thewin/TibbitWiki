@@ -63,7 +63,7 @@ tag pill to search for all notes with that tag.
 | `#tag` | notes with tag |
 | `@title` | match title only |
 | `/regex/` | regular expression |
-| `a \| b` | either term |
+| `a\|b` | either term (no spaces) |
 | `a b` | both terms |
 
 ## Theme
