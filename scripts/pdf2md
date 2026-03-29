@@ -1,33 +1,35 @@
 #!/usr/bin/env -S python3 -u
-"""pdf2md — convert PDFs to shadow .md files for search indexing.
+"""pdf2md — convert a PDF to a shadow .md file for search indexing.
 
-Pipeline: pdftotext extracts raw text, ollama cleans it into markdown.
-The shadow file sits alongside the PDF as <name>.pdf.md and is
-indexed by rg but excluded from the note store (subdir files are
-never loaded as notes).
+Tries pdftotext first; if the PDF is image-only, falls back to
+vision-model OCR via pdfimages + ollama.  The shadow file sits
+alongside the PDF as <name>.pdf.md.
 
 Usage:
-    pdf2md <pdf_file>                   # convert one PDF
-    pdf2md --batch <wiki_dir>           # convert all unconverted PDFs
-    pdf2md --batch <wiki_dir> --dry-run # show what would be converted
+    pdf2md <pdf_file>                    # convert one PDF
+    pdf2md --force <pdf_file>            # overwrite existing shadow
+    pdf2md --vision-first <pdf_file>     # skip text, go straight to OCR
 
 Options:
-    --model MODEL    ollama model (default: qwen2.5:14b)
-    --host  HOST     ollama API host (default: localhost:11434)
-    --batch DIR      find all PDFs under DIR lacking a .pdf.md sibling
-    --dry-run        with --batch, list files without converting
-    --force          overwrite existing .pdf.md files
+    --model  MODEL   ollama text model (default: qwen2.5:14b)
+    --vision MODEL   ollama vision model (default: granite3.2-vision)
+    --host   HOST    ollama API host (default: localhost:11434)
+    --force          overwrite existing .pdf.md
+    --vision-first   try vision OCR first, skip text model
+    --timeout SECS   per-page vision timeout (default: 300)
 """
 
 import argparse
+import base64
 import json
 import os
 import subprocess
 import sys
+import tempfile
 import urllib.request
 import urllib.error
 
-PROMPT = """Clean up this raw PDF text extraction into well-structured markdown.
+TEXT_PROMPT = """Clean up this raw PDF text extraction into well-structured markdown.
 
 Rules:
 - Fix OCR artifacts, broken words, and line-wrap noise
@@ -37,6 +39,13 @@ Rules:
 - If the text is too garbled to clean up, return it as-is in a code block
 - Output ONLY the cleaned markdown, no commentary"""
 
+VISION_PROMPT = ("Extract all text from this document image "
+                 "into well-structured markdown.")
+
+MAX_DIM = 2048
+
+
+# --- text extraction path ---
 
 def pdftotext(path):
     """Extract text from a PDF using pdftotext."""
@@ -53,17 +62,16 @@ def pdftotext(path):
     return result.stdout, None
 
 
-def ollama_generate(text, model, host):
+def ollama_text(text, model, host):
     """Send text to ollama for cleanup, return cleaned markdown."""
-    url = f"http://{host}/api/generate"
     payload = json.dumps({
         "model": model,
-        "prompt": f"{PROMPT}\n\n---\n\n{text}",
+        "prompt": f"{TEXT_PROMPT}\n\n---\n\n{text}",
         "stream": False,
         "options": {"temperature": 0.1, "num_ctx": 4096},
     }).encode()
     req = urllib.request.Request(
-        url, data=payload,
+        f"http://{host}/api/generate", data=payload,
         headers={"Content-Type": "application/json"},
     )
     try:
@@ -76,11 +84,144 @@ def ollama_generate(text, model, host):
         return None, "ollama timeout (120s)"
 
 
-def pdf_stub(pdf_path):
-    """Build a metadata stub for image-only PDFs (no extractable text)."""
-    lines = ["*Image-only PDF — no extractable text*\n"]
+def convert_text(pdf_path, model, host):
+    """Convert a text-extractable PDF.  Returns markdown or None."""
+    text, err = pdftotext(pdf_path)
+    if err or not text or not text.strip():
+        return None
 
-    # File size.
+    max_chars = 15000
+    truncated = len(text) > max_chars
+    if truncated:
+        text = text[:max_chars]
+
+    cleaned, err = ollama_text(text, model, host)
+    if err or not cleaned:
+        print(f"  WARN ollama failed, using raw text: {err}", file=sys.stderr)
+        cleaned = text
+
+    if truncated:
+        cleaned += "\n\n---\n*[Content truncated — original PDF is longer]*\n"
+
+    return cleaned
+
+
+# --- vision OCR path ---
+
+def dedup(text, window=3):
+    """Truncate text when consecutive lines start repeating."""
+    lines = text.splitlines()
+    if len(lines) <= window * 2:
+        return text
+    for i in range(window, len(lines) - window + 1):
+        chunk = "\n".join(lines[i : i + window])
+        rest = "\n".join(lines[i + window :])
+        if chunk in rest:
+            return ("\n".join(lines[:i + window])
+                    + "\n\n*[Repetitive output truncated]*")
+    return text
+
+
+def maybe_downscale(png_path):
+    """Downscale a PNG if either dimension exceeds MAX_DIM."""
+    try:
+        result = subprocess.run(
+            ["sips", "-g", "pixelWidth", "-g", "pixelHeight", png_path],
+            capture_output=True, text=True, timeout=10,
+        )
+        w = h = 0
+        for line in result.stdout.splitlines():
+            if "pixelWidth" in line:
+                w = int(line.split()[-1])
+            elif "pixelHeight" in line:
+                h = int(line.split()[-1])
+        if max(w, h) <= MAX_DIM:
+            return png_path
+        out = png_path.replace(".png", "-sm.png")
+        flag = "--resampleWidth" if w >= h else "--resampleHeight"
+        subprocess.run(
+            ["sips", flag, str(MAX_DIM), png_path, "--out", out],
+            capture_output=True, timeout=30,
+        )
+        return out
+    except (FileNotFoundError, subprocess.TimeoutExpired, ValueError):
+        return png_path
+
+
+def ocr_page(png_path, model, host, timeout):
+    """Send a page image to the vision model, return markdown text."""
+    png_path = maybe_downscale(png_path)
+    with open(png_path, "rb") as f:
+        img_b64 = base64.b64encode(f.read()).decode("ascii")
+
+    payload = json.dumps({
+        "model": model,
+        "prompt": VISION_PROMPT,
+        "images": [img_b64],
+        "stream": False,
+        "options": {"temperature": 0, "num_predict": 2048,
+                    "repeat_penalty": 1.1},
+    }).encode()
+    req = urllib.request.Request(
+        f"http://{host}/api/generate", data=payload,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read())
+            return dedup(data.get("response", "")), None
+    except urllib.error.URLError as e:
+        return None, f"ollama error: {e}"
+    except TimeoutError:
+        return None, f"ollama timeout ({timeout}s)"
+
+
+def convert_vision(pdf_path, model, host, timeout):
+    """OCR an image-only PDF via pdfimages + vision model.  Returns
+    markdown, or None if pdfimages finds no images."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            subprocess.run(
+                ["pdfimages", "-png", pdf_path,
+                 os.path.join(tmpdir, "page")],
+                capture_output=True, timeout=60, check=True,
+            )
+        except FileNotFoundError:
+            print("error: pdfimages not found (install poppler-utils)",
+                  file=sys.stderr)
+            return None
+        except subprocess.CalledProcessError:
+            return None
+
+        pages = sorted(
+            os.path.join(tmpdir, f) for f in os.listdir(tmpdir)
+            if f.endswith(".png")
+        )
+        if not pages:
+            return None
+
+        sections = []
+        for i, png in enumerate(pages, 1):
+            print(f"    page {i}/{len(pages)}...", end="", flush=True)
+            text, err = ocr_page(png, model, host, timeout)
+            if err:
+                print(f" WARN: {err}", file=sys.stderr)
+                sections.append(f"*[Page {i}: OCR failed — {err}]*")
+            elif text and text.strip():
+                print(" ok")
+                sections.append(text.strip())
+            else:
+                print(" (empty)")
+                sections.append(f"*[Page {i}: no text extracted]*")
+
+    return "\n\n---\n\n".join(sections) + "\n"
+
+
+# --- metadata stub (last resort) ---
+
+def pdf_stub(pdf_path):
+    """Build a metadata stub when neither text nor vision produced content."""
+    lines = ["*Image-only PDF — no extractable text*\n"]
     try:
         size = os.path.getsize(pdf_path)
         if size >= 1024 * 1024:
@@ -89,8 +230,6 @@ def pdf_stub(pdf_path):
             lines.append(f"- File size: {size / 1024:.0f} KB")
     except OSError:
         pass
-
-    # Page count via pdfinfo.
     try:
         result = subprocess.run(
             ["pdfinfo", pdf_path],
@@ -103,128 +242,87 @@ def pdf_stub(pdf_path):
                     break
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
-
-    # Image summary via pdfimages -list.
     try:
         result = subprocess.run(
             ["pdfimages", "-list", pdf_path],
             capture_output=True, text=True, timeout=30,
         )
         if result.returncode == 0:
-            # Each data line has: page num type width height ...
+            from collections import Counter
             imgs = []
-            for line in result.stdout.splitlines()[2:]:  # skip header
+            for line in result.stdout.splitlines()[2:]:
                 parts = line.split()
                 if len(parts) >= 5:
                     imgs.append((parts[2], parts[3], parts[4]))
             if imgs:
-                # Summarise by type+dimensions.
-                from collections import Counter
                 counts = Counter(imgs)
                 descs = []
                 for (typ, w, h), n in counts.most_common():
-                    descs.append(f"{n} {typ} {w}×{h}" if n > 1 else f"{typ} {w}×{h}")
-                lines.append(f"- Images: {len(imgs)} ({', '.join(descs)})")
+                    desc = f"{typ} {w}×{h}"
+                    descs.append(f"{n} {desc}" if n > 1 else desc)
+                lines.append(
+                    f"- Images: {len(imgs)} ({', '.join(descs)})")
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
-
     return "\n".join(lines) + "\n"
 
 
-def convert_one(pdf_path, model, host, force=False):
-    """Convert a single PDF to a shadow .pdf.md file."""
+# --- main entry point ---
+
+def convert_one(pdf_path, text_model, vision_model, host, timeout,
+                force=False, vision_first=False):
+    """Convert a single PDF: text path → vision path → stub."""
     shadow = pdf_path + ".md"
     if os.path.exists(shadow) and not force:
         print(f"  skip (exists): {shadow}")
         return True
 
-    # Extract text.
-    text, err = pdftotext(pdf_path)
-    if err or not text or not text.strip():
-        # Image-only or unreadable: write a metadata stub.
-        stub = pdf_stub(pdf_path)
+    content = None
+    if vision_first:
+        content = convert_vision(pdf_path, vision_model, host, timeout)
+    else:
+        content = convert_text(pdf_path, text_model, host)
+        if not content:
+            print(f"  no text, trying vision model...")
+            content = convert_vision(pdf_path, vision_model, host, timeout)
+
+    if content:
         with open(shadow, "w") as f:
-            f.write(stub)
-        print(f"  stub: {shadow} (no extractable text)")
+            f.write(content)
+        print(f"  ok: {shadow}")
         return True
 
-    # Truncate very long PDFs to avoid overwhelming the model.
-    max_chars = 15000
-    truncated = False
-    if len(text) > max_chars:
-        text = text[:max_chars]
-        truncated = True
-
-    # Clean up via ollama.
-    cleaned, err = ollama_generate(text, model, host)
-    if err or not cleaned:
-        # Fallback: write raw text so the PDF is at least searchable.
-        print(f"  WARN ollama failed, using raw text: {err}", file=sys.stderr)
-        cleaned = text
-
-    if truncated:
-        cleaned += "\n\n---\n*[Content truncated — original PDF is longer]*\n"
-
-    # Write shadow file.
+    # Last resort: metadata stub.
     with open(shadow, "w") as f:
-        f.write(cleaned)
-    print(f"  ok: {shadow}")
+        f.write(pdf_stub(pdf_path))
+    print(f"  stub: {shadow} (no extractable text)")
     return True
-
-
-def find_unconverted(wiki_dir):
-    """Find all PDFs under wiki_dir that lack a sibling .pdf.md."""
-    pdfs = []
-    for root, _dirs, files in os.walk(wiki_dir):
-        for name in files:
-            if name.lower().endswith(".pdf"):
-                pdf_path = os.path.join(root, name)
-                shadow = pdf_path + ".md"
-                if not os.path.exists(shadow):
-                    pdfs.append(pdf_path)
-    pdfs.sort()
-    return pdfs
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Convert PDFs to shadow .md files for search indexing.",
+        description="Convert a PDF to a shadow .md file for search.",
     )
-    parser.add_argument("pdf", nargs="?", help="PDF file to convert")
-    parser.add_argument("--model", default="qwen2.5:14b", help="ollama model")
-    parser.add_argument("--host", default="localhost:11434", help="ollama API host")
-    parser.add_argument("--batch", metavar="DIR", help="convert all unconverted PDFs under DIR")
-    parser.add_argument("--dry-run", action="store_true", help="list files without converting")
-    parser.add_argument("--force", action="store_true", help="overwrite existing .pdf.md files")
+    parser.add_argument("pdf", help="PDF file to convert")
+    parser.add_argument("--model", default="qwen2.5:14b",
+                        help="ollama text model (default: qwen2.5:14b)")
+    parser.add_argument("--vision", default="granite3.2-vision",
+                        help="ollama vision model (default: granite3.2-vision)")
+    parser.add_argument("--host", default="localhost:11434",
+                        help="ollama API host")
+    parser.add_argument("--force", action="store_true",
+                        help="overwrite existing .pdf.md")
+    parser.add_argument("--vision-first", action="store_true",
+                        help="try vision OCR first, skip text model")
+    parser.add_argument("--timeout", type=int, default=300,
+                        help="per-page vision timeout (default: 300)")
     args = parser.parse_args()
 
-    if args.batch:
-        pdfs = find_unconverted(args.batch)
-        if not pdfs:
-            print("no unconverted PDFs found")
-            return
-        print(f"found {len(pdfs)} unconverted PDFs")
-        if args.dry_run:
-            for p in pdfs:
-                print(f"  {p}")
-            return
-        ok = 0
-        fail = 0
-        for i, pdf in enumerate(pdfs, 1):
-            print(f"[{i}/{len(pdfs)}] {os.path.basename(pdf)}")
-            if convert_one(pdf, args.model, args.host, args.force):
-                ok += 1
-            else:
-                fail += 1
-        print(f"\ndone: {ok} converted, {fail} failed")
-    elif args.pdf:
-        if not os.path.isfile(args.pdf):
-            print(f"error: not a file: {args.pdf}", file=sys.stderr)
-            sys.exit(1)
-        convert_one(args.pdf, args.model, args.host, args.force)
-    else:
-        parser.print_help()
+    if not os.path.isfile(args.pdf):
+        print(f"error: not a file: {args.pdf}", file=sys.stderr)
         sys.exit(1)
+    convert_one(args.pdf, args.model, args.vision, args.host,
+                args.timeout, args.force, args.vision_first)
 
 
 if __name__ == "__main__":

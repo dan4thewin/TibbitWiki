@@ -26,3 +26,4 @@ Thumbs.db
 config.yaml
 theme.css
 scripts/wikiname
+scripts/__pycache__/
