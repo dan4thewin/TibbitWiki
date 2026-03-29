@@ -10,6 +10,9 @@ max_diffs: 10
 # Suffixes to hide from the note attachment listing.
 # Empty = show all files.  Example: [".pdf.md", ".bak"]
 attachment_exclude: []
+# Command to enqueue unconverted PDFs (empty = disabled).
+# Example: "scripts/pdf2md-enqueue"
+pdf_convert_cmd: ""
 
 # Theme applies live on save.
 # "shared" is the base for all wikis.  Add a section named after

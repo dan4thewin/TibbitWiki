@@ -34,6 +34,7 @@ type Config struct {
 	CacheSize         int           `yaml:"cache_size"`
 	MaxDiffs          int           `yaml:"max_diffs"`
 	AttachmentExclude []string      `yaml:"attachment_exclude"`
+	PdfConvertCmd     string        `yaml:"pdf_convert_cmd"`
 	Theme             Theme         `yaml:"theme"`
 }
 

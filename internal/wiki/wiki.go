@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -56,6 +57,7 @@ type Wiki struct {
 	symlinks      map[string]string // title → owner wiki name
 	hub           *Hub
 	attachExclude []string
+	pdfConvertCmd string // command to enqueue PDF conversion (empty = disabled)
 }
 
 // New creates a Wiki for the given directory.
@@ -93,6 +95,9 @@ func (w *Wiki) SetHub(h *Hub) { w.hub = h }
 
 // SetAttachExclude sets the list of suffixes to hide from attachment listings.
 func (w *Wiki) SetAttachExclude(exts []string) { w.attachExclude = exts }
+
+// SetPdfConvertCmd sets the command used to enqueue unconverted PDFs.
+func (w *Wiki) SetPdfConvertCmd(cmd string) { w.pdfConvertCmd = cmd }
 
 // ScanRCS detects notes checked out at non-head revisions by
 // looking for read-only files with a CHECKOUT symbolic tag.
@@ -216,22 +221,41 @@ func (w *Wiki) noteAttachments(title string) string {
 	if err != nil {
 		return ""
 	}
-	var names []string
+
+	// Collect visible names and detect unconverted PDFs.
+	has := map[string]bool{}
 	for _, e := range entries {
-		if e.IsDir() {
+		if !e.IsDir() {
+			has[e.Name()] = true
+		}
+	}
+	var names []string
+	var enqueue []string
+	for _, e := range entries {
+		if e.IsDir() || w.excluded(e.Name()) {
 			continue
 		}
-		name := e.Name()
-		if w.excluded(name) {
-			continue
+		names = append(names, e.Name())
+		if w.needsConvert(e.Name(), has) {
+			enqueue = append(enqueue, filepath.Join(subdir, e.Name()))
 		}
-		names = append(names, name)
+	}
+	if len(enqueue) > 0 {
+		w.enqueuePdfs(enqueue)
 	}
 	if len(names) == 0 {
 		return ""
 	}
 	data, _ := json.Marshal(names)
 	return string(data)
+}
+
+// needsConvert returns true if the file is a PDF lacking a .pdf.md sibling
+// and conversion is enabled.
+func (w *Wiki) needsConvert(name string, siblings map[string]bool) bool {
+	return w.pdfConvertCmd != "" &&
+		strings.HasSuffix(strings.ToLower(name), ".pdf") &&
+		!siblings[name+".md"]
 }
 
 // excluded returns true if name matches any suffix in attachExclude.
@@ -242,6 +266,22 @@ func (w *Wiki) excluded(name string) bool {
 		}
 	}
 	return false
+}
+
+// enqueuePdfs fires off the configured convert command for each PDF path.
+// Each invocation is fire-and-forget: errors are logged, not propagated.
+var execCommand = exec.Command
+
+func (w *Wiki) enqueuePdfs(paths []string) {
+	queueDir := filepath.Join(w.noteDir, ".pdf-queue")
+	for _, p := range paths {
+		cmd := execCommand(w.pdfConvertCmd, p, queueDir)
+		if err := cmd.Start(); err != nil {
+			log.Printf("pdf enqueue %s: %v", filepath.Base(p), err)
+			continue
+		}
+		go cmd.Wait()
+	}
 }
 
 // Put saves a note. clientRev is the client's last-known revision

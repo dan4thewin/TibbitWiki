@@ -76,6 +76,61 @@ def ollama_generate(text, model, host):
         return None, "ollama timeout (120s)"
 
 
+def pdf_stub(pdf_path):
+    """Build a metadata stub for image-only PDFs (no extractable text)."""
+    lines = ["*Image-only PDF — no extractable text*\n"]
+
+    # File size.
+    try:
+        size = os.path.getsize(pdf_path)
+        if size >= 1024 * 1024:
+            lines.append(f"- File size: {size / (1024*1024):.1f} MB")
+        else:
+            lines.append(f"- File size: {size / 1024:.0f} KB")
+    except OSError:
+        pass
+
+    # Page count via pdfinfo.
+    try:
+        result = subprocess.run(
+            ["pdfinfo", pdf_path],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if line.startswith("Pages:"):
+                    lines.append(f"- Pages: {line.split(':', 1)[1].strip()}")
+                    break
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    # Image summary via pdfimages -list.
+    try:
+        result = subprocess.run(
+            ["pdfimages", "-list", pdf_path],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0:
+            # Each data line has: page num type width height ...
+            imgs = []
+            for line in result.stdout.splitlines()[2:]:  # skip header
+                parts = line.split()
+                if len(parts) >= 5:
+                    imgs.append((parts[2], parts[3], parts[4]))
+            if imgs:
+                # Summarise by type+dimensions.
+                from collections import Counter
+                counts = Counter(imgs)
+                descs = []
+                for (typ, w, h), n in counts.most_common():
+                    descs.append(f"{n} {typ} {w}×{h}" if n > 1 else f"{typ} {w}×{h}")
+                lines.append(f"- Images: {len(imgs)} ({', '.join(descs)})")
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    return "\n".join(lines) + "\n"
+
+
 def convert_one(pdf_path, model, host, force=False):
     """Convert a single PDF to a shadow .pdf.md file."""
     shadow = pdf_path + ".md"
@@ -86,8 +141,12 @@ def convert_one(pdf_path, model, host, force=False):
     # Extract text.
     text, err = pdftotext(pdf_path)
     if err or not text or not text.strip():
-        print(f"  FAIL pdftotext: {pdf_path}: {err or 'empty output'}", file=sys.stderr)
-        return False
+        # Image-only or unreadable: write a metadata stub.
+        stub = pdf_stub(pdf_path)
+        with open(shadow, "w") as f:
+            f.write(stub)
+        print(f"  stub: {shadow} (no extractable text)")
+        return True
 
     # Truncate very long PDFs to avoid overwhelming the model.
     max_chars = 15000

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -2426,5 +2427,117 @@ func TestNoteAttachmentsSkipsSubdirs(t *testing.T) {
 	json.Unmarshal([]byte(result["attachments"]), &names)
 	if len(names) != 1 || names[0] != "file.txt" {
 		t.Errorf("expected [file.txt], got %v", names)
+	}
+}
+
+// TestNoteAttachmentsEnqueuePdf verifies that unconverted PDFs
+// trigger the configured enqueue command.
+func TestNoteAttachmentsEnqueuePdf(t *testing.T) {
+	wk := testWiki(t)
+	wk.SetPdfConvertCmd("/bin/echo")
+	writeNote(t, wk, "Report", "body")
+
+	subdir := filepath.Join(wk.NoteDir(), "Report")
+	os.MkdirAll(subdir, 0755)
+	os.WriteFile(filepath.Join(subdir, "scan.pdf"), []byte("pdf"), 0644)
+
+	// Capture exec calls via the package-level variable.
+	var called []string
+	orig := execCommand
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		called = append(called, args[0])
+		return exec.Command("true")
+	}
+	defer func() { execCommand = orig }()
+
+	result := wk.Get("Report", false)
+	if result == nil {
+		t.Fatal("expected note, got nil")
+	}
+	var names []string
+	json.Unmarshal([]byte(result["attachments"]), &names)
+	if len(names) != 1 || names[0] != "scan.pdf" {
+		t.Errorf("expected [scan.pdf], got %v", names)
+	}
+	if len(called) != 1 || !strings.HasSuffix(called[0], "scan.pdf") {
+		t.Errorf("expected enqueue of scan.pdf, got %v", called)
+	}
+}
+
+// TestNoteAttachmentsSkipConvertedPdf verifies that PDFs with a
+// sibling .pdf.md are NOT enqueued for conversion.
+func TestNoteAttachmentsSkipConvertedPdf(t *testing.T) {
+	wk := testWiki(t)
+	wk.SetPdfConvertCmd("/bin/echo")
+	writeNote(t, wk, "Done", "body")
+
+	subdir := filepath.Join(wk.NoteDir(), "Done")
+	os.MkdirAll(subdir, 0755)
+	os.WriteFile(filepath.Join(subdir, "doc.pdf"), []byte("pdf"), 0644)
+	os.WriteFile(filepath.Join(subdir, "doc.pdf.md"), []byte("shadow"), 0644)
+
+	var called []string
+	orig := execCommand
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		called = append(called, args[0])
+		return exec.Command("true")
+	}
+	defer func() { execCommand = orig }()
+
+	wk.Get("Done", false)
+	if len(called) != 0 {
+		t.Errorf("expected no enqueue, got %v", called)
+	}
+}
+
+// TestNoteAttachmentsNoConvertCmdDisabled verifies that no enqueue
+// happens when pdf_convert_cmd is empty (disabled).
+func TestNoteAttachmentsNoConvertCmdDisabled(t *testing.T) {
+	wk := testWiki(t)
+	// pdfConvertCmd left empty (default).
+	writeNote(t, wk, "Silent", "body")
+
+	subdir := filepath.Join(wk.NoteDir(), "Silent")
+	os.MkdirAll(subdir, 0755)
+	os.WriteFile(filepath.Join(subdir, "test.pdf"), []byte("pdf"), 0644)
+
+	var called int
+	orig := execCommand
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		called++
+		return exec.Command("true")
+	}
+	defer func() { execCommand = orig }()
+
+	wk.Get("Silent", false)
+	if called != 0 {
+		t.Errorf("expected no enqueue when disabled, got %d calls", called)
+	}
+}
+
+// TestEnqueuePdfsCmdError verifies that a failing command is logged
+// but does not prevent attachment listing from returning.
+func TestEnqueuePdfsCmdError(t *testing.T) {
+	wk := testWiki(t)
+	wk.SetPdfConvertCmd("/nonexistent-binary")
+	writeNote(t, wk, "Bad", "body")
+
+	subdir := filepath.Join(wk.NoteDir(), "Bad")
+	os.MkdirAll(subdir, 0755)
+	os.WriteFile(filepath.Join(subdir, "fail.pdf"), []byte("pdf"), 0644)
+
+	// Restore the real exec.Command for this test so Start() fails.
+	orig := execCommand
+	execCommand = exec.Command
+	defer func() { execCommand = orig }()
+
+	result := wk.Get("Bad", false)
+	if result == nil {
+		t.Fatal("expected note despite enqueue error")
+	}
+	var names []string
+	json.Unmarshal([]byte(result["attachments"]), &names)
+	if len(names) != 1 || names[0] != "fail.pdf" {
+		t.Errorf("expected [fail.pdf], got %v", names)
 	}
 }

@@ -1,0 +1,52 @@
+#!/bin/sh
+# pdf2md-enqueue — symlink a PDF into the conversion queue and
+# start the queue runner if not already running.
+#
+# Usage: pdf2md-enqueue <pdf_path> <queue_dir> [pdf2md_flags...]
+#
+# The queue runner converts each queued PDF sequentially. flock
+# ensures only one runner at a time. Extra flags (e.g. --model,
+# --host) are passed through to pdf2md.
+
+set -e
+
+if [ $# -lt 2 ]; then
+	echo "usage: pdf2md-enqueue <pdf_path> <queue_dir> [pdf2md_flags...]" >&2
+	exit 1
+fi
+
+pdf_path="$1"
+queue_dir="$2"
+shift 2
+
+# Ensure queue dir exists.
+mkdir -p "$queue_dir"
+
+# Symlink the PDF into the queue (basename collision is fine —
+# same file means same conversion needed).
+base=$(basename "$pdf_path")
+ln -sf "$pdf_path" "$queue_dir/$base" 2>/dev/null || true
+
+# Try to become the queue runner (non-blocking flock).
+pidfile="$queue_dir/.pid"
+exec 9>"$pidfile"
+if ! flock -n 9; then
+	# Another runner is active — our symlink will be picked up.
+	exit 0
+fi
+
+# We hold the lock. Process every symlink in the queue.
+scriptdir=$(dirname "$0")
+for link in "$queue_dir"/*.pdf; do
+	[ -e "$link" ] || continue
+	target=$(readlink "$link" 2>/dev/null) || target="$link"
+	shadow="${target}.md"
+	if [ -f "$shadow" ]; then
+		rm -f "$link"
+		continue
+	fi
+	"$scriptdir/pdf2md" "$target" "$@" || true
+	rm -f "$link"
+done
+
+# Release lock (fd 9 closed on exit).

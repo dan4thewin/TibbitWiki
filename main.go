@@ -87,6 +87,7 @@ func main() {
 	for _, wk := range wikis {
 		wk.SetHub(hub)
 		wk.SetAttachExclude(cfg.AttachmentExclude)
+		wk.SetPdfConvertCmd(cfg.PdfConvertCmd)
 	}
 	srv := server.New(hub, ed, &themeRev, pollMS, cfg.MaxDiffs, cfg.IndexHTML, cfg.WikiPath, configPath)
 	httpSrv := &http.Server{Addr: cfg.Listen, Handler: srv}
