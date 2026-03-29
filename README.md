@@ -261,7 +261,7 @@ ripgrep` or `apt install ripgrep`).
 | `@title` | Title substring |
 | `/regex/` | Raw regex |
 | `m/regex/` or `m\|regex\|` | Regex with custom delimiter |
-| `a\|b` | OR |
+| `a\|b\|c` | any term (OR, no spaces) |
 | `a b` | AND (space = set intersection) |
 
 Space separates tokens — no quoting. To match a literal space in a

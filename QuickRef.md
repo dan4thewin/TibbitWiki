@@ -133,7 +133,7 @@ notes. Clicking a missing link creates the note.
 | `#tag` | notes with tag |
 | `@title` | match title only |
 | `/regex/` | regular expression |
-| `a\|b` | either term (OR, no spaces) |
+| `a\|b\|c` | any term (OR, no spaces) |
 | `a b` | both terms (AND) |
 
 Space separates tokens — no quoting. To match a literal space
