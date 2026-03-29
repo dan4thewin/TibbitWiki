@@ -468,6 +468,45 @@ crash/data bugs, then test harness repair, then coverage expansion.
 
 ---
 
+## v11: PDF Searchability + Attachment Rendering
+
+### Problem
+
+174 PDFs in note subdirectories were invisible to search. Attachment
+`.md` files (LLM-cleaned PDF shadows) were served as raw text.
+No automatic conversion for newly added PDFs.
+
+### Approach
+
+Shadow `.pdf.md` files alongside each PDF. rg finds them naturally;
+`normalizeHitPath` maps hits back to the parent note. A safe goldmark
+instance renders `.md` attachments as HTML. A fire-and-forget enqueue
+system triggers conversion on first access.
+
+### Completed
+
+- [x] `scripts/pdf2md` — Python converter: pdftotext → ollama → shadow `.pdf.md`
+  - Metadata stubs for image-only PDFs (pdfinfo/pdfimages)
+  - Single-file and `--batch` modes; `--model`, `--host`, `--force` flags
+  - Truncation at 15K chars, 120s timeout, raw-text fallback
+- [x] Batch conversion of 174 PDFs on ROVE (qwen2.5:3b, 100% GPU)
+  - 114 LLM-cleaned, 5 raw-text fallback, 53 image-only stubs
+- [x] `normalizeHitPath` maps subdir `.md` to parent note
+- [x] Attachment listing UI (collapsible, JSON array in note response)
+- [x] Configurable `attachment_exclude` (suffix list, hides `.pdf.md` etc.)
+- [x] Goldmark table extension + table CSS in embedded stylesheet
+- [x] Sentinel errors (`ErrNoFile`, `ErrOutOfRange`, `ErrAtHead`)
+- [x] Render `.md` attachments via safe goldmark instance
+  - No `html.WithUnsafe()` (LLM content untrusted), no line annotations
+  - Themed HTML page shell with CSS custom properties
+- [x] Auto-enqueue unconverted PDFs via `pdf_convert_cmd` config
+  - `noteAttachments()` detects `.pdf` without `.pdf.md` → fire-and-forget exec
+  - `scripts/pdf2md-enqueue` — bash queue runner with flock
+- [x] `ParseFunc` variable replaces `tid.Parse` (gomonkey SIGBUS fix)
+- [x] 100% statement coverage maintained across all 11 packages
+
+---
+
 ## Future Considerations
 
 ### Watcher: eliminate per-file fd overhead
@@ -496,11 +535,9 @@ Cost: one readdir + N stat calls per interval — for 500 files
 this is <1ms, negligible. Latency up to one poll interval (already
 accepted for the browser). Simplest possible implementation.
 
-### Search: make PDF attachments searchable
+### Vision model fallback for image-only PDFs
 
-Explore making PDF files in note attachment subdirectories visible
-to rg-based search. rg only searches text — PDFs are binary. Options
-include extracting text at import time (e.g. `pdftotext` sidecar
-`.txt` files alongside the PDF), or a pre-search hook that indexes
-attachments into a searchable form. Goal: when a search term appears
-in a PDF attachment, the parent note shows up in results.
+53 of 174 PDFs are scanned images with no extractable text. A future
+pass could use a vision-capable model (e.g., LLaVA, GPT-4V) to OCR
+these into searchable markdown. The stub infrastructure is already
+in place — replace the metadata stub with actual content.
