@@ -40,6 +40,12 @@ mkdir -p ~/notes/personal
 mkdir -p ~/notes/work
 ```
 
+Copy the sample welcome note into your first wiki:
+
+```bash
+cp ~/src/tibbitwiki/TibbitWiki.md ~/notes/personal/
+```
+
 Notes are `.md` files — RFC822-style headers, blank line, markdown body:
 
 ```
