@@ -66,12 +66,24 @@ tag pill to search for all notes with that tag.
 ## Theme
 
 Edit `config.yaml` (click ⚙ → Edit config) to change colors,
-fonts, and layout. Changes apply live on save. Use the
-**playground** (`/{wiki}/playground/index.html`) to preview
-themes visually.
+fonts, and layout. Changes apply live on save.
+
+To preview themes visually, symlink the playground into your wiki
+directory and browse to `/{wiki}/playground/index.html`:
+
+```bash
+ln -s ~/src/tibbitwiki/playground ~/notes/personal/playground
+```
+
+The playground reads your current theme and lets you tweak every
+variable with instant feedback, then copy a ready-to-paste YAML
+block.
 
 ## More info
 
-See [README.md](https://github.com/dan4thewin/TibbitWiki) for
-full documentation — API endpoints, RCS versioning, PDF
-conversion, multi-wiki setup, and architecture.
+- QuickRef — markdown syntax reference with rendered examples
+- [SETUP.md](https://github.com/dan4thewin/TibbitWiki/blob/main/SETUP.md) —
+  full setup guide: prerequisites, config, editor, PDF conversion,
+  Evernote migration
+- [README.md](https://github.com/dan4thewin/TibbitWiki) —
+  features, API endpoints, RCS versioning, architecture

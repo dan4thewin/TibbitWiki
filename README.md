@@ -58,6 +58,11 @@ Each subdirectory with `.md` files becomes a wiki at `/{name}/`.
 Wikis are flat — only `.md` files directly in the subdirectory are
 loaded as notes (no nested directories).
 
+See [SETUP.md](SETUP.md) for the full setup guide: prerequisites,
+editor integration, PDF conversion, theme playground, and Evernote
+migration. Copy `TibbitWiki.md` and `QuickRef.md` from the repo into
+your first wiki directory for a welcome note and markdown reference.
+
 ## Browser client
 
 The browser client is a single self-contained HTML file with inline
