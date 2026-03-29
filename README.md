@@ -157,7 +157,7 @@ attachment listing with `attachment_exclude: [".pdf.md"]`.
 # These settings require a server restart:
 wiki_path: .
 listen: 127.0.0.1:8080
-editor_cmd: "neovide -- %s"
+editor_cmd: "open /Applications/Neovide.app --args %s"
 poll_interval: 3s
 cache_size: 200
 max_diffs: 10

@@ -15,9 +15,10 @@ Everything needed to recreate this setup from zero.
 
 - poppler (`brew install poppler` or `apt install poppler-utils`) —
   provides `pdftotext` and `pdfimages` for text extraction
-- [Ollama](https://ollama.com) with a local model for markdown cleanup
-  (e.g. `ollama pull qwen2.5:14b`). Without ollama the pipeline falls
-  back to raw extracted text.
+- [Ollama](https://ollama.com) with local models for markdown cleanup
+  and vision OCR (e.g. `ollama pull qwen2.5:14b` for text,
+  `ollama pull granite3.2-vision` for image-only PDFs). Without ollama
+  the pipeline falls back to raw extracted text or a metadata stub.
 
 ### Safari settings for testing (macOS only)
 
@@ -79,7 +80,7 @@ You can also specify a config file explicitly or use CLI flags:
 ```yaml
 wiki_path: ~/notes
 listen: 127.0.0.1:8080
-editor_cmd: "neovide -- %s"
+editor_cmd: "open /Applications/Neovide.app --args %s"
 poll_interval: 3s
 cache_size: 200
 attachment_exclude: [".pdf.md"]  # hide PDF shadow files
@@ -103,7 +104,7 @@ viewer with your notes in the recent sidebar.
 
 ### Neovide wrapper (`vide`)
 
-The default `neovide -- %s` spawns a new window per edit.
+The default `open /Applications/Neovide.app --args %s` spawns a new window per edit.
 Use `scripts/vide` instead for single-instance editing with a
 persistent headless nvim:
 
@@ -186,12 +187,11 @@ without a sibling `.pdf.md` and runs `pdf_convert_cmd` to enqueue
 them. The queue runner (`pdf2md-enqueue`) converts one PDF at a time
 using `flock` to prevent concurrent runners.
 
-Each PDF is processed by `pdf2md`:
-- `pdftotext` extracts raw text
-- ollama cleans it into structured markdown (falls back to raw text
-  if ollama is unavailable)
-- Image-only PDFs (no extractable text) get a metadata stub with
-  page count, image summary, and file size
+Each PDF is processed by `pdf2md` with a three-tier fallback:
+1. `pdftotext` extracts raw text → ollama cleans it into markdown
+2. If no text found, `pdfimages` extracts page images → ollama vision
+   model does OCR (falls back gracefully if no vision model available)
+3. If both fail, writes a metadata stub with page count and file size
 
 Shadow files are hidden from the attachment listing by
 `attachment_exclude` but indexed by ripgrep search.
@@ -201,11 +201,21 @@ Shadow files are hidden from the attachment listing by
 Convert PDFs without the server:
 
 ```bash
-pdf2md report.pdf              # single file
-pdf2md --batch ~/notes/work    # all unconverted PDFs under a wiki
-pdf2md --batch ~/notes --dry-run  # preview what would be converted
-pdf2md --force report.pdf      # overwrite existing shadow file
-pdf2md --model llama3.2:3b report.pdf  # use a specific ollama model
+pdf2md report.pdf                    # text → vision → stub
+pdf2md --vision-first scan.pdf       # skip text, go straight to vision OCR
+pdf2md --force report.pdf            # overwrite existing shadow file
+pdf2md --model llama3.2:3b report.pdf  # use a specific text model
+pdf2md --vision granite3.2-vision report.pdf  # use a specific vision model
+```
+
+Batch convert with `find`:
+
+```bash
+# Convert all unshadowed PDFs under a wiki
+find ~/notes/work -name '*.pdf' ! -exec test -f '{}.md' \; -print -exec pdf2md {} \;
+
+# Vision-first batch for known image-only PDFs
+find ~/notes/hold -name '*.pdf' ! -exec test -f '{}.md' \; -print -exec pdf2md --vision-first {} \;
 ```
 
 ## Development tools
