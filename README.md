@@ -8,8 +8,8 @@ and RCS version control.
 
 - **Minimal browser client** — single HTML+JS file, dark theme, no
   TiddlyWiki browser code. Server-side markdown rendering with CamelCase
-  WikiWord auto-linking, syntax highlighting, full-text search, tag
-  pills, tabbed sidebar, and line-level quick edit.
+  WikiWord auto-linking, syntax highlighting, tables, full-text search,
+  tag pills, tabbed sidebar, and line-level quick edit.
 - **REST API** — `/notes` CRUD plus line-edit, search, edit-external
 - **Multi-wiki** — auto-discovers wiki subdirectories, routes at
   `/{wiki}/notes/...`; wiki selector at `/`
@@ -31,7 +31,13 @@ and RCS version control.
 - **LRU body cache** — bounded memory; metadata always in RAM,
   note bodies cached with configurable size (default 200)
 - **Attachment listings** — notes with a subdirectory show a collapsible
-  list of files; configurable suffix exclusions via `attachment_exclude`
+  list of files; configurable suffix exclusions via `attachment_exclude`.
+  Markdown (`.md`) attachments are rendered through goldmark (tables,
+  syntax highlighting, linkify — but no raw HTML pass-through).
+- **PDF auto-conversion** — optionally enqueue unconverted PDFs for
+  background conversion to searchable `.pdf.md` shadow files via
+  `pdf_convert_cmd`. Pipeline: `pdftotext` extracts raw text, ollama
+  cleans it into markdown. Image-only PDFs get a metadata stub.
 - **Simple configuration** — YAML config file with CLI flag overrides;
   auto-created on first run with commented defaults
 
@@ -64,6 +70,7 @@ for development.
 - Story river — multiple notes open in a scrollable column
 - Server-side markdown rendering via goldmark
 - Syntax highlighting via chroma (OneDark theme, served as `/theme.css`)
+- Tables via goldmark table extension
 - CamelCase WikiWord auto-linking (blue for existing, red for missing)
 - Full-text search — `/` opens vi-style search bar; results appear as
   a pseudo-note with clickable titles and matched lines
@@ -122,8 +129,27 @@ config file < CLI flags.
 
 Notes with a subdirectory of the same name automatically show a
 collapsible **Attachments** section. Files in that subdirectory are
-listed as clickable links. Use `attachment_exclude` in config.yaml
-to hide files by suffix (e.g. `[".pdf.md"]` to hide shadow files).
+listed as clickable links. Markdown (`.md`) files are rendered through
+goldmark with tables and syntax highlighting (raw HTML is stripped for
+safety). Use `attachment_exclude` in config.yaml to hide files by
+suffix (e.g. `[".pdf.md"]` to hide PDF shadow files).
+
+### PDF conversion
+
+When `pdf_convert_cmd` is set, the server auto-enqueues unconverted
+PDFs whenever a note's attachments are listed. The pipeline:
+
+1. Server detects a `.pdf` with no sibling `.pdf.md` → exec
+   `pdf_convert_cmd <pdf_path> <queue_dir>`
+2. `scripts/pdf2md-enqueue` symlinks the PDF into a queue directory
+   and starts the queue runner (flock ensures one runner at a time)
+3. `scripts/pdf2md` extracts text via `pdftotext`, sends it to
+   ollama for markdown cleanup, writes a `.pdf.md` shadow file
+4. Image-only PDFs (no extractable text) get a metadata stub
+   with page count, image summary, and file size
+
+Shadow files are indexed by ripgrep search. Hide them from the
+attachment listing with `attachment_exclude: [".pdf.md"]`.
 
 ### config.yaml
 
@@ -136,6 +162,7 @@ poll_interval: 3s
 cache_size: 200
 max_diffs: 10
 attachment_exclude: []       # suffixes to hide, e.g. [".pdf.md"]
+pdf_convert_cmd: ""         # e.g. "pdf2md-enqueue" (empty = disabled)
 
 # Theme applies live on save:
 theme:
@@ -221,10 +248,10 @@ internal/
   editor/   — external editor launcher
   rcs/      — RCS version control integration
   loader/   — startup file loader
-  render/   — goldmark + chroma markdown→HTML, ThemeCSS generation
+  render/   — goldmark + chroma markdown→HTML, attachment rendering, ThemeCSS
   search/   — query parser + rg wrapper for full-text search
 main.go     — wiring: config→Wiki→loader→watcher→Hub→Server
-exp/        — browser client experiments (001–027)
+exp/        — browser client experiments (001–029)
 playground/ — theme playground (standalone HTML)
 ```
 
@@ -270,6 +297,9 @@ with attachments. See [SETUP.md](SETUP.md) for details.
 - **Single-user design.** No authentication, no concurrent-writer
   conflict resolution. Intended for one person on localhost.
 - **Search requires ripgrep** (`rg`) on PATH.
+- **PDF conversion requires** `pdftotext` (poppler) and optionally
+  [ollama](https://ollama.com) with a local model for markdown cleanup.
+  Without ollama, raw extracted text is used as-is.
 - **macOS ships bash 3.2.** The helper scripts (`vide`, `tw-start`,
   `rotate-log`) require bash 4.3+ features (`local -n`). Install a
   modern bash via `brew install bash` and ensure it appears first on

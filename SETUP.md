@@ -11,6 +11,14 @@ Everything needed to recreate this setup from zero.
 - RCS (`brew install rcs` or `apt install rcs`)
 - ripgrep (`brew install ripgrep` or `apt install ripgrep`)
 
+### Optional (for PDF conversion)
+
+- poppler (`brew install poppler` or `apt install poppler-utils`) —
+  provides `pdftotext` and `pdfimages` for text extraction
+- [Ollama](https://ollama.com) with a local model for markdown cleanup
+  (e.g. `ollama pull qwen2.5:14b`). Without ollama the pipeline falls
+  back to raw extracted text.
+
 ### Safari settings for testing (macOS only)
 
 Enable the Developer menu:
@@ -74,6 +82,8 @@ listen: 127.0.0.1:8080
 editor_cmd: "neovide -- %s"
 poll_interval: 3s
 cache_size: 200
+attachment_exclude: [".pdf.md"]  # hide PDF shadow files
+pdf_convert_cmd: ""              # e.g. "pdf2md-enqueue" (see below)
 
 theme:
   bg:     "#1a1a2e"
@@ -149,6 +159,54 @@ co -r1.2 -p notes/MyNote.md
 
 Archives live in `RCS/` alongside the notes directory, not inside
 it (avoids the file watcher treating them as notes).
+
+## PDF conversion (optional)
+
+TibbitWiki can auto-convert PDF attachments into searchable `.pdf.md`
+shadow files. This makes PDF content findable via ripgrep search.
+
+### Setup
+
+1. Install poppler and ollama (see Prerequisites above)
+2. Symlink the scripts into your PATH:
+   ```bash
+   ln -s ~/src/tibbitwiki/scripts/pdf2md ~/bin/pdf2md
+   ln -s ~/src/tibbitwiki/scripts/pdf2md-enqueue ~/bin/pdf2md-enqueue
+   ```
+3. Enable in config.yaml:
+   ```yaml
+   pdf_convert_cmd: "pdf2md-enqueue"
+   attachment_exclude: [".pdf.md"]
+   ```
+
+### How it works
+
+When you view a note with PDF attachments, the server detects PDFs
+without a sibling `.pdf.md` and runs `pdf_convert_cmd` to enqueue
+them. The queue runner (`pdf2md-enqueue`) converts one PDF at a time
+using `flock` to prevent concurrent runners.
+
+Each PDF is processed by `pdf2md`:
+- `pdftotext` extracts raw text
+- ollama cleans it into structured markdown (falls back to raw text
+  if ollama is unavailable)
+- Image-only PDFs (no extractable text) get a metadata stub with
+  page count, image summary, and file size
+
+Shadow files are hidden from the attachment listing by
+`attachment_exclude` but indexed by ripgrep search.
+
+### Manual conversion
+
+Convert PDFs without the server:
+
+```bash
+pdf2md report.pdf              # single file
+pdf2md --batch ~/notes/work    # all unconverted PDFs under a wiki
+pdf2md --batch ~/notes --dry-run  # preview what would be converted
+pdf2md --force report.pdf      # overwrite existing shadow file
+pdf2md --model llama3.2:3b report.pdf  # use a specific ollama model
+```
 
 ## Development tools
 
