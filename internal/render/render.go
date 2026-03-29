@@ -267,8 +267,8 @@ a { color: var(--tw-link); }
 a:hover { color: var(--tw-link_hover); }
 table { border-collapse: collapse; margin: 1em 0; }
 th, td { border: 1px solid var(--tw-border); padding: 6px 12px; }
-code { background: var(--tw-code_bg); padding: 2px 6px; border-radius: 3px; }
-pre { background: var(--tw-code_bg); padding: 1em; border-radius: 6px; overflow-x: auto; }
+code { background: var(--tw-code_bg); padding: 2px 6px; border-radius: 3px; font-family: var(--tw-code_font); }
+pre { background: var(--tw-code_bg); padding: 1em; border-radius: 6px; overflow-x: auto; font-family: var(--tw-code_font); }
 </style>
 </head><body>
 `)
