@@ -1145,6 +1145,95 @@ func TestReloadRenamesOnTitleMismatch(t *testing.T) {
 	}
 }
 
+// TestRenameAlsoMovesAttachmentDir verifies that when a note is
+// renamed via title mismatch, its attachment directory is also renamed.
+func TestRenameAlsoMovesAttachmentDir(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error { return nil })
+	defer patches.Reset()
+
+	wk := testWiki(t)
+	// Create attachment dir with a file under the old name.
+	oldDir := filepath.Join(wk.NoteDir(), "OldNote")
+	os.MkdirAll(oldDir, 0755)
+	os.WriteFile(filepath.Join(oldDir, "photo.jpg"), []byte("img"), 0644)
+
+	// Create a file named "OldNote.md" but with title "NewNote".
+	path := filepath.Join(wk.NoteDir(), "OldNote.md")
+	os.WriteFile(path, []byte("title: NewNote\ntags: \n\nBody."), 0644)
+	wk.Reload(path)
+	wk.do(func() {})
+
+	// Old attachment dir should be gone.
+	if _, err := os.Stat(oldDir); !os.IsNotExist(err) {
+		t.Error("old attachment dir should be gone")
+	}
+	// New attachment dir should exist with the file.
+	newDir := filepath.Join(wk.NoteDir(), "NewNote")
+	data, err := os.ReadFile(filepath.Join(newDir, "photo.jpg"))
+	if err != nil {
+		t.Fatalf("attachment file should exist in new dir: %v", err)
+	}
+	if string(data) != "img" {
+		t.Error("attachment content should be preserved")
+	}
+}
+
+// TestRenameNoAttachmentDir verifies that rename works fine when
+// the note has no attachment directory.
+func TestRenameNoAttachmentDir(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error { return nil })
+	defer patches.Reset()
+
+	wk := testWiki(t)
+	path := filepath.Join(wk.NoteDir(), "Solo.md")
+	os.WriteFile(path, []byte("title: Renamed\ntags: \n\nBody."), 0644)
+	wk.Reload(path)
+	wk.do(func() {})
+
+	// Rename should succeed without error.
+	newPath := filepath.Join(wk.NoteDir(), "Renamed.md")
+	if _, err := os.Stat(newPath); err != nil {
+		t.Error("renamed file should exist")
+	}
+	if wk.Store().Get("Renamed") == nil {
+		t.Error("Renamed should be in store")
+	}
+}
+
+// TestRenameAttachmentDirError verifies that a failing attachment dir
+// rename is logged but does not prevent the note rename from completing.
+func TestRenameAttachmentDirError(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error { return nil })
+	defer patches.Reset()
+
+	wk := testWiki(t)
+	// Create attachment dir under old name.
+	oldDir := filepath.Join(wk.NoteDir(), "SrcNote")
+	os.MkdirAll(oldDir, 0755)
+	os.WriteFile(filepath.Join(oldDir, "a.txt"), []byte("x"), 0644)
+
+	// Create the target dir so os.Rename of the attachment dir fails
+	// (can't rename over a non-empty directory).
+	conflictDir := filepath.Join(wk.NoteDir(), "DstNote")
+	os.MkdirAll(conflictDir, 0755)
+	os.WriteFile(filepath.Join(conflictDir, "b.txt"), []byte("y"), 0644)
+
+	path := filepath.Join(wk.NoteDir(), "SrcNote.md")
+	os.WriteFile(path, []byte("title: DstNote\ntags: \n\nBody."), 0644)
+	wk.Reload(path)
+	wk.do(func() {})
+
+	// The .md rename should have succeeded.
+	newPath := filepath.Join(wk.NoteDir(), "DstNote.md")
+	if _, err := os.Stat(newPath); err != nil {
+		t.Error("renamed .md file should exist")
+	}
+	// Old attachment dir should still be there (rename failed).
+	if _, err := os.Stat(oldDir); err != nil {
+		t.Error("old attachment dir should still exist after failed rename")
+	}
+}
+
 // TestReloadRenameError verifies that a failed rename does not crash
 // the wiki; the original file remains on disk.
 func TestReloadRenameError(t *testing.T) {

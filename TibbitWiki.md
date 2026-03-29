@@ -26,6 +26,9 @@ Body text in **markdown**.
 
 The filename matches the title: `MyGreatIdea.md`.
 
+**Renaming:** edit the `title:` header and save — the server
+renames both the file and its attachment directory automatically.
+
 ## WikiWords
 
 CamelCase words like WikiWord automatically become links.

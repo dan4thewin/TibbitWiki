@@ -790,6 +790,14 @@ func (w *Wiki) renameAndRescan(path, oldTitle, newTitle string) {
 		return
 	}
 	log.Printf("wiki %s: renamed %q → %q", w.Name, oldTitle, newTitle)
+	// Rename attachment directory if it exists.
+	oldDir := filepath.Join(w.noteDir, oldTitle)
+	newDir := filepath.Join(w.noteDir, newTitle)
+	if info, err := os.Stat(oldDir); err == nil && info.IsDir() {
+		if err := os.Rename(oldDir, newDir); err != nil {
+			log.Printf("wiki %s: rename attachments %s → %s: %v", w.Name, oldDir, newDir, err)
+		}
+	}
 	if err := rcs.Checkin(newPath); err != nil {
 		log.Printf("wiki %s: rcs checkin %s: %v", w.Name, newPath, err)
 	}

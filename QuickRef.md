@@ -27,6 +27,8 @@ Body text in CommonMark **markdown**.
 - Header order when saved: `title`, `tags`, then alphabetical.
 - `text:` is reserved (holds the body internally).
 - Directories with the same base name hold attachments for that note.
+- **Renaming:** edit the `title:` header and save. The server renames
+  both the `.md` file and its attachment directory to match.
 
 ---
 
