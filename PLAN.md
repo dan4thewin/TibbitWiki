@@ -16,10 +16,10 @@ internal/
   editor/   — external editor launcher
   rcs/      — RCS version control integration
   loader/   — startup file loader
-  render/   — goldmark + chroma markdown→HTML, plain render mode
+  render/   — goldmark + chroma markdown→HTML, attachment rendering, ThemeCSS
   search/   — query parser + rg wrapper
 main.go     — wiring: Wiki→loader→watcher→Hub→Server
-exp/        — browser client experiments (001–027)
+exp/        — browser client experiments (001–029)
 playground/ — theme playground (standalone HTML)
 ```
 
@@ -504,6 +504,34 @@ system triggers conversion on first access.
   - `scripts/pdf2md-enqueue` — bash queue runner with flock
 - [x] `ParseFunc` variable replaces `tid.Parse` (gomonkey SIGBUS fix)
 - [x] 100% statement coverage maintained across all 11 packages
+
+### Audit remediation (targeted post-v11 audit)
+
+Three-model adversarial review (Opus 4.6, GPT-5.4, Sonnet 4.6) of
+all changes since commit 80502cf. 8 findings, 6 fixed, 1 accepted,
+1 deferred.
+
+- [x] XSS on error path — `AttachmentToHTML` fallback now uses `html.EscapeString`
+- [x] Goroutine leak — `pdf2md-enqueue` double-forks; Go parent exits immediately
+- [x] Basename collision — queue keys use full mangled path (`/` → `%`)
+- [x] Case-insensitive glob — `shopt -s nocaseglob` in queue runner
+- [x] Queue race — rescan loop replaces single-pass `for`
+- [x] Silent failure — `|| true` replaced with logged warnings
+- [x] Event-loop fork — accepted (fire-and-forget is correct for single-user)
+- [ ] Nested path traversal — deferred (no nested attachment dirs exist)
+
+### End-to-end tests
+
+- [x] `exp/028-attachments/test.sh` — 24 checks: table rendering, attachment
+  listing, attachment_exclude, .md goldmark rendering, XSS stripping,
+  Content-Type, raw file passthrough, search shadow mapping, Safari DOM
+- [x] `exp/029-pdf-convert/test.sh` — 21 checks: pdf2md single/batch/stub/
+  dry-run/force, pdf2md-enqueue queue/flock, server auto-enqueue
+
+### Documentation
+
+- [x] README.md — tables, .md attachment rendering, PDF pipeline, config
+- [x] SETUP.md — PDF prerequisites, setup steps, manual usage
 
 ---
 
