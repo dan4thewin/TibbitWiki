@@ -615,3 +615,59 @@ func TestDiffToHTMLXSS(t *testing.T) {
 		t.Errorf("expected escaped output, got %s", got)
 	}
 }
+
+// TestAttachmentToHTMLRendersMarkdown verifies basic markdown rendering.
+func TestAttachmentToHTMLRendersMarkdown(t *testing.T) {
+	got := AttachmentToHTML("# Title\n\nSome **bold** text.")
+	if !strings.Contains(got, "<h1>Title</h1>") {
+		t.Errorf("expected <h1>, got: %s", got)
+	}
+	if !strings.Contains(got, "<strong>bold</strong>") {
+		t.Errorf("expected <strong>, got: %s", got)
+	}
+}
+
+// TestAttachmentToHTMLEscapesRawHTML verifies that raw HTML in
+// source is escaped (no WithUnsafe).
+func TestAttachmentToHTMLEscapesRawHTML(t *testing.T) {
+	got := AttachmentToHTML("hello <script>alert('xss')</script> world")
+	if strings.Contains(got, "<script>") {
+		t.Errorf("raw HTML should be escaped, got: %s", got)
+	}
+}
+
+// TestAttachmentToHTMLTables verifies table support.
+func TestAttachmentToHTMLTables(t *testing.T) {
+	src := "| A | B |\n|---|---|\n| 1 | 2 |"
+	got := AttachmentToHTML(src)
+	if !strings.Contains(got, "<table>") {
+		t.Errorf("expected <table>, got: %s", got)
+	}
+}
+
+// TestAttachmentToHTMLConvertError verifies fallback on error.
+func TestAttachmentToHTMLConvertError(t *testing.T) {
+	patches := gomonkey.ApplyMethodFunc(attachMd, "Convert",
+		func([]byte, io.Writer, ...parser.ParseOption) error {
+			return fmt.Errorf("forced error")
+		})
+	defer patches.Reset()
+	got := AttachmentToHTML("test")
+	if got != "test" {
+		t.Errorf("expected raw source on error, got: %s", got)
+	}
+}
+
+// TestAttachmentPageWrapsHTML verifies the HTML shell wrapper.
+func TestAttachmentPageWrapsHTML(t *testing.T) {
+	got := AttachmentPage("<p>hello</p>")
+	if !strings.Contains(got, "<!DOCTYPE html>") {
+		t.Errorf("expected doctype, got: %s", got)
+	}
+	if !strings.Contains(got, "theme.css") {
+		t.Errorf("expected theme.css link, got: %s", got)
+	}
+	if !strings.Contains(got, "<p>hello</p>") {
+		t.Errorf("expected body content, got: %s", got)
+	}
+}

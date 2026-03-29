@@ -224,6 +224,59 @@ func WriteThemeFile(theme map[string]string, path string) error {
 	return os.WriteFile(path, []byte(GenerateThemeCSS(theme)), 0644)
 }
 
+// attachMd is a safe renderer for attachment .md files: no raw HTML
+// passthrough, no line annotations.  Tables, linkify, and syntax
+// highlighting are preserved.
+var attachMd = goldmark.New(
+	goldmark.WithExtensions(
+		extension.Linkify,
+		extension.Table,
+		highlighting.NewHighlighting(
+			highlighting.WithStyle("onedark"),
+			highlighting.WithFormatOptions(
+				chromahtml.WithClasses(true),
+			),
+		),
+	),
+)
+
+// AttachmentToHTML renders markdown to HTML using a safe goldmark
+// instance that escapes raw HTML (suitable for untrusted content
+// like LLM-generated shadow files).
+func AttachmentToHTML(source string) string {
+	var buf bytes.Buffer
+	if err := attachMd.Convert([]byte(source), &buf); err != nil {
+		return source
+	}
+	return buf.String()
+}
+
+// AttachmentPage wraps rendered HTML in a minimal themed page shell.
+func AttachmentPage(body string) string {
+	var buf bytes.Buffer
+	buf.WriteString(`<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../theme.css">
+<style>
+body { max-width: 800px; margin: 2em auto; padding: 0 1em;
+       background: var(--tw-bg); color: var(--tw-fg);
+       font-family: var(--tw-font_family); font-size: var(--tw-font_size);
+       line-height: var(--tw-line_height); }
+a { color: var(--tw-link); }
+a:hover { color: var(--tw-link_hover); }
+table { border-collapse: collapse; margin: 1em 0; }
+th, td { border: 1px solid var(--tw-border); padding: 6px 12px; }
+code { background: var(--tw-code_bg); padding: 2px 6px; border-radius: 3px; }
+pre { background: var(--tw-code_bg); padding: 1em; border-radius: 6px; overflow-x: auto; }
+</style>
+</head><body>
+`)
+	buf.WriteString(body)
+	buf.WriteString("\n</body></html>\n")
+	return buf.String()
+}
+
 // coalesceFunc wraps chroma.Coalesce; replaceable for testing.
 var coalesceFunc = chroma.Coalesce
 

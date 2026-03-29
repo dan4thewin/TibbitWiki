@@ -18,6 +18,7 @@ import (
 
 	"github.com/dan4thewin/tibbitwiki/internal/editor"
 	"github.com/dan4thewin/tibbitwiki/internal/rcs"
+	"github.com/dan4thewin/tibbitwiki/internal/render"
 	"github.com/dan4thewin/tibbitwiki/internal/wiki"
 )
 
@@ -226,6 +227,19 @@ func (s *Server) serveAttachment(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// ServeContent avoids http.ServeFile's index.html redirect.
+	// Markdown files are rendered through goldmark and served as HTML.
+	if strings.HasSuffix(fp, ".md") {
+		data, err := os.ReadFile(fp)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		body := render.AttachmentToHTML(string(data))
+		page := render.AttachmentPage(body)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte(page))
+		return
+	}
 	f, err := os.Open(fp)
 	if err != nil {
 		http.NotFound(w, r)

@@ -1200,9 +1200,10 @@ func TestLineEditParseError(t *testing.T) {
 	wk.Store().PutWithPath(td, path)
 
 	// Mock tid.Parse to fail (called after WriteFile succeeds).
-	patches := gomonkey.ApplyFunc(tid.Parse, func(data []byte) (*tid.Note, error) {
+	parseFail := func(data []byte) (*tid.Note, error) {
 		return nil, fmt.Errorf("parse boom")
-	})
+	}
+	patches := gomonkey.ApplyGlobalVar(&wiki.ParseFunc, parseFail)
 	defer patches.Reset()
 
 	body := `{"line":1,"text":"- ALPHA"}`
@@ -1565,7 +1566,7 @@ func TestServeAttachment(t *testing.T) {
 }
 
 // TestServeAttachmentMdInSubdir verifies that .md files inside
-// subdirectories are served (they're attachments, not notes).
+// subdirectories are rendered through goldmark and served as HTML.
 func TestServeAttachmentMdInSubdir(t *testing.T) {
 	dir := t.TempDir()
 	subdir := filepath.Join(dir, "Notes")
@@ -1585,8 +1586,69 @@ func TestServeAttachmentMdInSubdir(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 	}
-	if w.Body.String() != "# Hello" {
-		t.Errorf("body = %q, want %q", w.Body.String(), "# Hello")
+	ct := w.Header().Get("Content-Type")
+	if ct != "text/html; charset=utf-8" {
+		t.Errorf("Content-Type = %q, want text/html", ct)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "<h1>Hello</h1>") {
+		t.Errorf("expected rendered <h1>, got: %s", body)
+	}
+	if !strings.Contains(body, "theme.css") {
+		t.Errorf("expected theme.css link, got: %s", body)
+	}
+}
+
+// TestServeAttachmentMdEscapesHTML verifies that raw HTML in .md
+// attachments is escaped (safe rendering for untrusted content).
+func TestServeAttachmentMdEscapesHTML(t *testing.T) {
+	dir := t.TempDir()
+	subdir := filepath.Join(dir, "Notes")
+	os.Mkdir(subdir, 0755)
+	os.WriteFile(filepath.Join(subdir, "evil.md"),
+		[]byte("hello <script>alert('xss')</script>"), 0644)
+
+	wk := wiki.New("test", dir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+
+	req := httptest.NewRequest("GET", "/test/Notes/evil.md", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	if strings.Contains(w.Body.String(), "<script>") {
+		t.Errorf("raw HTML should be escaped in attachment")
+	}
+}
+
+// TestServeAttachmentMdReadError verifies 404 when an .md attachment
+// exists but cannot be read (e.g. permission denied).
+func TestServeAttachmentMdReadError(t *testing.T) {
+	dir := t.TempDir()
+	subdir := filepath.Join(dir, "Notes")
+	os.Mkdir(subdir, 0755)
+	fp := filepath.Join(subdir, "unreadable.md")
+	os.WriteFile(fp, []byte("# secret"), 0644)
+	os.Chmod(fp, 0000)
+	t.Cleanup(func() { os.Chmod(fp, 0644) })
+
+	wk := wiki.New("test", dir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+
+	req := httptest.NewRequest("GET", "/test/Notes/unreadable.md", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusNotFound)
 	}
 }
 

@@ -29,6 +29,9 @@ var NowFunc = time.Now
 // searchFunc wraps search.Search for testability (gomonkey + -coverprofile SIGBUS).
 var searchFunc = search.Search
 
+// ParseFunc wraps tid.Parse for testability (gomonkey + -coverprofile SIGBUS).
+var ParseFunc = tid.Parse
+
 // Sentinel errors for wiki operations. Server uses errors.Is() to
 // map these to HTTP status codes.
 var (
@@ -543,7 +546,7 @@ func (w *Wiki) LineEdit(title string, line int, text string, insert bool) (strin
 		if e := rcs.Checkin(fp); e != nil {
 			log.Printf("wiki %s: rcs checkin %q: %v", w.Name, title, e)
 		}
-		td, e := tid.Parse(newData)
+		td, e := ParseFunc(newData)
 		if e != nil {
 			err = fmt.Errorf("parse error: %w", e)
 			return
@@ -678,7 +681,7 @@ func (w *Wiki) reloadFile(path string) {
 			log.Printf("wiki %s: error reading symlink %s: %v", w.Name, path, err)
 			return
 		}
-		td, err := tid.Parse(data)
+		td, err := ParseFunc(data)
 		if err != nil {
 			log.Printf("wiki %s: error parsing symlink %s: %v", w.Name, path, err)
 			return
@@ -705,7 +708,7 @@ func (w *Wiki) reloadFile(path string) {
 		return
 	}
 
-	td, err := tid.Parse(data)
+	td, err := ParseFunc(data)
 	if err != nil {
 		log.Printf("wiki %s: error parsing %s: %v", w.Name, path, err)
 		return
@@ -784,7 +787,7 @@ func (w *Wiki) rescan() {
 			log.Printf("wiki %s: rescan skip %s: %v", w.Name, path, err)
 			continue
 		}
-		td, err := tid.Parse(data)
+		td, err := ParseFunc(data)
 		if err != nil {
 			log.Printf("wiki %s: rescan skip %s: %v", w.Name, path, err)
 			continue
@@ -811,7 +814,7 @@ func (w *Wiki) fetchBody(title string) string {
 		log.Printf("wiki %s: reading body %q: %v", w.Name, title, err)
 		return ""
 	}
-	td, err := tid.Parse(data)
+	td, err := ParseFunc(data)
 	if err != nil {
 		log.Printf("wiki %s: parsing body %q: %v", w.Name, title, err)
 		return ""
