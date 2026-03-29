@@ -798,6 +798,15 @@ func (w *Wiki) renameAndRescan(path, oldTitle, newTitle string) {
 			log.Printf("wiki %s: rename attachments %s → %s: %v", w.Name, oldDir, newDir, err)
 		}
 	}
+	// Rename RCS archive to preserve history under the new name.
+	rcsDir := filepath.Join(w.noteDir, "RCS")
+	oldArchive := filepath.Join(rcsDir, tid.TitleToFilename(oldTitle)+",v")
+	newArchive := filepath.Join(rcsDir, tid.TitleToFilename(newTitle)+",v")
+	if _, err := os.Stat(oldArchive); err == nil {
+		if err := os.Rename(oldArchive, newArchive); err != nil {
+			log.Printf("wiki %s: rename RCS archive: %v", w.Name, err)
+		}
+	}
 	if err := rcs.Checkin(newPath); err != nil {
 		log.Printf("wiki %s: rcs checkin %s: %v", w.Name, newPath, err)
 	}

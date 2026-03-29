@@ -1234,6 +1234,62 @@ func TestRenameAttachmentDirError(t *testing.T) {
 	}
 }
 
+// TestRenamePreservesRCSArchive verifies that the RCS archive file
+// is renamed alongside the note to preserve version history.
+func TestRenamePreservesRCSArchive(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error { return nil })
+	defer patches.Reset()
+
+	wk := testWiki(t)
+	// Create an RCS archive for the old name.
+	rcsDir := filepath.Join(wk.NoteDir(), "RCS")
+	os.MkdirAll(rcsDir, 0755)
+	os.WriteFile(filepath.Join(rcsDir, "Before.md,v"), []byte("archive"), 0644)
+
+	path := filepath.Join(wk.NoteDir(), "Before.md")
+	os.WriteFile(path, []byte("title: After\ntags: \n\nBody."), 0644)
+	wk.Reload(path)
+	wk.do(func() {})
+
+	// Old archive should be gone.
+	if _, err := os.Stat(filepath.Join(rcsDir, "Before.md,v")); !os.IsNotExist(err) {
+		t.Error("old RCS archive should be gone")
+	}
+	// New archive should exist with original content.
+	data, err := os.ReadFile(filepath.Join(rcsDir, "After.md,v"))
+	if err != nil {
+		t.Fatalf("new RCS archive should exist: %v", err)
+	}
+	if string(data) != "archive" {
+		t.Error("RCS archive content should be preserved")
+	}
+}
+
+// TestRenameRCSArchiveError verifies that a failing RCS archive
+// rename is logged but does not prevent the note rename.
+func TestRenameRCSArchiveError(t *testing.T) {
+	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error { return nil })
+	defer patches.Reset()
+
+	wk := testWiki(t)
+	rcsDir := filepath.Join(wk.NoteDir(), "RCS")
+	os.MkdirAll(rcsDir, 0755)
+	os.WriteFile(filepath.Join(rcsDir, "Src.md,v"), []byte("v"), 0644)
+	// Create a conflicting target archive.
+	os.MkdirAll(filepath.Join(rcsDir, "Dst.md,v"), 0755)
+	os.WriteFile(filepath.Join(rcsDir, "Dst.md,v", "block"), []byte("x"), 0644)
+
+	path := filepath.Join(wk.NoteDir(), "Src.md")
+	os.WriteFile(path, []byte("title: Dst\ntags: \n\nBody."), 0644)
+	wk.Reload(path)
+	wk.do(func() {})
+
+	// Note rename should have succeeded despite RCS rename failure.
+	if _, err := os.Stat(filepath.Join(wk.NoteDir(), "Dst.md")); err != nil {
+		t.Error("renamed .md should exist")
+	}
+}
+
 // TestReloadRenameError verifies that a failed rename does not crash
 // the wiki; the original file remains on disk.
 func TestReloadRenameError(t *testing.T) {
