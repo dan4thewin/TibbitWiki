@@ -410,26 +410,12 @@ func TestNeedsCheckinMissingWorkFile(t *testing.T) {
 	}
 }
 
-// TestHeadRevNoHeadLine verifies HeadRev returns an error when rlog
-// succeeds but its output contains no "head:" line. We place a fake
-// rlog script first on PATH that outputs valid-looking text without
-// a head line (avoids gomonkey + exec.Command SIGBUS on darwin/arm64).
+// TestHeadRevNoHeadLine verifies HeadRev returns an error when the
+// archive file does not exist.
 func TestHeadRevNoHeadLine(t *testing.T) {
-	// Create a fake rlog that outputs no "head:" line.
-	dir := t.TempDir()
-	script := filepath.Join(dir, "rlog")
-	os.WriteFile(script, []byte("#!/bin/sh\necho 'RCS file: test,v'\necho 'locks: strict'\n"), 0755)
-
-	// Prepend fake dir to PATH so our rlog is found first.
-	orig := os.Getenv("PATH")
-	t.Setenv("PATH", dir+":"+orig)
-
-	_, err := HeadRev("/any/file.md")
+	_, err := HeadRev("/nonexistent/file.md")
 	if err == nil {
-		t.Fatal("expected error for missing head line")
-	}
-	if !strings.Contains(err.Error(), "no head revision") {
-		t.Errorf("error = %v, want 'no head revision'", err)
+		t.Fatal("expected error for missing archive")
 	}
 }
 
@@ -502,20 +488,319 @@ func TestCheckinMkdirError(t *testing.T) {
 	}
 }
 
-// TestCheckinCiError verifies the ci command error path — MkdirAll
-// succeeds but the file is unsuitable for ci (e.g. nonexistent).
+// TestCheckinCiError verifies Checkin returns an error when the
+// working file does not exist.
 func TestCheckinCiError(t *testing.T) {
 	dir := t.TempDir()
-	// File doesn't exist, but RCS dir is already present,
-	// so MkdirAll succeeds (archive not found → first=true,
-	// MkdirAll on existing dir is no-op).
 	path := filepath.Join(dir, "ghost.md")
 
 	err := Checkin(path)
 	if err == nil {
-		t.Fatal("expected ci error, got nil")
+		t.Fatal("expected error, got nil")
 	}
-	if !strings.Contains(err.Error(), "ci") {
-		t.Errorf("error = %v, want 'ci' in message", err)
+	if !strings.Contains(err.Error(), "read") && !strings.Contains(err.Error(), "ghost.md") {
+		t.Errorf("error = %v, want read error for ghost.md", err)
+	}
+}
+
+// TestCheckinCorruptArchive verifies Checkin returns an error when
+// the existing archive is corrupt (covers parseArchive parse error
+// and Checkin's subsequent-checkin error branch).
+func TestCheckinCorruptArchive(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte("title: Test\n\nBody."), 0644)
+
+	// Create a corrupt archive.
+	rcsDir := filepath.Join(dir, "RCS")
+	os.MkdirAll(rcsDir, 0755)
+	os.WriteFile(filepath.Join(rcsDir, "test.md,v"), []byte("garbage"), 0644)
+
+	err := Checkin(path)
+	if err == nil {
+		t.Fatal("expected parse error, got nil")
+	}
+}
+
+// TestCheckinWriteArchiveError verifies Checkin propagates a
+// writeArchive error on subsequent checkins.
+func TestCheckinWriteArchiveError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte("title: Test\n\nVersion 1."), 0644)
+
+	if err := Checkin(path); err != nil {
+		t.Fatalf("first checkin: %v", err)
+	}
+
+	// Make the archive read-only so writeArchive fails.
+	archive := filepath.Join(dir, "RCS", "test.md,v")
+	os.Chmod(archive, 0444)
+	defer os.Chmod(archive, 0644)
+
+	os.WriteFile(path, []byte("title: Test\n\nVersion 2."), 0644)
+	err := Checkin(path)
+	if err == nil {
+		t.Fatal("expected writeArchive error, got nil")
+	}
+}
+
+// TestLogWithSymbols verifies Log includes symbolic names in output.
+func TestLogWithSymbols(t *testing.T) {
+	path := setupMultiRev(t)
+	if err := SetTag(path, "RELEASE", "1.2"); err != nil {
+		t.Fatalf("SetTag: %v", err)
+	}
+
+	out, err := Log(path)
+	if err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+	if !strings.Contains(out, "symbolic names:") {
+		t.Error("expected 'symbolic names:' in output")
+	}
+	if !strings.Contains(out, "RELEASE") {
+		t.Error("expected 'RELEASE' in output")
+	}
+}
+
+// TestSetTagUpdatesExisting verifies SetTag updates an existing
+// tag rather than appending a duplicate.
+func TestSetTagUpdatesExisting(t *testing.T) {
+	path := setupMultiRev(t)
+	if err := SetTag(path, "TAG", "1.1"); err != nil {
+		t.Fatalf("SetTag 1.1: %v", err)
+	}
+	if err := SetTag(path, "TAG", "1.2"); err != nil {
+		t.Fatalf("SetTag 1.2: %v", err)
+	}
+	rev, err := CheckoutTag(path, "TAG")
+	if err != nil {
+		t.Fatalf("CheckoutTag: %v", err)
+	}
+	if rev != "1.2" {
+		t.Errorf("tag rev = %q, want 1.2", rev)
+	}
+}
+
+// TestDeleteTagNoMatch verifies DeleteTag is a no-op when the
+// named tag does not exist — other tags are preserved.
+func TestDeleteTagNoMatch(t *testing.T) {
+	path := setupMultiRev(t)
+	if err := SetTag(path, "KEEP", "1.1"); err != nil {
+		t.Fatalf("SetTag: %v", err)
+	}
+	// Delete a tag that doesn't exist; KEEP should survive.
+	if err := DeleteTag(path, "NOSUCHTAG"); err != nil {
+		t.Fatalf("DeleteTag: %v", err)
+	}
+	rev, _ := CheckoutTag(path, "KEEP")
+	if rev != "1.1" {
+		t.Errorf("KEEP tag = %q, want 1.1", rev)
+	}
+}
+
+// TestCheckoutWriteError verifies Checkout propagates a write error
+// (e.g. read-only parent directory).
+func TestCheckoutWriteError(t *testing.T) {
+	path := setupMultiRev(t)
+	dir := filepath.Dir(path)
+	// Remove file first, then make dir unwritable so WriteFile fails.
+	os.Remove(path)
+	os.Chmod(dir, 0555)
+	defer os.Chmod(dir, 0755)
+
+	err := Checkout(path, "1.1")
+	if err == nil {
+		t.Fatal("expected write error, got nil")
+	}
+}
+
+// TestCheckoutHeadCheckoutError verifies CheckoutHead propagates
+// checkout errors (e.g. when the archive is corrupt).
+func TestCheckoutHeadCheckoutError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte("title: Test\n\nBody."), 0644)
+
+	// Create a corrupt archive.
+	rcsDir := filepath.Join(dir, "RCS")
+	os.MkdirAll(rcsDir, 0755)
+	os.WriteFile(filepath.Join(rcsDir, "test.md,v"), []byte("garbage"), 0644)
+
+	err := CheckoutHead(path)
+	if err == nil {
+		t.Fatal("expected error for corrupt archive, got nil")
+	}
+}
+
+// TestCheckoutHeadWriteArchiveError verifies CheckoutHead propagates
+// a writeArchive error.
+func TestCheckoutHeadWriteArchiveError(t *testing.T) {
+	path := setupMultiRev(t)
+	archive := filepath.Join(filepath.Dir(path), "RCS", "test.md,v")
+	os.Chmod(archive, 0444)
+	defer os.Chmod(archive, 0644)
+
+	err := CheckoutHead(path)
+	if err == nil {
+		t.Fatal("expected writeArchive error, got nil")
+	}
+}
+
+// TestCheckoutHeadWriteFileError verifies CheckoutHead propagates
+// a file write error.
+func TestCheckoutHeadWriteFileError(t *testing.T) {
+	path := setupMultiRev(t)
+	dir := filepath.Dir(path)
+	// Remove file so os.Remove in CheckoutHead is a no-op error,
+	// then make dir unwritable so WriteFile (create) fails.
+	os.Remove(path)
+	os.Chmod(dir, 0555)
+	defer os.Chmod(dir, 0755)
+
+	err := CheckoutHead(path)
+	if err == nil {
+		t.Fatal("expected write error, got nil")
+	}
+}
+
+// TestDiffRangeCheckoutRev1Error verifies DiffRange returns an
+// error when the first revision doesn't exist.
+func TestDiffRangeCheckoutRev1Error(t *testing.T) {
+	path := setupMultiRev(t)
+	_, err := DiffRange(path, "9.9", "1.1")
+	if err == nil {
+		t.Fatal("expected error for nonexistent rev1")
+	}
+	if !strings.Contains(err.Error(), "checkout") {
+		t.Errorf("error = %v, want 'checkout' in message", err)
+	}
+}
+
+// TestDiffRangePureInsert verifies unified diff for pure insertion
+// (covers makeHunks with no aFirst context lines).
+func TestDiffRangePureInsert(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte("title: Test\n\na"), 0644)
+	Checkin(path)
+	os.WriteFile(path, []byte("title: Test\n\na\nb\nc"), 0644)
+	Checkin(path)
+
+	diff, err := DiffRange(path, "1.1", "1.2")
+	if err != nil {
+		t.Fatalf("DiffRange: %v", err)
+	}
+	if !strings.Contains(diff, "+b") {
+		t.Errorf("expected '+b' in diff, got: %s", diff)
+	}
+}
+
+// TestDiffRangePureDelete verifies unified diff for pure deletion
+// (covers makeHunks with no bFirst context lines).
+func TestDiffRangePureDelete(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte("title: Test\n\na\nb\nc"), 0644)
+	Checkin(path)
+	os.WriteFile(path, []byte("title: Test\n\na"), 0644)
+	Checkin(path)
+
+	diff, err := DiffRange(path, "1.1", "1.2")
+	if err != nil {
+		t.Fatalf("DiffRange: %v", err)
+	}
+	if !strings.Contains(diff, "-b") {
+		t.Errorf("expected '-b' in diff, got: %s", diff)
+	}
+}
+
+// TestSplitLinesEmpty verifies splitLines returns nil for empty input.
+func TestSplitLinesEmpty(t *testing.T) {
+	if got := splitLines(""); got != nil {
+		t.Errorf("splitLines(\"\") = %v, want nil", got)
+	}
+}
+
+// TestSplitLinesNoTrailingNewline verifies splitLines preserves
+// content without a trailing newline.
+func TestSplitLinesNoTrailingNewline(t *testing.T) {
+	got := splitLines("a\nb")
+	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Errorf("splitLines(\"a\\nb\") = %v, want [a b]", got)
+	}
+}
+
+// TestHeadRevEmptyHead verifies HeadRev returns an error when the
+// archive parses but has no head revision set.
+func TestHeadRevEmptyHead(t *testing.T) {
+	dir := t.TempDir()
+	rcsDir := filepath.Join(dir, "RCS")
+	os.MkdirAll(rcsDir, 0755)
+	// Minimal ,v file with empty head field but valid structure.
+	archive := filepath.Join(rcsDir, "test.md,v")
+	os.WriteFile(archive, []byte("head\t;\naccess;\nsymbols;\nlocks;\nstrict;\n\ndesc\n@@\n\n"), 0644)
+
+	path := filepath.Join(dir, "test.md")
+	_, err := HeadRev(path)
+	if err == nil {
+		t.Fatal("expected error for empty head")
+	}
+	if !strings.Contains(err.Error(), "no head revision") {
+		t.Errorf("error = %v, want 'no head revision'", err)
+	}
+}
+
+// TestDiffRangeCompleteRewrite covers makeHunks boundary where the
+// entire file content changes (all lines are '-' then '+', exercising
+// the aFirst < 0 / bFirst < 0 fallback paths).
+func TestDiffRangeCompleteRewrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte("title: Test\n\nold1\nold2"), 0644)
+	Checkin(path)
+	os.WriteFile(path, []byte("title: Test\n\nnew1\nnew2\nnew3"), 0644)
+	Checkin(path)
+
+	diff, err := DiffRange(path, "1.1", "1.2")
+	if err != nil {
+		t.Fatalf("DiffRange: %v", err)
+	}
+	if !strings.Contains(diff, "-old1") || !strings.Contains(diff, "+new1") {
+		t.Errorf("unexpected diff:\n%s", diff)
+	}
+}
+
+// TestSetTagWriteArchiveError verifies SetTag propagates writeArchive error.
+func TestSetTagWriteArchiveError(t *testing.T) {
+	path := setupMultiRev(t)
+	archive := filepath.Join(filepath.Dir(path), "RCS", "test.md,v")
+	os.Chmod(archive, 0444)
+	defer os.Chmod(archive, 0644)
+
+	err := SetTag(path, "TAG", "1.1")
+	if err == nil {
+		t.Fatal("expected writeArchive error, got nil")
+	}
+}
+
+// TestUnifiedDiffEmptyToContent covers the edge case where the
+// old file is completely empty and the new file has content,
+// producing a hunk of pure insertions (aFirst < 0 fallback).
+func TestUnifiedDiffEmptyToContent(t *testing.T) {
+	diff := unifiedDiff("f", "1.1", "1.2", "", "new\nlines\n")
+	if !strings.Contains(diff, "+new") {
+		t.Errorf("expected '+new' in diff, got:\n%s", diff)
+	}
+}
+
+// TestUnifiedDiffContentToEmpty covers the edge case where the
+// old file has content and the new file is empty, producing a
+// hunk of pure deletions (bFirst < 0 fallback).
+func TestUnifiedDiffContentToEmpty(t *testing.T) {
+	diff := unifiedDiff("f", "1.1", "1.2", "old\nlines\n", "")
+	if !strings.Contains(diff, "-old") {
+		t.Errorf("expected '-old' in diff, got:\n%s", diff)
 	}
 }
