@@ -38,9 +38,9 @@ theme:
     muted_light:  "#aaa"          # Toolbar icons, search snippets
     blockquote:   "#888"          # Blockquote text
     # Typography
-    font_family:  "-apple-system, BlinkMacSystemFont, sans-serif"  # Body font stack
+    font_family:  "system-ui, -apple-system, BlinkMacSystemFont, sans-serif"  # Body font stack
     font_size:    "16px"          # Base text size
-    code_font:    "SF Mono, Consolas, monospace"  # Monospace font
+    code_font:    "SF Mono, Cascadia Code, Consolas, Liberation Mono, monospace"  # Monospace font
     code_tab_size: "4"            # Tab width in code blocks
     line_height:  "1.6"           # Body line spacing
     # Layout

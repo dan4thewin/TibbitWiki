@@ -19,6 +19,7 @@ import (
 	"github.com/dan4thewin/tibbitwiki/internal/editor"
 	"github.com/dan4thewin/tibbitwiki/internal/rcs"
 	"github.com/dan4thewin/tibbitwiki/internal/render"
+	"github.com/dan4thewin/tibbitwiki/internal/tid"
 	"github.com/dan4thewin/tibbitwiki/internal/wiki"
 )
 
@@ -94,6 +95,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 
 	if r.URL.Path == "/" {
+		names := s.hub.Names()
+		if len(names) == 1 {
+			http.Redirect(w, r, "/"+names[0]+"/", http.StatusFound)
+			return
+		}
 		s.handleWikiSelector(w, r)
 		return
 	}
@@ -131,7 +137,7 @@ func (s *Server) handleWikiSelector(w http.ResponseWriter, r *http.Request) {
   --tw-bg: #1a1a2e; --tw-fg: #e0e0e0; --tw-note_bg: #16213e;
   --tw-accent: #6cacee; --tw-accent_hover: #8ecaff;
   --tw-border: #333; --tw-note_radius: 6px;
-  --tw-font_family: -apple-system, BlinkMacSystemFont, sans-serif;
+  --tw-font_family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --tw-title_fg: #e0e0e0;
 }
 body { margin: 0; padding: 40px; background: var(--tw-bg); color: var(--tw-fg); font-family: var(--tw-font_family); }
@@ -472,13 +478,25 @@ func (s *Server) handleRevisions(w http.ResponseWriter, r *http.Request) {
 	// Check for /checkout suffix.
 	if strings.HasSuffix(path, "/checkout") {
 		title := strings.TrimSuffix(path, "/checkout")
+		if !tid.ValidTitle(title) {
+			http.Error(w, "invalid note title", http.StatusBadRequest)
+			return
+		}
 		s.checkoutRevision(w, r, title)
 		return
 	}
 	// Check for /promote suffix.
 	if strings.HasSuffix(path, "/promote") {
 		title := strings.TrimSuffix(path, "/promote")
+		if !tid.ValidTitle(title) {
+			http.Error(w, "invalid note title", http.StatusBadRequest)
+			return
+		}
 		s.promoteRevision(w, r, title)
+		return
+	}
+	if !tid.ValidTitle(path) {
+		http.Error(w, "invalid note title", http.StatusBadRequest)
 		return
 	}
 	if r.Method != http.MethodGet {
@@ -542,10 +560,13 @@ func (s *Server) promoteRevision(w http.ResponseWriter, r *http.Request, title s
 }
 
 // extractTitle pulls the note title from a URL path by removing
-// the given prefix.
+// the given prefix. Returns "" for empty or invalid titles.
 func extractTitle(path, prefix string) string {
 	raw := strings.TrimPrefix(path, prefix)
 	if raw == "" {
+		return ""
+	}
+	if !tid.ValidTitle(raw) {
 		return ""
 	}
 	return raw

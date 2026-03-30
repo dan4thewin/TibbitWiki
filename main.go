@@ -26,70 +26,35 @@ import (
 	"github.com/dan4thewin/tibbitwiki/internal/wiki"
 )
 
+// version is set at build time via -ldflags.
+var version = "dev"
+
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "-version" {
+		fmt.Println("tibbitwiki", version)
+		os.Exit(0)
+	}
 	cfg, err := config.Load(os.Args[1:])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Resolve config file path: explicit --config flag, or
-	// config.yaml in wiki path (auto-created if absent).
-	configPath := resolveConfigPath(os.Args[1:])
-	if configPath == "" {
-		configPath = filepath.Join(cfg.WikiPath, "config.yaml")
-	}
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		writeDefaultConfig(configPath)
-	} else if resolveConfigPath(os.Args[1:]) == "" {
-		// Found config.yaml in wiki path but wasn't loaded — reload with it.
-		cfg, err = config.Load(append(os.Args[1:], "--config", configPath))
-		if err != nil {
-			log.Printf("warning: ignoring %s: %v", configPath, err)
-		}
-	}
-
-	var ed *editor.Editor
-	if cfg.EditorCmd != "" {
-		var err error
-		ed, err = editor.New(cfg.EditorCmd)
-		if err != nil {
-			log.Fatalf("editor: %v", err)
-		}
-		log.Printf("editor: %s", cfg.EditorCmd)
-	}
+	cfg, configPath := loadConfig(cfg, os.Args[1:])
+	ed := initEditor(cfg.EditorCmd)
 
 	wikis := discoverWikis(cfg.WikiPath, ed, cfg.CacheSize)
 	if len(wikis) == 0 {
 		log.Fatalf("no wikis found in %s (need subdirs with .md files)", cfg.WikiPath)
 	}
 
-	// Generate per-wiki theme CSS files in the wiki path directory.
-	for name := range wikis {
-		merged := config.MergedTheme(cfg.Theme, name)
-		cssPath := filepath.Join(cfg.WikiPath, name+".css")
-		if err := render.WriteThemeFile(merged, cssPath); err != nil {
-			log.Fatalf("writing %s: %v", cssPath, err)
-		}
-		log.Printf("theme: %s", cssPath)
-	}
+	wikiNames := generateThemeCSS(wikis, cfg)
 
-	// Watch config.yaml for changes — regenerate per-wiki CSS on save.
 	var themeRev atomic.Int64
-	wikiNames := make([]string, 0, len(wikis))
-	for name := range wikis {
-		wikiNames = append(wikiNames, name)
-	}
 	go watchConfig(configPath, cfg.WikiPath, wikiNames, &themeRev)
 
-	pollMS := int(cfg.PollInterval.Milliseconds())
-	hub := wiki.NewHub(wikis)
-	for _, wk := range wikis {
-		wk.SetHub(hub)
-		wk.SetAttachExclude(cfg.AttachmentExclude)
-		wk.SetPdfConvertCmd(cfg.PdfConvertCmd)
-	}
-	srv := server.New(hub, ed, &themeRev, pollMS, cfg.MaxDiffs, cfg.IndexHTML, cfg.WikiPath, configPath)
+	hub := configureHub(wikis, cfg)
+	srv := server.New(hub, ed, &themeRev, int(cfg.PollInterval.Milliseconds()), cfg.MaxDiffs, cfg.IndexHTML, cfg.WikiPath, configPath)
 	httpSrv := &http.Server{Addr: cfg.Listen, Handler: srv}
 	log.Printf("listening on http://%s", cfg.Listen)
 	log.Printf("wikis: %v", hub.Names())
@@ -141,6 +106,40 @@ func writeDefaultConfig(path string) {
 	} else {
 		log.Printf("created default config: %s", path)
 	}
+}
+
+// loadConfig resolves the config file path and optionally reloads
+// the config when a config.yaml is found in the wiki directory.
+func loadConfig(cfg config.Config, args []string) (config.Config, string) {
+	configPath := resolveConfigPath(args)
+	if configPath == "" {
+		configPath = filepath.Join(cfg.WikiPath, "config.yaml")
+	}
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		writeDefaultConfig(configPath)
+	} else if resolveConfigPath(args) == "" {
+		reloaded, err := config.Load(append(args, "--config", configPath))
+		if err != nil {
+			log.Printf("warning: ignoring %s: %v", configPath, err)
+		} else {
+			cfg = reloaded
+		}
+	}
+	return cfg, configPath
+}
+
+// initEditor creates an Editor from the configured command, or
+// returns nil when no editor command is set.
+func initEditor(cmd string) *editor.Editor {
+	if cmd == "" {
+		return nil
+	}
+	ed, err := editor.New(cmd)
+	if err != nil {
+		log.Fatalf("editor: %v", err)
+	}
+	log.Printf("editor: %s", cmd)
+	return ed
 }
 
 // watchConfig watches the config file for changes. On save it does
@@ -232,6 +231,32 @@ func reloadConfig(configPath, wikiPath string, wikiNames []string, themeRev *ato
 	}
 	themeRev.Add(1)
 	log.Printf("config reload: theme CSS regenerated (rev %d)", themeRev.Load())
+}
+
+// generateThemeCSS writes per-wiki CSS files and returns the wiki names.
+func generateThemeCSS(wikis map[string]*wiki.Wiki, cfg config.Config) []string {
+	names := make([]string, 0, len(wikis))
+	for name := range wikis {
+		names = append(names, name)
+		merged := config.MergedTheme(cfg.Theme, name)
+		cssPath := filepath.Join(cfg.WikiPath, name+".css")
+		if err := render.WriteThemeFile(merged, cssPath); err != nil {
+			log.Fatalf("writing %s: %v", cssPath, err)
+		}
+		log.Printf("theme: %s", cssPath)
+	}
+	return names
+}
+
+// configureHub creates a Hub and configures each wiki with shared settings.
+func configureHub(wikis map[string]*wiki.Wiki, cfg config.Config) *wiki.Hub {
+	hub := wiki.NewHub(wikis)
+	for _, wk := range wikis {
+		wk.SetHub(hub)
+		wk.SetAttachExclude(cfg.AttachmentExclude)
+		wk.SetPdfConvertCmd(cfg.PdfConvertCmd)
+	}
+	return hub
 }
 
 // discoverWikis scans dir for subdirs containing .md files and

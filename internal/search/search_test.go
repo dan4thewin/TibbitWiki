@@ -151,6 +151,13 @@ func TestParseQueryNotRegex(t *testing.T) {
 	}
 }
 
+// TestNegateKindUnknown verifies unknown kinds pass through.
+func TestNegateKindUnknown(t *testing.T) {
+	if negateKind(999) != 999 {
+		t.Error("unknown kind should pass through unchanged")
+	}
+}
+
 // TestParseQueryMultipleTokens verifies space-separated AND query.
 func TestParseQueryMultipleTokens(t *testing.T) {
 	tokens := parseQuery("linux #Journal !spam")
@@ -181,6 +188,67 @@ func TestParseQueryOrLiteral(t *testing.T) {
 	tokens := parseQuery("cat|dog")
 	if len(tokens) != 1 || tokens[0].kind != tokLiteral || tokens[0].pattern != "cat|dog" {
 		t.Errorf("unexpected tokens: %+v", tokens)
+	}
+}
+
+// TestParseQueryEscapedSpace verifies backslash-space keeps
+// the space inside a single token.
+func TestParseQueryEscapedSpace(t *testing.T) {
+	tokens := parseQuery(`@My\ Note`)
+	if len(tokens) != 1 {
+		t.Fatalf("expected 1 token, got %d: %+v", len(tokens), tokens)
+	}
+	if tokens[0].kind != tokTitle || tokens[0].pattern != "My Note" {
+		t.Errorf("unexpected token: %+v", tokens[0])
+	}
+}
+
+// TestParseQueryEscapedSigil verifies backslash before a sigil
+// produces a literal search for those bytes.
+func TestParseQueryEscapedSigil(t *testing.T) {
+	tests := []struct {
+		input, pattern string
+	}{
+		{`\!bang`, "!bang"},
+		{`\#hashtag`, "#hashtag"},
+		{`\@mention`, "@mention"},
+		{`\/slashes/`, "/slashes/"},
+		{`\mXfoo`, "mXfoo"},
+	}
+	for _, tt := range tests {
+		tokens := parseQuery(tt.input)
+		if len(tokens) != 1 {
+			t.Errorf("parseQuery(%q): expected 1 token, got %d", tt.input, len(tokens))
+			continue
+		}
+		if tokens[0].kind != tokLiteral {
+			t.Errorf("parseQuery(%q): kind = %d, want tokLiteral", tt.input, tokens[0].kind)
+		}
+		if tokens[0].pattern != tt.pattern {
+			t.Errorf("parseQuery(%q): pattern = %q, want %q", tt.input, tokens[0].pattern, tt.pattern)
+		}
+	}
+}
+
+// TestParseQueryEscapedPipe verifies \| produces a literal pipe,
+// not OR.
+func TestParseQueryEscapedPipe(t *testing.T) {
+	tokens := parseQuery(`cat\|dog`)
+	if len(tokens) != 1 || tokens[0].kind != tokLiteral {
+		t.Fatalf("unexpected tokens: %+v", tokens)
+	}
+	// The pattern retains the \| — toRgPattern handles unescaping.
+	if tokens[0].pattern != `cat\|dog` {
+		t.Errorf("pattern = %q, want %q", tokens[0].pattern, `cat\|dog`)
+	}
+	// Verify toRgPattern treats it as a single literal, not OR.
+	pats, _ := toRgPattern(tokens[0])
+	if len(pats) != 1 {
+		t.Fatalf("expected 1 pattern (literal pipe), got %d: %v", len(pats), pats)
+	}
+	// The escaped pipe should become a literal | in the rg pattern.
+	if !strings.Contains(pats[0], `\|`) {
+		t.Errorf("pattern %q should contain escaped pipe", pats[0])
 	}
 }
 

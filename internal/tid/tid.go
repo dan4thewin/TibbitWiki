@@ -115,6 +115,24 @@ func Serialize(t *Note) []byte {
 	return []byte(b.String())
 }
 
+// ValidTitle reports whether a note title is safe for use in file
+// paths. Titles containing ".." path components or leading "/" are
+// rejected to prevent path traversal.
+func ValidTitle(title string) bool {
+	if title == "" {
+		return false
+	}
+	if strings.HasPrefix(title, "/") {
+		return false
+	}
+	for _, seg := range strings.Split(title, "/") {
+		if seg == ".." {
+			return false
+		}
+	}
+	return true
+}
+
 // TitleToFilename converts a note title to its .md filename.
 // Titles containing path separators get URL-encoded.
 func TitleToFilename(title string) string {

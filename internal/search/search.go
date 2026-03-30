@@ -62,11 +62,20 @@ func parseMPattern(s string) (string, bool) {
 //	!/regex/     NOT regex
 //	mXregexX     raw regex with delimiter X
 //	!mXregexX    NOT regex with delimiter X
-//	a|b          OR (kept as single literal for rg -e)
+//	a|b|c        OR (kept as single literal for rg -e)
+//	\ (space)    escaped space (literal space within a token)
+//	\! \# \@ \/ \m   escaped sigil (literal, not special)
+//	\|           escaped pipe (literal, not OR)
 func parseQuery(q string) []token {
-	fields := strings.Fields(q)
+	fields := splitQuery(q)
 	var tokens []token
 	for _, f := range fields {
+		// Backslash before sigil → literal search for those bytes.
+		if len(f) >= 2 && f[0] == '\\' && strings.ContainsRune("!#@/m", rune(f[1])) {
+			tokens = append(tokens, token{kind: tokLiteral, pattern: f[1:]})
+			continue
+		}
+
 		neg := false
 		if strings.HasPrefix(f, "!") {
 			neg = true
@@ -74,20 +83,38 @@ func parseQuery(q string) []token {
 		}
 		kind, pattern := classifyToken(f)
 		if neg {
-			switch kind {
-			case tokLiteral:
-				kind = tokNot
-			case tokTag:
-				kind = tokNotTag
-			case tokTitle:
-				kind = tokNotTitle
-			case tokRegex:
-				kind = tokNotRegex
-			}
+			kind = negateKind(kind)
 		}
 		tokens = append(tokens, token{kind: kind, pattern: pattern})
 	}
 	return tokens
+}
+
+// splitQuery splits a query string on unescaped whitespace.
+// Backslash-space is preserved as a literal space within a token.
+func splitQuery(q string) []string {
+	q = strings.ReplaceAll(q, `\ `, "\t")
+	fields := strings.FieldsFunc(q, func(r rune) bool {
+		return r == ' ' || r == '\n' || r == '\r'
+	})
+	for i := range fields {
+		fields[i] = strings.ReplaceAll(fields[i], "\t", " ")
+	}
+	return fields
+}
+
+func negateKind(kind int) int {
+	switch kind {
+	case tokLiteral:
+		return tokNot
+	case tokTag:
+		return tokNotTag
+	case tokTitle:
+		return tokNotTitle
+	case tokRegex:
+		return tokNotRegex
+	}
+	return kind
 }
 
 func classifyToken(f string) (int, string) {
@@ -118,7 +145,8 @@ func toRgPattern(t token) (patterns []string, caseInsensitive bool) {
 		return []string{t.pattern}, false
 	default:
 		if strings.Contains(t.pattern, "|") {
-			parts := strings.Split(t.pattern, "|")
+			// Split on unescaped |, then strip backslash from \|.
+			parts := splitUnescapedPipe(t.pattern)
 			pats := make([]string, len(parts))
 			for i, p := range parts {
 				pats[i] = regexp.QuoteMeta(p)
@@ -131,6 +159,25 @@ func toRgPattern(t token) (patterns []string, caseInsensitive bool) {
 
 func isNegated(kind int) bool {
 	return kind == tokNot || kind == tokNotTag || kind == tokNotTitle || kind == tokNotRegex
+}
+
+// splitUnescapedPipe splits s on unescaped "|" and strips the
+// backslash from escaped "\|".
+func splitUnescapedPipe(s string) []string {
+	var parts []string
+	var cur strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) && s[i+1] == '|' {
+			cur.WriteByte('|')
+			i++ // skip the |
+		} else if s[i] == '|' {
+			parts = append(parts, cur.String())
+			cur.Reset()
+		} else {
+			cur.WriteByte(s[i])
+		}
+	}
+	return append(parts, cur.String())
 }
 
 // Search runs a query against .md files in dir and returns matching

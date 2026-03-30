@@ -330,3 +330,19 @@ func TestParseTextHeaderIgnored(t *testing.T) {
 		t.Errorf("Text() = %q, want %q", note.Text(), "Actual body.")
 	}
 }
+
+// TestValidTitle verifies path traversal detection.
+func TestValidTitle(t *testing.T) {
+	// Valid titles.
+	for _, title := range []string{"Hello", "My Note", "foo/bar", "a.b.c"} {
+		if !ValidTitle(title) {
+			t.Errorf("ValidTitle(%q) = false, want true", title)
+		}
+	}
+	// Invalid titles: empty, leading slash, dot-dot components.
+	for _, title := range []string{"", "/etc/passwd", "../secret", "foo/../bar", "foo/bar/.."} {
+		if ValidTitle(title) {
+			t.Errorf("ValidTitle(%q) = true, want false", title)
+		}
+	}
+}

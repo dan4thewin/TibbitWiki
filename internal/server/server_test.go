@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1309,9 +1310,38 @@ func TestHandleSearchNilResults(t *testing.T) {
 	}
 }
 
-// TestWikiSelector verifies GET / returns HTML listing wiki names.
-func TestWikiSelector(t *testing.T) {
+// TestWikiSelectorSingleRedirect verifies GET / with a single wiki
+// redirects directly to that wiki.
+func TestWikiSelectorSingleRedirect(t *testing.T) {
 	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusFound)
+	}
+	loc := w.Header().Get("Location")
+	if loc != "/test/" {
+		t.Errorf("redirect Location = %q, want /test/", loc)
+	}
+}
+
+// TestWikiSelectorMultiWiki verifies GET / with multiple wikis
+// returns the HTML wiki selector page.
+func TestWikiSelectorMultiWiki(t *testing.T) {
+	dir := t.TempDir()
+	ed, _ := editor.New("echo %s")
+	wk1 := wiki.New("alpha", dir, ed, 100)
+	wk1.Start()
+	t.Cleanup(wk1.Stop)
+	wk2 := wiki.New("beta", dir, ed, 100)
+	wk2.Start()
+	t.Cleanup(wk2.Stop)
+
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"alpha": wk1, "beta": wk2})
+	srv := New(hub, ed, new(atomic.Int64), 3000, 10, "", dir, "")
+
 	req := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -1320,11 +1350,11 @@ func TestWikiSelector(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 	body := w.Body.String()
-	if !strings.Contains(body, "test") {
-		t.Errorf("wiki selector should list 'test', got:\n%s", body)
+	if !strings.Contains(body, "alpha") {
+		t.Errorf("wiki selector should list 'alpha', got:\n%s", body)
 	}
-	if !strings.Contains(body, `href="/test/"`) {
-		t.Errorf("wiki selector should link to /test/, got:\n%s", body)
+	if !strings.Contains(body, "beta") {
+		t.Errorf("wiki selector should list 'beta', got:\n%s", body)
 	}
 }
 
@@ -1337,6 +1367,49 @@ func TestUnknownWiki(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+// TestPathTraversalRejected verifies that titles containing ".."
+// are rejected by extractTitle. Go's ServeMux also cleans ".." from
+// URL paths (301 redirect), providing defense-in-depth.
+func TestPathTraversalRejected(t *testing.T) {
+	// extractTitle should return "" for traversal attempts.
+	bad := []string{
+		"../etc/passwd",
+		"foo/../bar",
+		"/etc/passwd",
+		"foo/bar/..",
+	}
+	for _, title := range bad {
+		got := extractTitle("/notes/"+title, "/notes/")
+		if got != "" {
+			t.Errorf("extractTitle with %q = %q, want empty", title, got)
+		}
+	}
+	// Valid titles pass through.
+	good := []string{"Hello", "My Note", "foo/bar"}
+	for _, title := range good {
+		got := extractTitle("/notes/"+title, "/notes/")
+		if got != title {
+			t.Errorf("extractTitle with %q = %q, want %q", title, got, title)
+		}
+	}
+}
+
+// TestRevisionTraversalRejected verifies that handleRevisions rejects
+// titles with ".." components in all sub-paths.
+func TestRevisionTraversalRejected(t *testing.T) {
+	srv, wk := newTestServer(t)
+	for _, suffix := range []string{"", "/checkout", "/promote"} {
+		title := "foo/../bar"
+		r := httptest.NewRequest("GET", "/revisions/"+title+suffix, nil)
+		r = r.WithContext(context.WithValue(r.Context(), wikiContextKey, wk))
+		w := httptest.NewRecorder()
+		srv.handleRevisions(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("revisions/%s%s: status = %d, want 400", title, suffix, w.Code)
+		}
 	}
 }
 
