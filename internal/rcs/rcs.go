@@ -43,13 +43,18 @@ func parseArchive(path string) (*gorcs.File, string, error) {
 	return file, archive, nil
 }
 
-// writeArchive serializes a File back to the ,v archive.
-// Removes first because external RCS creates read-only archives.
+// writeArchive serializes a File back to the ,v archive atomically.
+// Writes to a temp file first, then renames to avoid data loss on failure.
 func writeArchive(file *gorcs.File, archive string) error {
 	data := []byte(file.String())
-	os.Remove(archive)
-	if err := os.WriteFile(archive, data, 0644); err != nil {
+	tmp := archive + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		os.Remove(tmp)
 		return fmt.Errorf("write %s: %w", archive, err)
+	}
+	if err := os.Rename(tmp, archive); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename %s: %w", archive, err)
 	}
 	return nil
 }
@@ -57,7 +62,18 @@ func writeArchive(file *gorcs.File, archive string) error {
 // Checkin checks in the working file, creating the ,v archive on
 // first use inside the RCS/ subdirectory. Keyword expansion is
 // suppressed (-ko). The working file is kept locked (writable).
+// Returns nil without creating a revision if content is unchanged.
 func Checkin(path string) error {
+	return checkin(path, false)
+}
+
+// ForceCheckin is like Checkin but creates a revision even when
+// content is unchanged from head. Used by PromoteRevision.
+func ForceCheckin(path string) error {
+	return checkin(path, true)
+}
+
+func checkin(path string, force bool) error {
 	archive := archivePath(path)
 	rcsDir := filepath.Dir(archive)
 
@@ -82,8 +98,15 @@ func Checkin(path string) error {
 		if err != nil {
 			return err
 		}
-		_, err = file.Checkin("tibbitwiki", "", string(text),
-			gorcs.WithSetLock, gorcs.WithForce{})
+		opts := []any{gorcs.WithSetLock}
+		if force {
+			opts = append(opts, gorcs.WithForce{})
+		}
+		_, err = file.Checkin("tibbitwiki", "", string(text), opts...)
+		// Not an error — content matches head, nothing to do.
+		if err != nil && strings.Contains(err.Error(), "no changes from head") {
+			return nil
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("checkin %s: %w", path, err)
@@ -200,9 +223,14 @@ func DiffRange(path, rev1, rev2 string) (string, error) {
 }
 
 // unifiedDiff produces a unified diff header and hunks.
+// Returns empty string if either side exceeds maxDiffLines.
 func unifiedDiff(path, rev1, rev2, text1, text2 string) string {
+	const maxDiffLines = 5000
 	a := splitLines(text1)
 	b := splitLines(text2)
+	if len(a) > maxDiffLines || len(b) > maxDiffLines {
+		return ""
+	}
 
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "--- %s\t%s\n", path, rev1)
@@ -373,6 +401,21 @@ func makeHunks(edits []edit, aLen, bLen, ctx int) []hunk {
 	return hunks
 }
 
+// atomicWriteFile writes data to path atomically via temp+rename,
+// preserving the target permissions.
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, perm); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename %s: %w", path, err)
+	}
+	return nil
+}
+
 // Checkout checks out a specific revision without a lock (read-only).
 // The working file becomes 0444.
 func Checkout(path, rev string) error {
@@ -387,15 +430,11 @@ func Checkout(path, rev string) error {
 	if err != nil {
 		return fmt.Errorf("co -r%s %s: %w", rev, path, err)
 	}
-	// Remove first — WriteFile does not change permissions on existing files.
-	os.Remove(path)
-	if err := os.WriteFile(path, []byte(v.Content), 0444); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-	return nil
+	return atomicWriteFile(path, []byte(v.Content), 0444)
 }
 
 // CheckoutHead checks out the head revision with a lock (writable).
+// Writes working file before archive so NeedsCheckin sees correct mtimes.
 func CheckoutHead(path string) error {
 	file, _, err := parseArchive(path)
 	if err != nil {
@@ -405,14 +444,10 @@ func CheckoutHead(path string) error {
 	if err != nil {
 		return fmt.Errorf("co -l %s: %w", path, err)
 	}
-	if err := writeArchive(file, archivePath(path)); err != nil {
+	if err := atomicWriteFile(path, []byte(v.Content), 0644); err != nil {
 		return err
 	}
-	os.Remove(path)
-	if err := os.WriteFile(path, []byte(v.Content), 0644); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-	return nil
+	return writeArchive(file, archivePath(path))
 }
 
 // SetTag assigns the symbolic name to a revision.
