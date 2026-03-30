@@ -2243,3 +2243,392 @@ func TestPromoteNonexistentReturns404(t *testing.T) {
 		t.Errorf("status = %d, want 404", w.Code)
 	}
 }
+
+// --- End-to-end RCS happy-path tests ---
+//
+// These tests exercise the full HTTP → wiki → RCS library path,
+// verifying that the pure-Go RCS implementation produces correct
+// results through every endpoint. Each test uses real RCS archives
+// (no mocking) and verifies observable behavior through the API.
+
+// putJSON is a helper that PUTs a JSON note body and returns the recorder.
+func putJSON(t *testing.T, srv http.Handler, urlPath, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest("PUT", urlPath, strings.NewReader(body))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	return w
+}
+
+// getJSON is a helper that GETs a JSON endpoint and decodes it.
+func getJSON(t *testing.T, srv http.Handler, urlPath string, v interface{}) int {
+	t.Helper()
+	req := httptest.NewRequest("GET", urlPath, nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code == http.StatusOK {
+		json.NewDecoder(w.Body).Decode(v)
+	}
+	return w.Code
+}
+
+// postEmpty is a helper that POSTs with no body and returns the recorder.
+func postEmpty(t *testing.T, srv http.Handler, urlPath string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest("POST", urlPath, nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	return w
+}
+
+// TestE2EPutCreatesRCSArchive verifies that PUT /notes/{title} for
+// a new note creates an RCS archive on disk.
+func TestE2EPutCreatesRCSArchive(t *testing.T) {
+	srv, wk := newTestServer(t)
+
+	w := putJSON(t, srv, "/test/notes/Fresh",
+		`{"title":"Fresh","text":"First save."}`)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("PUT status = %d, want 204", w.Code)
+	}
+
+	// RCS archive should exist.
+	fp := filepath.Join(wk.NoteDir(), "Fresh.md")
+	if !rcs.HasArchive(fp) {
+		t.Fatal("expected RCS archive after PUT")
+	}
+	head, err := rcs.HeadRev(fp)
+	if err != nil {
+		t.Fatalf("HeadRev: %v", err)
+	}
+	if head != "1.1" {
+		t.Errorf("head = %s, want 1.1", head)
+	}
+}
+
+// TestE2EPutEditsCreateRevisions verifies that successive PUTs
+// create new RCS revisions visible through GET /revisions.
+func TestE2EPutEditsCreateRevisions(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	// Create note.
+	w := putJSON(t, srv, "/test/notes/Multi",
+		`{"title":"Multi","text":"V1."}`)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("PUT 1 status = %d", w.Code)
+	}
+
+	// Edit twice.
+	w = putJSON(t, srv, "/test/notes/Multi",
+		`{"title":"Multi","text":"V2."}`)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("PUT 2 status = %d", w.Code)
+	}
+	w = putJSON(t, srv, "/test/notes/Multi",
+		`{"title":"Multi","text":"V3."}`)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("PUT 3 status = %d", w.Code)
+	}
+
+	// GET /revisions should show 3 revisions.
+	var result wiki.RevisionsResult
+	code := getJSON(t, srv, "/test/revisions/Multi", &result)
+	if code != http.StatusOK {
+		t.Fatalf("GET /revisions status = %d", code)
+	}
+	if len(result.Revisions) != 3 {
+		t.Errorf("revisions = %d, want 3", len(result.Revisions))
+	}
+	if !result.IsHead {
+		t.Error("should be at head")
+	}
+}
+
+// TestE2ERevisionLifecycle exercises the full cycle:
+// PUT → PUT → GET /revisions → checkout → GET /notes (readOnly) →
+// GET /revisions (isHead=false) → restore head → GET /notes (writable).
+// Reload is called after checkout/restore to simulate the watcher
+// (in production, fsnotify detects the disk change and triggers it).
+func TestE2ERevisionLifecycle(t *testing.T) {
+	srv, wk := newTestServer(t)
+
+	// Create two versions.
+	putJSON(t, srv, "/test/notes/Life",
+		`{"title":"Life","text":"Original."}`)
+	putJSON(t, srv, "/test/notes/Life",
+		`{"title":"Life","text":"Updated."}`)
+
+	fp := filepath.Join(wk.NoteDir(), "Life.md")
+
+	// Verify revisions at head.
+	var revResult wiki.RevisionsResult
+	getJSON(t, srv, "/test/revisions/Life", &revResult)
+	if len(revResult.Revisions) != 2 {
+		t.Fatalf("revisions = %d, want 2", len(revResult.Revisions))
+	}
+	if !revResult.IsHead {
+		t.Fatal("should be at head before checkout")
+	}
+
+	// Checkout old revision 1.1.
+	w := postEmpty(t, srv, "/test/revisions/Life/checkout?rev=1.1")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("checkout status = %d, want 204", w.Code)
+	}
+
+	// Simulate watcher: reload the file from disk.
+	wk.Reload(fp)
+	wk.Do(func() {})
+
+	// GET /notes should show readOnly and rcsRev/rcsHead.
+	var fields map[string]string
+	getJSON(t, srv, "/test/notes/Life", &fields)
+	if fields["readOnly"] != "true" {
+		t.Errorf("readOnly = %q, want true", fields["readOnly"])
+	}
+	if fields["rcsRev"] != "1.1" {
+		t.Errorf("rcsRev = %q, want 1.1", fields["rcsRev"])
+	}
+	if fields["rcsHead"] != "1.2" {
+		t.Errorf("rcsHead = %q, want 1.2", fields["rcsHead"])
+	}
+	// Content should be old version after watcher reload.
+	if !strings.Contains(fields["text"], "Original.") {
+		t.Errorf("text = %q, want old content", fields["text"])
+	}
+
+	// GET /revisions should show isHead=false.
+	var revResult2 wiki.RevisionsResult
+	getJSON(t, srv, "/test/revisions/Life", &revResult2)
+	if revResult2.IsHead {
+		t.Error("should NOT be at head after checkout")
+	}
+
+	// Restore head.
+	w = postEmpty(t, srv, "/test/revisions/Life/checkout")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("restore status = %d, want 204", w.Code)
+	}
+
+	// Simulate watcher reload.
+	wk.Reload(fp)
+	wk.Do(func() {})
+
+	// GET /notes should no longer be readOnly.
+	var fields2 map[string]string
+	getJSON(t, srv, "/test/notes/Life", &fields2)
+	if fields2["readOnly"] != "" {
+		t.Errorf("readOnly should be empty after restore, got %q", fields2["readOnly"])
+	}
+	if !strings.Contains(fields2["text"], "Updated.") {
+		t.Errorf("text = %q, want head content", fields2["text"])
+	}
+}
+
+// TestE2EPromoteLifecycle exercises the promote flow:
+// create 3 versions → checkout 1.1 → promote → verify new head
+// is 1.4 with old content → note is writable.
+// Reload is called after checkout/promote to simulate the watcher.
+func TestE2EPromoteLifecycle(t *testing.T) {
+	srv, wk := newTestServer(t)
+
+	// Create three versions.
+	putJSON(t, srv, "/test/notes/Promo",
+		`{"title":"Promo","text":"V1."}`)
+	putJSON(t, srv, "/test/notes/Promo",
+		`{"title":"Promo","text":"V2."}`)
+	putJSON(t, srv, "/test/notes/Promo",
+		`{"title":"Promo","text":"V3."}`)
+
+	fp := filepath.Join(wk.NoteDir(), "Promo.md")
+
+	// Checkout old revision 1.1.
+	w := postEmpty(t, srv, "/test/revisions/Promo/checkout?rev=1.1")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("checkout status = %d", w.Code)
+	}
+
+	// Promote: old content becomes new head.
+	w = postEmpty(t, srv, "/test/revisions/Promo/promote")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("promote status = %d, want 204", w.Code)
+	}
+
+	// Simulate watcher reload.
+	wk.Reload(fp)
+	wk.Do(func() {})
+
+	// Revisions should now show 5: 3 PUTs + promote + watcher
+	// recheckin (watcher sees body changed from V3 to V1).
+	var result wiki.RevisionsResult
+	getJSON(t, srv, "/test/revisions/Promo", &result)
+	if len(result.Revisions) != 5 {
+		t.Errorf("revisions = %d, want 5", len(result.Revisions))
+	}
+	if !result.IsHead {
+		t.Error("should be at head after promote")
+	}
+
+	// RCS head on disk should be 1.5.
+	head, err := rcs.HeadRev(fp)
+	if err != nil {
+		t.Fatalf("HeadRev: %v", err)
+	}
+	if head != "1.5" {
+		t.Errorf("head = %s, want 1.5", head)
+	}
+
+	// CHECKOUT tag should be gone.
+	tag, _ := rcs.CheckoutTag(fp, "CHECKOUT")
+	if tag != "" {
+		t.Errorf("CHECKOUT tag = %q, want empty", tag)
+	}
+
+	// GET /notes should be writable and contain old content.
+	var fields map[string]string
+	getJSON(t, srv, "/test/notes/Promo", &fields)
+	if fields["readOnly"] != "" {
+		t.Errorf("readOnly = %q, want empty after promote", fields["readOnly"])
+	}
+	if !strings.Contains(fields["text"], "V1.") {
+		t.Errorf("text = %q, should contain promoted V1 content", fields["text"])
+	}
+}
+
+// TestE2ELineEditCreatesRevision verifies that POST /line-edit
+// creates a new RCS revision.
+func TestE2ELineEditCreatesRevision(t *testing.T) {
+	srv, wk := newTestServer(t)
+
+	// Create a note with list content on disk.
+	dir := wk.NoteDir()
+	path := filepath.Join(dir, "EditRev.md")
+	content := "title: EditRev\n\n- alpha\n- beta\n"
+	os.WriteFile(path, []byte(content), 0644)
+	td, _ := tid.Parse([]byte(content))
+	wk.Store().PutWithPath(td, path)
+	wk.SeedBody("EditRev", "- alpha\n- beta\n")
+	rcs.Checkin(path)
+
+	// Head should be 1.1 after initial checkin.
+	head1, _ := rcs.HeadRev(path)
+	if head1 != "1.1" {
+		t.Fatalf("initial head = %s, want 1.1", head1)
+	}
+
+	// Line edit: replace line 2.
+	body := `{"line":2,"text":"- BETA"}`
+	req := httptest.NewRequest("POST", "/test/line-edit/EditRev",
+		strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("line-edit status = %d, want 200; body: %s",
+			w.Code, w.Body.String())
+	}
+
+	// Head should now be 1.2.
+	head2, _ := rcs.HeadRev(path)
+	if head2 != "1.2" {
+		t.Errorf("head after line-edit = %s, want 1.2", head2)
+	}
+}
+
+// TestE2EDiffContentVerification verifies that the unified diff
+// produced by the pure-Go implementation contains correct +/- lines
+// when retrieved through GET /revisions.
+func TestE2EDiffContentVerification(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	// Create two distinct versions with known body text.
+	putJSON(t, srv, "/test/notes/DiffCheck",
+		`{"title":"DiffCheck","text":"line one\nline two\nline three"}`)
+	putJSON(t, srv, "/test/notes/DiffCheck",
+		`{"title":"DiffCheck","text":"line one\nline TWO\nline three"}`)
+
+	var result wiki.RevisionsResult
+	code := getJSON(t, srv, "/test/revisions/DiffCheck", &result)
+	if code != http.StatusOK {
+		t.Fatalf("status = %d", code)
+	}
+
+	// Diff HTML should contain the changed line.
+	if !strings.Contains(result.DiffHTML, "line TWO") {
+		t.Error("diff should contain 'line TWO'")
+	}
+	if !strings.Contains(result.DiffHTML, "line two") {
+		t.Error("diff should reference old 'line two'")
+	}
+	// Should have the diff header.
+	if !strings.Contains(result.DiffHTML, "1.1 → 1.2") {
+		t.Error("diff should have '1.1 → 1.2' header")
+	}
+}
+
+// TestE2ERevisionsAfterMultiplePutsShowDiffs verifies that multiple
+// PUT edits produce diffs between consecutive pairs.
+func TestE2ERevisionsAfterMultiplePutsShowDiffs(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	putJSON(t, srv, "/test/notes/Diffs",
+		`{"title":"Diffs","text":"AAA"}`)
+	putJSON(t, srv, "/test/notes/Diffs",
+		`{"title":"Diffs","text":"BBB"}`)
+	putJSON(t, srv, "/test/notes/Diffs",
+		`{"title":"Diffs","text":"CCC"}`)
+
+	var result wiki.RevisionsResult
+	getJSON(t, srv, "/test/revisions/Diffs", &result)
+
+	// Should have diffs for both pairs.
+	if !strings.Contains(result.DiffHTML, "1.1 → 1.2") {
+		t.Error("missing 1.1 → 1.2 diff")
+	}
+	if !strings.Contains(result.DiffHTML, "1.2 → 1.3") {
+		t.Error("missing 1.2 → 1.3 diff")
+	}
+	// Each diff should show the change.
+	if !strings.Contains(result.DiffHTML, "BBB") {
+		t.Error("diff should contain 'BBB'")
+	}
+}
+
+// TestE2ECheckoutRestoreRoundTrip verifies that checkout+restore
+// leaves the note in the exact same state as before (no extra
+// revisions created, no stale RCS state).
+func TestE2ECheckoutRestoreRoundTrip(t *testing.T) {
+	srv, wk := newTestServer(t)
+
+	putJSON(t, srv, "/test/notes/Round",
+		`{"title":"Round","text":"V1."}`)
+	putJSON(t, srv, "/test/notes/Round",
+		`{"title":"Round","text":"V2."}`)
+
+	fp := filepath.Join(wk.NoteDir(), "Round.md")
+	headBefore, _ := rcs.HeadRev(fp)
+
+	// Checkout old, then restore.
+	postEmpty(t, srv, "/test/revisions/Round/checkout?rev=1.1")
+	postEmpty(t, srv, "/test/revisions/Round/checkout")
+
+	// Head should be unchanged.
+	headAfter, _ := rcs.HeadRev(fp)
+	if headAfter != headBefore {
+		t.Errorf("head changed: %s → %s", headBefore, headAfter)
+	}
+
+	// No CHECKOUT tag should remain.
+	tag, _ := rcs.CheckoutTag(fp, "CHECKOUT")
+	if tag != "" {
+		t.Errorf("CHECKOUT tag = %q, want empty after restore", tag)
+	}
+
+	// Note should not be readOnly.
+	var fields map[string]string
+	getJSON(t, srv, "/test/notes/Round", &fields)
+	if fields["readOnly"] != "" {
+		t.Errorf("readOnly = %q after restore", fields["readOnly"])
+	}
+}
