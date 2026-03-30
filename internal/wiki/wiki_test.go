@@ -2236,7 +2236,7 @@ func TestPromoteNoFile(t *testing.T) {
 }
 
 // TestPromoteCheckinError verifies that PromoteRevision returns
-// the rcs.Checkin error (lines 356-358).
+// the rcs.ForceCheckin error.
 func TestPromoteCheckinError(t *testing.T) {
 	wk, path := writeNoteWithRevisions(t, "ChkErr",
 		[]string{"V1.", "V2."})
@@ -2246,7 +2246,7 @@ func TestPromoteCheckinError(t *testing.T) {
 	wk.Reload(path)
 	wk.Do(func() {})
 
-	patches := gomonkey.ApplyFunc(rcs.Checkin,
+	patches := gomonkey.ApplyFunc(rcs.ForceCheckin,
 		func(string) error {
 			return fmt.Errorf("forced checkin error")
 		},

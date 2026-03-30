@@ -2,6 +2,7 @@ package rcs
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -877,5 +878,112 @@ func TestMakeHunksEmptyEdits(t *testing.T) {
 	got := makeHunks(nil, 0, 0, 3)
 	if got != nil {
 		t.Errorf("makeHunks(nil) = %v, want nil", got)
+	}
+}
+
+// TestForceCheckin verifies ForceCheckin creates a revision even
+// when content is unchanged.
+func TestForceCheckin(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte("title: Test\n\nSame."), 0644)
+	if err := Checkin(path); err != nil {
+		t.Fatalf("first checkin: %v", err)
+	}
+	// Normal Checkin on unchanged content is a no-op.
+	if err := Checkin(path); err != nil {
+		t.Fatalf("no-op checkin: %v", err)
+	}
+	head1, _ := HeadRev(path)
+	if head1 != "1.1" {
+		t.Fatalf("head after no-op = %s, want 1.1", head1)
+	}
+	// ForceCheckin creates a new revision with identical content.
+	if err := ForceCheckin(path); err != nil {
+		t.Fatalf("force checkin: %v", err)
+	}
+	head2, _ := HeadRev(path)
+	if head2 != "1.2" {
+		t.Errorf("head after force = %s, want 1.2", head2)
+	}
+}
+
+// TestCheckinUnchangedIsNoop verifies Checkin returns nil (not error)
+// when content is identical to head.
+func TestCheckinUnchangedIsNoop(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte("title: Test\n\nSame."), 0644)
+	if err := Checkin(path); err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	// Second checkin with same content should be a no-op, not error.
+	if err := Checkin(path); err != nil {
+		t.Errorf("unchanged checkin returned error: %v", err)
+	}
+	head, _ := HeadRev(path)
+	if head != "1.1" {
+		t.Errorf("head = %s, want 1.1 (no new revision)", head)
+	}
+}
+
+// TestUnifiedDiffLineLimitSkips verifies that diff is skipped when
+// either side exceeds 5000 lines.
+func TestUnifiedDiffLineLimitSkips(t *testing.T) {
+	big := strings.Repeat("line\n", 5001)
+	got := unifiedDiff("f", "1.1", "1.2", "small\n", big)
+	if got != "" {
+		t.Errorf("expected empty diff for large input, got %d bytes", len(got))
+	}
+	got = unifiedDiff("f", "1.1", "1.2", big, "small\n")
+	if got != "" {
+		t.Errorf("expected empty diff for large input, got %d bytes", len(got))
+	}
+}
+
+// TestAtomicWriteFileRenameError verifies atomicWriteFile cleans up
+// temp file on rename failure.
+func TestAtomicWriteFileRenameError(t *testing.T) {
+	dir := t.TempDir()
+	patches := gomonkey.ApplyFunc(os.Rename, func(_, _ string) error {
+		return fmt.Errorf("mock rename error")
+	})
+	defer patches.Reset()
+
+	err := atomicWriteFile(filepath.Join(dir, "test.txt"), []byte("data"), 0644)
+	if err == nil {
+		t.Fatal("expected rename error, got nil")
+	}
+	if !strings.Contains(err.Error(), "rename") {
+		t.Errorf("error = %v, want 'rename'", err)
+	}
+	// Temp file should be cleaned up.
+	matches, _ := filepath.Glob(filepath.Join(dir, "*.tmp"))
+	if len(matches) > 0 {
+		t.Errorf("temp file not cleaned up: %v", matches)
+	}
+}
+
+// TestWriteArchiveRenameError verifies writeArchive cleans up temp
+// on rename failure.
+func TestWriteArchiveRenameError(t *testing.T) {
+	path := setupMultiRev(t)
+	file, archive, err := parseArchive(path)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	patches := gomonkey.ApplyFunc(os.Rename, func(_, _ string) error {
+		return fmt.Errorf("mock rename error")
+	})
+	defer patches.Reset()
+
+	err = writeArchive(file, archive)
+	if err == nil {
+		t.Fatal("expected rename error, got nil")
+	}
+	// Original archive should still exist.
+	if !fileExists(archive) {
+		t.Error("original archive was deleted")
 	}
 }
