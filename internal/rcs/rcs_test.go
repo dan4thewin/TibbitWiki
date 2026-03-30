@@ -1,11 +1,15 @@
 package rcs
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/agiledragon/gomonkey/v2"
+	gorcs "github.com/arran4/golang-rcs"
 )
 
 // TestCheckinCreatesArchive verifies that the first Checkin creates
@@ -802,5 +806,59 @@ func TestUnifiedDiffContentToEmpty(t *testing.T) {
 	diff := unifiedDiff("f", "1.1", "1.2", "old\nlines\n", "")
 	if !strings.Contains(diff, "-old") {
 		t.Errorf("expected '-old' in diff, got:\n%s", diff)
+	}
+}
+
+// TestCheckinLibraryError verifies that Checkin propagates an error
+// from the gorcs Checkin method (e.g. internal library failure).
+func TestCheckinLibraryError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.md")
+	os.WriteFile(path, []byte("title: Test\n\nV1."), 0644)
+	Checkin(path) // create archive
+
+	os.WriteFile(path, []byte("title: Test\n\nV2."), 0644)
+	patches := gomonkey.ApplyMethodFunc(
+		&gorcs.File{}, "Checkin",
+		func(_ string, _ string, _ string, _ ...any) (*gorcs.CIVerdict, error) {
+			return nil, errors.New("mock ci error")
+		})
+	defer patches.Reset()
+
+	err := Checkin(path)
+	if err == nil {
+		t.Fatal("expected library checkin error, got nil")
+	}
+	if !strings.Contains(err.Error(), "checkin") {
+		t.Errorf("error = %v, want 'checkin' in message", err)
+	}
+}
+
+// TestCheckoutHeadLibraryError verifies that CheckoutHead propagates
+// an error from the gorcs Checkout method.
+func TestCheckoutHeadLibraryError(t *testing.T) {
+	path := setupMultiRev(t)
+	patches := gomonkey.ApplyMethodFunc(
+		&gorcs.File{}, "Checkout",
+		func(_ string, _ ...any) (*gorcs.COVerdict, error) {
+			return nil, errors.New("mock co error")
+		})
+	defer patches.Reset()
+
+	err := CheckoutHead(path)
+	if err == nil {
+		t.Fatal("expected library checkout error, got nil")
+	}
+	if !strings.Contains(err.Error(), "co -l") {
+		t.Errorf("error = %v, want 'co -l' in message", err)
+	}
+}
+
+// TestMakeHunksEmptyEdits verifies makeHunks returns nil for empty
+// input (defensive early-return path).
+func TestMakeHunksEmptyEdits(t *testing.T) {
+	got := makeHunks(nil, 0, 0, 3)
+	if got != nil {
+		t.Errorf("makeHunks(nil) = %v, want nil", got)
 	}
 }
