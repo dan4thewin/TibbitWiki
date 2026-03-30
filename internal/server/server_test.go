@@ -2458,24 +2458,23 @@ func TestE2EPromoteLifecycle(t *testing.T) {
 	wk.Reload(fp)
 	wk.Do(func() {})
 
-	// Revisions should now show 5: 3 PUTs + promote + watcher
-	// recheckin (watcher sees body changed from V3 to V1).
+	// Revisions should now show 4: 3 PUTs + promote.
 	var result wiki.RevisionsResult
 	getJSON(t, srv, "/test/revisions/Promo", &result)
-	if len(result.Revisions) != 5 {
-		t.Errorf("revisions = %d, want 5", len(result.Revisions))
+	if len(result.Revisions) != 4 {
+		t.Errorf("revisions = %d, want 4", len(result.Revisions))
 	}
 	if !result.IsHead {
 		t.Error("should be at head after promote")
 	}
 
-	// RCS head on disk should be 1.5.
+	// RCS head on disk should be 1.4.
 	head, err := rcs.HeadRev(fp)
 	if err != nil {
 		t.Fatalf("HeadRev: %v", err)
 	}
-	if head != "1.5" {
-		t.Errorf("head = %s, want 1.5", head)
+	if head != "1.4" {
+		t.Errorf("head = %s, want 1.4", head)
 	}
 
 	// CHECKOUT tag should be gone.
