@@ -75,6 +75,19 @@ Only one version.
 EOF
 ci -l "$WIKI_DIR/Single.md" < /dev/null >/dev/null 2>&1
 
+# A note with 13 revisions to test the maxDiffs cap.
+MANY="$WIKI_DIR/ManyRevs.md"
+for i in $(seq 1 13); do
+  cat > "$MANY" <<EOF
+title: ManyRevs
+tags: Test
+modified: 20260324000000000
+
+Version $i.
+EOF
+  ci -l "$MANY" < /dev/null >/dev/null 2>&1
+done
+
 echo "Building..."
 cd "$REPO"
 go build -o "$TMPDIR/tibbitwiki" .
@@ -209,6 +222,23 @@ echo ""
 echo "--- 17. Method checks for promote ---"
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/revisions/RevTest/promote")
 assert "GET /promote 405" "405" "$STATUS"
+
+echo ""
+echo "--- 18. maxDiffs cap (default 10) ---"
+REV_JSON=$(curl -s "$BASE/revisions/ManyRevs")
+NREVS=$(echo "$REV_JSON" | python3 -c "import json,sys; print(len(json.load(sys.stdin)['revisions']))")
+assert "13 revisions listed" "13" "$NREVS"
+# Count diff headers — should be capped at 10.
+NDIFFS=$(echo "$REV_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['diffHTML'].count('<h4>'))")
+assert "10 diff transitions (capped)" "10" "$NDIFFS"
+# First diff should start at 1.3→1.4 (skipping 1.1→1.2 and 1.2→1.3).
+FIRST_DIFF=$(echo "$REV_JSON" | python3 -c "
+import json,sys,re
+html = json.load(sys.stdin)['diffHTML']
+m = re.search(r'<h4>(.*?)</h4>', html)
+print(m.group(1) if m else '')
+")
+assert "first diff is 1.3 → 1.4" "1.3 → 1.4" "$FIRST_DIFF"
 
 # --- Safari DOM tests (only if JS access enabled) ---
 if [ "$SAFARI_JS" = true ]; then
