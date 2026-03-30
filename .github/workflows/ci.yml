@@ -1,17 +1,31 @@
 name: CI
 
 on:
-  workflow_dispatch:  # manual-only; auto triggers disabled
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version-file: go.mod
+
+      - name: Install tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y rcs ripgrep
+
+      - name: Install tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install rcs ripgrep
 
       - name: Build
         run: go build ./...
@@ -35,9 +49,3 @@ jobs:
         run: |
           go test -gcflags=all=-l -coverprofile=cover.out ./...
           go tool cover -func=cover.out | grep total:
-
-      - name: Install gocyclo
-        run: go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
-
-      - name: Cyclomatic complexity
-        run: gocyclo -top 20 .

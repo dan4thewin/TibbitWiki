@@ -4,18 +4,21 @@ Everything needed to recreate this setup from zero.
 
 ## Prerequisites
 
-- Go 1.21+ (`brew install go`)
-- Neovide (`brew install --cask neovide` on macOS,
-  `brew install neovide` on Linux, or https://neovide.dev)
+- Go (version matching go.mod — `brew install go` or https://go.dev/dl)
+- ripgrep (`brew install ripgrep` or `apt install ripgrep`) —
+  required for search
+- RCS (`brew install rcs` or `apt install rcs`) —
+  optional; enables revision history
 - Git with SSH key configured for GitHub
-- RCS (`brew install rcs` or `apt install rcs`)
-- ripgrep (`brew install ripgrep` or `apt install ripgrep`)
 
-### Optional (for PDF conversion)
+### Optional
 
-- poppler (`brew install poppler` or `apt install poppler-utils`) —
-  provides `pdftotext` and `pdfimages` for text extraction
-- [Ollama](https://ollama.com) with local models for markdown cleanup
+- **Neovide** (`brew install --cask neovide` on macOS,
+  `brew install neovide` on Linux, or https://neovide.dev) —
+  or any editor; see "Editor setup" below
+- **poppler** (`brew install poppler` or `apt install poppler-utils`) —
+  provides `pdftotext` and `pdfimages` for PDF conversion
+- **[Ollama](https://ollama.com)** with local models for markdown cleanup
   and vision OCR (e.g. `ollama pull qwen2.5:14b` for text,
   `ollama pull granite3.2-vision` for image-only PDFs). Without ollama
   the pipeline falls back to raw extracted text or a metadata stub.
@@ -69,13 +72,47 @@ Spaces in titles are literal spaces in filenames.
 
 ## TibbitWiki setup
 
-### Clone and build
+### Install
+
+The simplest way to install:
+
+```bash
+go install github.com/dan4thewin/tibbitwiki@latest
+```
+
+This puts the `tibbitwiki` binary in `$GOPATH/bin` (typically `~/go/bin`).
+
+### Build from source
 
 ```bash
 cd ~/src
 git clone git@github.com:dan4thewin/tibbitwiki.git
 cd tibbitwiki
 go build -o tibbitwiki .
+```
+
+Optionally use Plan 9 mk (Go port) for the full build/test/lint cycle:
+
+```bash
+go install github.com/dcjones/mk@latest
+mk check   # build, vet, fmt, test, coverage, complexity
+```
+
+### Run the server
+
+```bash
+tibbitwiki
+```
+
+On first run, `~/TibbitWiki/demo/` is created with sample notes.
+Open http://127.0.0.1:8080/ in your browser. With a single wiki
+directory, you're taken directly to the demo wiki.
+
+Add more wikis by creating subdirectories:
+
+```bash
+mkdir ~/TibbitWiki/work
+# restart the server (⚙ → Restart, or relaunch)
 ```
 
 ### Configuration
@@ -85,35 +122,48 @@ commented defaults (colors, fonts, layout, poll interval, etc.).
 You can also specify a config file explicitly or use CLI flags:
 
 ```yaml
-wiki_path: ~/notes
+wiki_path: ~/TibbitWiki
 listen: 127.0.0.1:8080
-editor_cmd: "open /Applications/Neovide.app --args %s"
+editor_cmd: ""
 poll_interval: 3s
 cache_size: 200
 attachment_exclude: [".pdf.md"]  # hide PDF shadow files
 pdf_convert_cmd: ""              # e.g. "pdf2md-enqueue %s %d/.pdf-queue"
 
 theme:
-  bg:     "#1a1a2e"
-  accent: "#6cacee"
-  # ... see config.yaml for all keys
+  shared:
+    bg:     "#1a1a2e"
+    accent: "#6cacee"
+    # ... see config.yaml for all keys
 ```
 
-### Run the server
+### Editor setup
 
-```bash
-./tibbitwiki --wiki-path ~/notes
+Without configuration, the pencil icon opens an in-browser
+textarea editor. To use an external editor:
+
+**macOS** — `open` is auto-detected at startup. The pencil icon
+will open the file in your default `.md` handler. To use a
+specific editor:
+
+```yaml
+editor_cmd: "open /Applications/Neovide.app --args %s"
 ```
 
-Open http://127.0.0.1:8080/ in your browser. You'll see the wiki selector
-listing your wiki subdirectories. Click one to open the dark-themed
-viewer with your notes in the recent sidebar.
+**Linux** — `xdg-open` is auto-detected. For a terminal editor:
 
-### Neovide wrapper (`vide`)
+```yaml
+editor_cmd: "xterm -e vim %s"
+```
 
-The default `open /Applications/Neovide.app --args %s` spawns a new window per edit.
-Use `scripts/vide` instead for single-instance editing with a
-persistent headless nvim:
+**Any platform** — Shift-click the pencil icon to force the
+in-browser textarea editor (useful for quick edits even with
+an external editor configured).
+
+### Neovide wrapper (`vide`) — optional
+
+For Neovide users, `scripts/vide` provides single-instance editing
+with a persistent headless nvim:
 
 ```yaml
 editor_cmd: "vide %s"
@@ -145,13 +195,14 @@ tw-start --wiki-path ~/notes
 
 ### Editing workflow
 
-1. Click "edit" on a note → neovide opens the `.md` file
-   (or reuses the existing window)
-2. Edit in neovide, save
-3. Browser updates within 3 seconds (poll-based)
-4. Click "+ Journal" for a date-titled entry
-5. Click "+ New" for a custom-titled note
-6. Click ⚙ gear icon to edit config.yaml (theme changes apply live),
+1. Click the pencil icon to edit a note
+   - With an editor configured: opens the `.md` file externally
+   - Without: opens an in-browser textarea
+   - Shift-click always opens the textarea
+2. Save in your editor — the browser updates within 3 seconds
+3. Click "+ Journal" for a date-titled entry
+4. Click "+ New" for a custom-titled note
+5. Click ⚙ gear icon to edit config.yaml (theme changes apply live),
    or choose "Restart server" from the gear dropdown for other changes
 
 ## RCS version control
@@ -232,6 +283,17 @@ find ~/notes/hold -name '*.pdf' ! -exec test -f '{}.md' \; -print -exec pdf2md -
 
 ## Development tools
 
+Standard Go toolchain works for basic development:
+
+```bash
+go build ./...                                   # build
+go vet ./...                                     # static analysis
+go test -gcflags=all=-l -count=1 ./...           # test (inlining disabled for gomonkey)
+go test -gcflags=all=-l -coverprofile=c.out ./... # coverage
+```
+
+With Plan 9 mk (`go install github.com/dcjones/mk@latest`):
+
 ```bash
 mk build      # go build ./...
 mk test       # go test (inlining disabled for gomonkey)
@@ -240,8 +302,6 @@ mk coverage   # statement coverage report
 mk complexity # gocyclo top 20
 mk check      # all of the above
 ```
-
-Install mk: `go install github.com/dcjones/mk@latest`
 
 See [TESTING.md](TESTING.md) for browser automation techniques.
 

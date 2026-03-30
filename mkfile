@@ -34,7 +34,7 @@ coverage:V:
 
 coverage-html:V: coverage
 	go tool cover -html=cover.out -o coverage.html
-	open coverage.html
+	${BROWSER:-open} coverage.html
 
 complexity:V:
 	gocyclo -top 20 .
