@@ -444,6 +444,13 @@ func (w *Wiki) CheckoutRevision(title, rev string) error {
 			if err == nil {
 				rcs.DeleteTag(fp, "CHECKOUT")
 				w.store.SetRCS(title, "", "")
+				// Seed the body cache so the watcher sees the
+				// restored content as unchanged and skips checkin.
+				if data, e := os.ReadFile(fp); e == nil {
+					if td, e := ParseFunc(data); e == nil {
+						w.body.Add(title, td.Text())
+					}
+				}
 			}
 		} else {
 			err = rcs.Checkout(fp, rev)
@@ -451,6 +458,13 @@ func (w *Wiki) CheckoutRevision(title, rev string) error {
 				head, _ := rcs.HeadRev(fp)
 				rcs.SetTag(fp, "CHECKOUT", rev)
 				w.store.SetRCS(title, rev, head)
+				// Seed the body cache with the checked-out content
+				// so the watcher (and later promote) see it as current.
+				if data, e := os.ReadFile(fp); e == nil {
+					if td, e := ParseFunc(data); e == nil {
+						w.body.Add(title, td.Text())
+					}
+				}
 			}
 		}
 	})

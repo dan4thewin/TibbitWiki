@@ -537,10 +537,15 @@ func TestCheckinWriteArchiveError(t *testing.T) {
 		t.Fatalf("first checkin: %v", err)
 	}
 
-	// Make the archive read-only so writeArchive fails.
-	archive := filepath.Join(dir, "RCS", "test.md,v")
+	// Make archive + directory unwritable so writeArchive fails.
+	rcsDir := filepath.Join(dir, "RCS")
+	archive := filepath.Join(rcsDir, "test.md,v")
 	os.Chmod(archive, 0444)
-	defer os.Chmod(archive, 0644)
+	os.Chmod(rcsDir, 0555)
+	defer func() {
+		os.Chmod(rcsDir, 0755)
+		os.Chmod(archive, 0644)
+	}()
 
 	os.WriteFile(path, []byte("title: Test\n\nVersion 2."), 0644)
 	err := Checkin(path)
@@ -642,9 +647,14 @@ func TestCheckoutHeadCheckoutError(t *testing.T) {
 // a writeArchive error.
 func TestCheckoutHeadWriteArchiveError(t *testing.T) {
 	path := setupMultiRev(t)
-	archive := filepath.Join(filepath.Dir(path), "RCS", "test.md,v")
+	rcsDir := filepath.Join(filepath.Dir(path), "RCS")
+	archive := filepath.Join(rcsDir, "test.md,v")
 	os.Chmod(archive, 0444)
-	defer os.Chmod(archive, 0644)
+	os.Chmod(rcsDir, 0555)
+	defer func() {
+		os.Chmod(rcsDir, 0755)
+		os.Chmod(archive, 0644)
+	}()
 
 	err := CheckoutHead(path)
 	if err == nil {
@@ -779,9 +789,16 @@ func TestDiffRangeCompleteRewrite(t *testing.T) {
 // TestSetTagWriteArchiveError verifies SetTag propagates writeArchive error.
 func TestSetTagWriteArchiveError(t *testing.T) {
 	path := setupMultiRev(t)
-	archive := filepath.Join(filepath.Dir(path), "RCS", "test.md,v")
+	rcsDir := filepath.Join(filepath.Dir(path), "RCS")
+	archive := filepath.Join(rcsDir, "test.md,v")
+	// Make archive read-only AND directory read-only so neither
+	// remove nor overwrite can succeed.
 	os.Chmod(archive, 0444)
-	defer os.Chmod(archive, 0644)
+	os.Chmod(rcsDir, 0555)
+	defer func() {
+		os.Chmod(rcsDir, 0755)
+		os.Chmod(archive, 0644)
+	}()
 
 	err := SetTag(path, "TAG", "1.1")
 	if err == nil {

@@ -44,8 +44,10 @@ func parseArchive(path string) (*gorcs.File, string, error) {
 }
 
 // writeArchive serializes a File back to the ,v archive.
+// Removes first because external RCS creates read-only archives.
 func writeArchive(file *gorcs.File, archive string) error {
 	data := []byte(file.String())
+	os.Remove(archive)
 	if err := os.WriteFile(archive, data, 0644); err != nil {
 		return fmt.Errorf("write %s: %w", archive, err)
 	}

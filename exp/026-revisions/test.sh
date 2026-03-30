@@ -52,6 +52,7 @@ WIKI_DIR="$TMPDIR/testwiki"
 mkdir -p "$WIKI_DIR"
 
 # --- Create a note with 3 RCS revisions ---
+mkdir -p "$WIKI_DIR/RCS"
 NOTE="$WIKI_DIR/RevTest.md"
 for body in "Version one." "Version two." "Version three."; do
   cat > "$NOTE" <<EOF
