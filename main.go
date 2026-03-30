@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -28,8 +29,19 @@ import (
 	"github.com/dan4thewin/tibbitwiki/internal/wiki"
 )
 
-// version is set at build time via -ldflags.
-var version = "dev"
+// version is set at build time via -ldflags, or read from the
+// embedded module info populated by go install.
+var version = ""
+
+func getVersion() string {
+	if version != "" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return "dev"
+}
 
 //go:embed TibbitWiki.md
 var demoTibbitWiki []byte
@@ -39,7 +51,7 @@ var demoQuickRef []byte
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "-version" {
-		fmt.Println("tibbitwiki", version)
+		fmt.Println("tibbitwiki", getVersion())
 		os.Exit(0)
 	}
 	cfg, err := config.Load(os.Args[1:])
