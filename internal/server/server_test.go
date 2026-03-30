@@ -165,6 +165,26 @@ func TestHandleListNotes(t *testing.T) {
 	if body[0]["revision"] == "" {
 		t.Error("should include revision")
 	}
+	// Server created with editor → X-Has-Editor: true.
+	if h := w.Header().Get("X-Has-Editor"); h != "true" {
+		t.Errorf("X-Has-Editor = %q, want %q", h, "true")
+	}
+}
+
+// TestHandleListNotesNoEditor verifies that X-Has-Editor is absent
+// when the server has no editor configured.
+func TestHandleListNotesNoEditor(t *testing.T) {
+	wk := wiki.New("test", t.TempDir(), nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	req := httptest.NewRequest("GET", "/test/notes", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if h := w.Header().Get("X-Has-Editor"); h != "" {
+		t.Errorf("X-Has-Editor = %q, want absent", h)
+	}
 }
 
 // TestGetNote verifies GET for a single note returns full

@@ -272,6 +272,9 @@ func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Theme-Rev", strconv.FormatInt(s.themeRev.Load(), 10))
 	w.Header().Set("X-Poll-Interval", strconv.Itoa(s.pollMS))
+	if s.editor != nil {
+		w.Header().Set("X-Has-Editor", "true")
+	}
 	json.NewEncoder(w).Encode(wikiFrom(r).List())
 }
 

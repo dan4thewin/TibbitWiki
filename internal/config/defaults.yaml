@@ -1,9 +1,9 @@
 # TibbitWiki configuration
 
 # These settings require a server restart:
-wiki_path: .
+wiki_path: ~/TibbitWiki
 listen: 127.0.0.1:8080
-editor_cmd: "open /Applications/Neovide.app --args %s"
+editor_cmd: ""
 poll_interval: 3s
 cache_size: 200
 max_diffs: 10
@@ -50,3 +50,7 @@ theme:
     tag_limit:      "5"           # Tags per note
     # Identity
     wiki_title:     "TibbitWiki"  # Displayed in header and browser tab
+    auto_open:      ""            # Note to display on page load
+  # Per-wiki overrides: section name matches the subdirectory name.
+  demo:
+    auto_open:      "TibbitWiki"  # Open welcome note on first visit

@@ -5,12 +5,25 @@ title: TibbitWiki
 
 A personal wiki served from plain markdown files on disk.
 
-## Quick start
+## Getting started
+
+Your wikis live in `~/TibbitWiki/`.  Each subdirectory is a
+separate wiki — this demo wiki is one example.
+
+**To create a new wiki,** just make a directory and restart:
+
+```bash
+mkdir ~/TibbitWiki/work
+# restart the server (⚙ → Restart, or Ctrl-C and relaunch)
+```
+
+Your new wiki appears in the wiki picker at `/`.
+
+**To start taking notes:**
 
 - Click **+ New** to create a note
 - Click **+ Journal** for a date-titled daily entry
-- Click the **pencil icon** on any note to edit in Neovide
-- Save in your editor — the browser updates within 3 seconds
+- Click the **pencil icon** to edit (Shift-click for in-browser editing)
 - Use the **search bar** (press `/`) for full-text search
 
 ## Note format
@@ -69,27 +82,17 @@ tag pill to search for all notes with that tag.
 Space separates tokens. Use `\s` in a regex to match a literal
 space (e.g. `/hello\sworld/`).
 
-## Theme
+## Customizing
 
-Edit `config.yaml` (click ⚙ → Edit config) to change colors,
-fonts, and layout. Changes apply live on save.
-
-To preview themes visually, symlink the playground into your wiki
-directory and browse to `/{wiki}/playground/index.html`:
-
-```bash
-ln -s ~/src/tibbitwiki/playground ~/notes/personal/playground
-```
-
-The playground reads your current theme and lets you tweak every
-variable with instant feedback, then copy a ready-to-paste YAML
-block.
+When you're ready to customize, edit `config.yaml` (click
+⚙ → Edit config). You can change colors, fonts, layout,
+listen address, and editor command. Changes to theme values
+apply live on save.
 
 ## More info
 
 - QuickRef — markdown syntax reference with rendered examples
 - [SETUP.md](https://github.com/dan4thewin/TibbitWiki/blob/main/SETUP.md) —
-  full setup guide: prerequisites, config, editor, PDF conversion,
-  Evernote migration
+  full setup guide: prerequisites, config, editor, PDF conversion
 - [README.md](https://github.com/dan4thewin/TibbitWiki) —
   features, API endpoints, RCS versioning, architecture

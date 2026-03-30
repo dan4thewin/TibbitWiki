@@ -16,6 +16,7 @@
   --tw-font_size: 16px; --tw-code_font: SF Mono, Consolas, monospace;
   --tw-line_height: 1.6; --tw-note_radius: 6px; --tw-sidebar_width: 220px;
   --tw-sidebar_limit: 20; --tw-tag_limit: 5; --tw-wiki_title: "TibbitWiki";
+  --tw-auto_open: "";
 }
 body { font-family: var(--tw-font_family); font-size: var(--tw-font_size); margin: 0; padding: 20px; display: flex; gap: 20px; background: var(--tw-bg); color: var(--tw-fg); }
 svg { vertical-align: -.125em; }
@@ -61,6 +62,9 @@ h1 { margin-top: 0; color: var(--tw-title_fg, var(--tw-fg)); }
 .tag-add-btn { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 12px; font-size: 12px; cursor: pointer; background: var(--tw-button_bg); color: var(--tw-accent); border: 1px dashed var(--tw-border_light); }
 .tag-add-btn:hover { background: var(--tw-border); border-color: var(--tw-accent); }
 .tag-add-input { background: var(--tw-code_bg); border: 1px solid var(--tw-accent); border-radius: 12px; color: var(--tw-fg); font-size: 12px; padding: 2px 10px; outline: none; width: 100px; }
+.note-edit-area { width: 100%; min-height: 200px; background: var(--tw-code_bg); color: var(--tw-fg); border: 1px solid var(--tw-border_light); border-radius: 4px; padding: 8px; font-family: var(--tw-code_font); font-size: 14px; line-height: 1.5; resize: vertical; box-sizing: border-box; tab-size: 4; }
+.note-edit-bar { display: flex; gap: 6px; margin-top: 6px; }
+.note-edit-bar button { padding: 4px 14px; font-size: 13px; border-radius: 4px; cursor: pointer; }
 a.wikiword { color: var(--tw-accent); text-decoration: none; }
 a.wikiword:hover { text-decoration: underline; color: var(--tw-accent_hover); }
 a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
@@ -199,6 +203,7 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 let knownTitles = new Set();
 let knownRevisions = {};
 let allNotes = [];
+let hasEditor = false;
 
 function cssVar(name, fallback) {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name);
@@ -326,9 +331,13 @@ function renderNote(t) {
 
   const editBtn = document.createElement('button');
   editBtn.innerHTML = ICON.pencil;
-  editBtn.title = 'Edit in Neovim';
-  editBtn.onclick = () => {
-    fetch(PREFIX + '/edit-external/' + encodeURIComponent(t.title), { method: 'POST' });
+  editBtn.title = 'Edit note';
+  editBtn.onclick = (e) => {
+    if (e.shiftKey || !hasEditor) {
+      startTextareaEdit(card, t);
+    } else {
+      fetch(PREFIX + '/edit-external/' + encodeURIComponent(t.title), { method: 'POST' });
+    }
   };
   toolbar.appendChild(editBtn);
   const closeBtn = document.createElement('button');
@@ -409,6 +418,59 @@ function renderNote(t) {
   }
 
   return card;
+}
+
+// Open a textarea editor for the note inside its card.
+function startTextareaEdit(card, t) {
+  if (card.querySelector('.note-edit-area')) return; // already editing
+  // Fetch fresh text to edit.
+  fetch(PREFIX + '/notes/' + encodeURIComponent(t.title))
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(fresh => {
+      const body = card.querySelector('.note-body');
+      const savedHTML = body.innerHTML;
+      const ta = document.createElement('textarea');
+      ta.className = 'note-edit-area';
+      ta.value = fresh.text || '';
+      ta.rows = Math.max(10, (fresh.text || '').split('\n').length + 2);
+      // Allow Tab key to insert a tab character.
+      ta.addEventListener('keydown', e => {
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          const s = ta.selectionStart, end = ta.selectionEnd;
+          ta.value = ta.value.substring(0, s) + '\t' + ta.value.substring(end);
+          ta.selectionStart = ta.selectionEnd = s + 1;
+        }
+      });
+      body.innerHTML = '';
+      body.appendChild(ta);
+      const bar = document.createElement('div');
+      bar.className = 'note-edit-bar';
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'action-btn';
+      saveBtn.textContent = 'Save';
+      saveBtn.style.cssText = 'background:var(--tw-accent);color:#fff;border:none;';
+      saveBtn.onclick = () => {
+        const payload = { text: ta.value, revision: card.dataset.revision };
+        fetch(PREFIX + '/notes/' + encodeURIComponent(t.title), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).then(r => {
+          if (r.status === 409) { alert('Conflict: note was modified externally. Reload and try again.'); return; }
+          if (!r.ok) throw new Error(r.status);
+          refreshNote(t.title);
+        });
+      };
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'action-btn';
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.onclick = () => { body.innerHTML = savedHTML; injectLineIcons(body, t.title); attachCodeBlockEditing(body, t.title); };
+      bar.appendChild(saveBtn);
+      bar.appendChild(cancelBtn);
+      body.appendChild(bar);
+      ta.focus();
+    });
 }
 
 // Show revision history as an ephemeral card below the note.
@@ -623,6 +685,7 @@ function poll() {
       }
       const pi = r.headers.get('X-Poll-Interval');
       if (pi) pollInterval = parseInt(pi, 10) || 3000;
+      hasEditor = r.headers.get('X-Has-Editor') === 'true';
       return r.json();
     })
     .then(notes => {
@@ -825,8 +888,12 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('.gear-dropdown')) closeGearMenu();
 });
 
-// Initial load: poll to populate sidebar.
-poll();
+// Initial load: poll to populate sidebar, then auto-open if configured.
+poll().then(() => {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue('--tw-auto_open').trim();
+  const autoOpen = raw ? raw.replace(/^["']|["']$/g, '') : '';
+  if (autoOpen && knownTitles.has(autoOpen)) openNote(autoOpen);
+});
 
 document.addEventListener('click', e => {
   const link = e.target.closest('a.wikiword');

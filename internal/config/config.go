@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -159,6 +160,9 @@ func Load(args []string) (Config, error) {
 
 	f.applyTo(&cfg)
 
+	// Expand ~ to home directory in wiki_path.
+	cfg.WikiPath = expandTilde(cfg.WikiPath)
+
 	// Resolve relative wiki_path against the config file's directory.
 	if f.configFile != "" && !filepath.IsAbs(cfg.WikiPath) {
 		cfg.WikiPath = filepath.Join(filepath.Dir(f.configFile), cfg.WikiPath)
@@ -178,4 +182,14 @@ func Load(args []string) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// expandTilde replaces a leading ~ or ~/ with the user's home directory.
+func expandTilde(path string) string {
+	if path == "~" || strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, path[1:])
+		}
+	}
+	return path
 }

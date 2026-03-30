@@ -3,10 +3,12 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -29,6 +31,12 @@ import (
 // version is set at build time via -ldflags.
 var version = "dev"
 
+//go:embed TibbitWiki.md
+var demoTibbitWiki []byte
+
+//go:embed QuickRef.md
+var demoQuickRef []byte
+
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "-version" {
 		fmt.Println("tibbitwiki", version)
@@ -41,7 +49,11 @@ func main() {
 	}
 
 	cfg, configPath := loadConfig(cfg, os.Args[1:])
+	seedDemoWiki(cfg.WikiPath)
 	ed := initEditor(cfg.EditorCmd)
+	if ed == nil {
+		ed = detectEditor()
+	}
 
 	wikis := discoverWikis(cfg.WikiPath, ed, cfg.CacheSize)
 	if len(wikis) == 0 {
@@ -140,6 +152,44 @@ func initEditor(cmd string) *editor.Editor {
 	}
 	log.Printf("editor: %s", cmd)
 	return ed
+}
+
+// seedDemoWiki creates the wiki_path and a demo/ subdirectory with
+// sample notes when the wiki path does not yet exist (first run).
+func seedDemoWiki(wikiPath string) {
+	if _, err := os.Stat(wikiPath); err == nil {
+		return // already exists
+	}
+	demoDir := filepath.Join(wikiPath, "demo")
+	if err := os.MkdirAll(demoDir, 0755); err != nil {
+		log.Fatalf("creating %s: %v", demoDir, err)
+	}
+	for name, data := range map[string][]byte{
+		"TibbitWiki.md": demoTibbitWiki,
+		"QuickRef.md":   demoQuickRef,
+	} {
+		fp := filepath.Join(demoDir, name)
+		if err := os.WriteFile(fp, data, 0644); err != nil {
+			log.Fatalf("writing %s: %v", fp, err)
+		}
+	}
+	log.Printf("created %s with sample notes", demoDir)
+}
+
+// detectEditor probes for a system file opener (open on macOS,
+// xdg-open on Linux) and returns an Editor if found, or nil.
+func detectEditor() *editor.Editor {
+	for _, cmd := range []string{"open", "xdg-open"} {
+		if _, err := exec.LookPath(cmd); err == nil {
+			ed, err := editor.New(cmd + " %s")
+			if err == nil {
+				log.Printf("editor: detected %s", cmd)
+				return ed
+			}
+		}
+	}
+	log.Printf("editor: none detected (textarea editing only)")
+	return nil
 }
 
 // watchConfig watches the config file for changes. On save it does

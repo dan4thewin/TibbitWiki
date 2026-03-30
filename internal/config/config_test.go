@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -29,11 +30,11 @@ func TestDefaults(t *testing.T) {
 	if cfg.Listen != "127.0.0.1:8080" {
 		t.Errorf("Listen = %q, want %q", cfg.Listen, "127.0.0.1:8080")
 	}
-	if cfg.WikiPath != "." {
-		t.Errorf("WikiPath = %q, want %q", cfg.WikiPath, ".")
+	if cfg.WikiPath != "~/TibbitWiki" {
+		t.Errorf("WikiPath = %q, want %q", cfg.WikiPath, "~/TibbitWiki")
 	}
-	if cfg.EditorCmd != "open /Applications/Neovide.app --args %s" {
-		t.Errorf("EditorCmd = %q, want %q", cfg.EditorCmd, "open /Applications/Neovide.app --args %s")
+	if cfg.EditorCmd != "" {
+		t.Errorf("EditorCmd = %q, want empty", cfg.EditorCmd)
 	}
 	if cfg.PollInterval != 3*time.Second {
 		t.Errorf("PollInterval = %v, want %v", cfg.PollInterval, 3*time.Second)
@@ -199,7 +200,8 @@ func TestLoadBadYAML(t *testing.T) {
 	}
 }
 
-// TestLoadNoArgs verifies that Load with no args returns defaults.
+// TestLoadNoArgs verifies that Load with no args returns defaults
+// with tilde expanded in WikiPath.
 func TestLoadNoArgs(t *testing.T) {
 	cfg, err := Load([]string{})
 	if err != nil {
@@ -209,8 +211,11 @@ func TestLoadNoArgs(t *testing.T) {
 	if cfg.Listen != defaults.Listen {
 		t.Errorf("Listen = %q, want default %q", cfg.Listen, defaults.Listen)
 	}
-	if cfg.WikiPath != defaults.WikiPath {
-		t.Errorf("WikiPath = %q, want default %q", cfg.WikiPath, defaults.WikiPath)
+	// WikiPath should be tilde-expanded.
+	home, _ := os.UserHomeDir()
+	want := home + "/TibbitWiki"
+	if cfg.WikiPath != want {
+		t.Errorf("WikiPath = %q, want %q", cfg.WikiPath, want)
 	}
 }
 
@@ -440,5 +445,92 @@ func TestLoadYAMLAttachmentExclude(t *testing.T) {
 	}
 	if cfg.AttachmentExclude[1] != ".bak" {
 		t.Errorf("AttachmentExclude[1] = %q, want %q", cfg.AttachmentExclude[1], ".bak")
+	}
+}
+
+// TestExpandTilde verifies tilde expansion in wiki_path.
+func TestExpandTilde(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	tests := []struct {
+		in, want string
+	}{
+		{"~/wiki", home + "/wiki"},
+		{"~", home},
+		{"/abs/path", "/abs/path"},
+		{"relative", "relative"},
+		{"~user/dir", "~user/dir"}, // only bare ~ is expanded
+	}
+	for _, tc := range tests {
+		got := expandTilde(tc.in)
+		if got != tc.want {
+			t.Errorf("expandTilde(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestLoadTildeExpansion verifies Load expands ~ in wiki_path from YAML.
+func TestLoadTildeExpansion(t *testing.T) {
+	content := "wiki_path: ~/mywiki\n"
+	f, err := os.CreateTemp("", "tibbitwiki-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString(content)
+	f.Close()
+
+	cfg, err := Load([]string{"--config", f.Name()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	home, _ := os.UserHomeDir()
+	want := home + "/mywiki"
+	if cfg.WikiPath != want {
+		t.Errorf("WikiPath = %q, want %q", cfg.WikiPath, want)
+	}
+}
+
+// TestDefaultAutoOpen verifies the auto_open theme key exists in defaults.
+func TestDefaultAutoOpen(t *testing.T) {
+	shared := DefaultSharedTheme()
+	if _, ok := shared["auto_open"]; !ok {
+		t.Error("DefaultSharedTheme missing auto_open key")
+	}
+}
+
+// TestLoadRelativeWikiPath verifies that a relative wiki_path in a config
+// file is resolved against the config file's directory.
+func TestLoadRelativeWikiPath(t *testing.T) {
+	content := "wiki_path: notes\n"
+	f, err := os.CreateTemp("", "tibbitwiki-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	f.WriteString(content)
+	f.Close()
+
+	cfg, err := Load([]string{"--config", f.Name()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Dir(f.Name())
+	want := filepath.Join(dir, "notes")
+	if cfg.WikiPath != want {
+		t.Errorf("WikiPath = %q, want %q", cfg.WikiPath, want)
+	}
+}
+
+// TestExpandTildeNoHome verifies tilde expansion falls back gracefully
+// when home directory lookup fails.
+func TestExpandTildeNoHome(t *testing.T) {
+	patches := gomonkey.ApplyFunc(os.UserHomeDir, func() (string, error) {
+		return "", os.ErrNotExist
+	})
+	defer patches.Reset()
+
+	got := expandTilde("~/wiki")
+	if got != "~/wiki" {
+		t.Errorf("expandTilde(~/wiki) with no home = %q, want ~/wiki", got)
 	}
 }
