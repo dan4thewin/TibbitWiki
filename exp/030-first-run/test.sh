@@ -74,6 +74,7 @@ echo "=== 1. First-run seeding ==="
 assert "demo dir exists" "true" "$([ -d "$WIKI_PATH/demo" ] && echo true || echo false)"
 assert "TibbitWiki.md seeded" "true" "$([ -f "$WIKI_PATH/demo/TibbitWiki.md" ] && echo true || echo false)"
 assert "QuickRef.md seeded" "true" "$([ -f "$WIKI_PATH/demo/QuickRef.md" ] && echo true || echo false)"
+assert "config.yaml created" "true" "$([ -f "$WIKI_PATH/config.yaml" ] && echo true || echo false)"
 
 echo ""
 echo "=== 2. Single-wiki redirect ==="
