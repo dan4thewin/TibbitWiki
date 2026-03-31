@@ -60,8 +60,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	cfg, configPath := loadConfig(cfg, os.Args[1:])
 	seedDemoWiki(cfg.WikiPath)
+	cfg, configPath := loadConfig(cfg, os.Args[1:])
 	ed := initEditor(cfg.EditorCmd)
 	if ed == nil {
 		ed = detectEditor()
