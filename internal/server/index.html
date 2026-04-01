@@ -1005,10 +1005,12 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (keyMatch(e, twKey('tag'))) {
-    const top = topmostNote();
-    if (top && top.dataset.readOnly !== 'true') {
-      const tagDiv = top.querySelector('.note-tags');
-      if (tagDiv) startAddTag(tagDiv, top.dataset.title);
+    e.preventDefault();
+    const notes = document.querySelectorAll('#river .note:not([data-title="__search__"]):not([data-title="__revisions__"])');
+    const last = notes.length > 0 ? notes[notes.length - 1] : null;
+    if (last && last.dataset.readOnly !== 'true') {
+      const tagDiv = last.querySelector('.note-tags');
+      if (tagDiv) startAddTag(tagDiv, last.dataset.title);
     }
     return;
   }
