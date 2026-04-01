@@ -29,6 +29,25 @@ import tempfile
 import urllib.request
 import urllib.error
 
+import re
+
+_PREAMBLE_RE = re.compile(
+    r'^(?:here\s+is|below\s+is)[^\n]*(?:markdown|text|content)[^\n]*\n+',
+    re.IGNORECASE,
+)
+
+
+def strip_llm_wrapping(text):
+    """Remove code fences and preamble that LLMs add around output."""
+    s = text.strip()
+    # Strip outer ```markdown ... ``` (or ```md, ```text, bare ```)
+    m = re.match(r'^```\w*\s*\n(.*?)```\s*$', s, re.DOTALL)
+    if m:
+        s = m.group(1).strip()
+    # Strip preamble like "Here is the cleaned-up markdown:"
+    s = _PREAMBLE_RE.sub('', s)
+    return s
+
 TEXT_PROMPT = """Clean up this raw PDF text extraction into well-structured markdown.
 
 Rules:
@@ -37,10 +56,14 @@ Rules:
 - Use markdown headings, lists, and tables where appropriate
 - Remove headers, footers, and page numbers
 - If the text is too garbled to clean up, return it as-is in a code block
-- Output ONLY the cleaned markdown, no commentary"""
+- Start your response with the first line of content (e.g. a heading)
+- Do NOT wrap output in ``` code fences
+- Do NOT add preamble like "Here is the markdown" """
 
 VISION_PROMPT = ("Extract all text from this document image "
-                 "into well-structured markdown.")
+                 "into well-structured markdown. "
+                 "Start immediately with the content — "
+                 "no code fences, no preamble.")
 
 MAX_DIM = 2048
 
@@ -77,7 +100,7 @@ def ollama_text(text, model, host):
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
             data = json.loads(resp.read())
-            return data.get("response", ""), None
+            return strip_llm_wrapping(data.get("response", "")), None
     except urllib.error.URLError as e:
         return None, f"ollama error: {e}"
     except TimeoutError:
@@ -169,7 +192,7 @@ def ocr_page(png_path, model, host, timeout):
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read())
-            return dedup(data.get("response", "")), None
+            return strip_llm_wrapping(dedup(data.get("response", ""))), None
     except urllib.error.URLError as e:
         return None, f"ollama error: {e}"
     except TimeoutError:
