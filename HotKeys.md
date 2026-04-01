@@ -8,13 +8,13 @@ modified: 2026-04-01T22:00:00Z
 | Key | Action |
 |-----|--------|
 | `/` | Open search bar |
-| `q` | Close bottom note (pop the stack) |
+| `q` | Close most recent note (pop the stack) |
 | `a` | Create new note |
 | `e` | Open topmost note in external editor |
 | `Shift-E` | Open topmost note in browser textarea |
 | `Tab` | Jump to next note card |
 | `Shift-Tab` | Jump to previous note card |
-| `#` | Add tag to topmost note |
+| `#` | Add tag to most recent note |
 | `Ctrl-G` | Cancel / dismiss (search, tag input, edit) |
 | `Escape` | Cancel / dismiss (same as Ctrl-G) |
 
