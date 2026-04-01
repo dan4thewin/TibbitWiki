@@ -235,15 +235,17 @@ Two ways:
 ## RCS version control
 
 Every note write creates/updates an RCS archive in an `RCS/`
-subdirectory alongside the notes. View history with:
+subdirectory alongside the notes. This uses a built-in Go library —
+no external `rcs` install is required.
+
+If you have `rcs` installed (`brew install rcs` or `apt install rcs`),
+you can inspect archives manually:
 
 ```bash
 rlog notes/MyNote.md
 rcsdiff notes/MyNote.md
 co -r1.2 -p notes/MyNote.md
 ```
-
-Requires `rcs` (`brew install rcs` or `apt install rcs`).
 
 ## Search
 

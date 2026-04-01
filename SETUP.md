@@ -7,8 +7,6 @@ Everything needed to recreate this setup from zero.
 - Go (version matching go.mod — `brew install go` or https://go.dev/dl)
 - ripgrep (`brew install ripgrep` or `apt install ripgrep`) —
   required for search
-- RCS (`brew install rcs` or `apt install rcs`) —
-  optional; enables revision history
 - Git with SSH key configured for GitHub
 
 ### Optional
@@ -208,16 +206,20 @@ tw-start --wiki-path ~/notes
 ## RCS version control
 
 Every note write (browser PUT or external file save) creates
-an RCS archive in an `RCS/` subdirectory:
+an RCS archive in an `RCS/` subdirectory. This uses a built-in Go
+library — no external `rcs` install is required.
+
+Archives live in `RCS/` alongside the notes directory, not inside
+it (avoids the file watcher treating them as notes).
+
+If you have `rcs` installed (`brew install rcs` or `apt install rcs`),
+you can inspect archives manually:
 
 ```bash
 rlog notes/MyNote.md
 rcsdiff notes/MyNote.md
 co -r1.2 -p notes/MyNote.md
 ```
-
-Archives live in `RCS/` alongside the notes directory, not inside
-it (avoids the file watcher treating them as notes).
 
 ## PDF conversion (optional)
 
