@@ -383,7 +383,7 @@ function renderNote(t) {
 
   const body = document.createElement('div');
   body.className = 'note-body';
-  if (t['tab-size']) body.style.tabSize = t['tab-size'];
+  if (t['tab-size']) body.style.setProperty('--tw-code_tab_size', t['tab-size']);
   body.innerHTML = linkifyWikiWords(t.html || t.text || '');
   if (t.readOnly !== 'true') {
     injectLineIcons(body, t.title);
@@ -625,8 +625,8 @@ function refreshNote(title) {
       header.after(tagDiv);
       // Update body.
       const body = card.querySelector('.note-body');
-      if (t['tab-size']) body.style.tabSize = t['tab-size'];
-      else body.style.tabSize = '';
+      if (t['tab-size']) body.style.setProperty('--tw-code_tab_size', t['tab-size']);
+      else body.style.removeProperty('--tw-code_tab_size');
       body.innerHTML = linkifyWikiWords(t.html || t.text || '');
       if (!isReadOnly) {
         injectLineIcons(body, t.title);
