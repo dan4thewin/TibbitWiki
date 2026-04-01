@@ -434,7 +434,7 @@ function startTextareaEdit(card, t) {
       ta.className = 'note-edit-area';
       ta.value = fresh.text || '';
       ta.rows = Math.max(10, (fresh.text || '').split('\n').length + 2);
-      // Allow Tab key to insert a tab character; Ctrl-[ or Escape to cancel.
+      // Allow Tab key to insert a tab character; Ctrl-G or Escape to cancel.
       ta.addEventListener('keydown', e => {
         if (e.key === 'Tab') {
           e.preventDefault();
@@ -933,9 +933,9 @@ function keyMatch(e, binding) {
   return e.key === binding && !e.ctrlKey && !e.metaKey && !e.altKey;
 }
 
-// Escape or Ctrl-[ (vim equivalent, avoids Vimium intercepting Escape).
+// Escape or Ctrl-G (Emacs cancel, avoids Vimium intercepting Escape).
 function isDismiss(e) {
-  return e.key === 'Escape' || (e.key === '[' && e.ctrlKey);
+  return e.key === 'Escape' || (e.key === 'g' && e.ctrlKey);
 }
 
 // Get the first (topmost) real note card in the river.
