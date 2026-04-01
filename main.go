@@ -49,6 +49,9 @@ var demoTibbitWiki []byte
 //go:embed QuickRef.md
 var demoQuickRef []byte
 
+//go:embed HotKeys.md
+var demoHotKeys []byte
+
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "-version" {
 		fmt.Println("tibbitwiki", getVersion())
@@ -179,6 +182,7 @@ func seedDemoWiki(wikiPath string) {
 	for name, data := range map[string][]byte{
 		"TibbitWiki.md": demoTibbitWiki,
 		"QuickRef.md":   demoQuickRef,
+		"HotKeys.md":    demoHotKeys,
 	} {
 		fp := filepath.Join(demoDir, name)
 		if err := os.WriteFile(fp, data, 0644); err != nil {
