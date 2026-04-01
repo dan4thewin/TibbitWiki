@@ -727,6 +727,7 @@ function buildList(ul, items, limit, onToggle) {
     const li = document.createElement('li');
     li.textContent = t.title;
     li.title = t.title;
+    li.setAttribute('role', 'button');
     li.onclick = () => openNote(t.title);
     ul.appendChild(li);
   });
@@ -1066,6 +1067,7 @@ function doSearch(q) {
           div.className = 'search-result';
           const title = document.createElement('div');
           title.className = 'search-result-title';
+          title.setAttribute('role', 'button');
           title.dataset.title = r.title;
           title.textContent = r.title;
           div.appendChild(title);
