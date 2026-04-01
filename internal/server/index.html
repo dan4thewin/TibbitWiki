@@ -15,6 +15,8 @@
   --tw-line_height: 1.6; --tw-note_radius: 6px; --tw-sidebar_width: 220px;
   --tw-sidebar_limit: 20; --tw-tag_limit: 5; --tw-wiki_title: "TibbitWiki";
   --tw-auto_open: "";
+  --tw-key_search: /; --tw-key_close: q; --tw-key_edit: e; --tw-key_textarea: E;
+  --tw-key_new: a; --tw-key_next: Tab; --tw-key_prev: Shift-Tab; --tw-key_tag: #;
 }
 body { font-family: var(--tw-font_family); font-size: var(--tw-font_size); margin: 0; padding: 20px; display: flex; gap: 20px; background: var(--tw-bg); color: var(--tw-fg); }
 svg { vertical-align: -.125em; }
@@ -910,17 +912,94 @@ document.addEventListener('click', e => {
 const searchBar = document.getElementById('search-bar');
 const searchInput = document.getElementById('search-input');
 
+// Read a keyboard shortcut from CSS custom property.
+function twKey(name) {
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue('--tw-key_' + name).trim().replace(/^["']|["']$/g, '');
+  return raw || '';
+}
+
+// Match a KeyboardEvent against a shortcut string like "q", "E", "Tab", "Shift-Tab", "#".
+function keyMatch(e, binding) {
+  if (!binding) return false;
+  if (binding === 'Shift-Tab') return e.key === 'Tab' && e.shiftKey;
+  if (binding === 'Tab') return e.key === 'Tab' && !e.shiftKey;
+  // Single character: compare literally (handles shift via e.key, e.g. "E" vs "e").
+  return e.key === binding && !e.ctrlKey && !e.metaKey && !e.altKey;
+}
+
+// Get the first (topmost) real note card in the river.
+function topmostNote() {
+  return document.querySelector('#river .note:not([data-title="__search__"]):not([data-title="__revisions__"])');
+}
+
 document.addEventListener('keydown', e => {
   if (e.target.matches('input, textarea')) return;
-  if (e.key === '/' && !searchBar.classList.contains('active')) {
+
+  if (keyMatch(e, twKey('search')) && !searchBar.classList.contains('active')) {
     e.preventDefault();
     searchBar.classList.add('active');
     searchInput.value = '';
     searchInput.focus();
+    return;
   }
-  if (e.key === 'x') {
+  if (keyMatch(e, twKey('close'))) {
     const notes = document.querySelectorAll('#river .note');
-    if (notes.length > 0) notes[notes.length - 1].remove();
+    if (notes.length > 0) notes[0].remove();
+    return;
+  }
+  if (keyMatch(e, twKey('edit'))) {
+    const top = topmostNote();
+    if (top && top.dataset.title) {
+      fetch(PREFIX + '/edit-external/' + encodeURIComponent(top.dataset.title), { method: 'POST' });
+    }
+    return;
+  }
+  if (keyMatch(e, twKey('textarea'))) {
+    const top = topmostNote();
+    if (top && top.dataset.title && top.dataset.readOnly !== 'true') {
+      const title = top.dataset.title;
+      fetch(PREFIX + '/notes/' + encodeURIComponent(title))
+        .then(r => r.json())
+        .then(t => startTextareaEdit(top, t));
+    }
+    return;
+  }
+  if (keyMatch(e, twKey('new'))) {
+    newNote();
+    return;
+  }
+  if (keyMatch(e, twKey('next'))) {
+    e.preventDefault();
+    const notes = [...document.querySelectorAll('#river .note')];
+    if (notes.length === 0) return;
+    const current = notes.findIndex(n => {
+      const rect = n.getBoundingClientRect();
+      return rect.top >= -1;
+    });
+    const idx = current < 0 ? 0 : Math.min(current + 1, notes.length - 1);
+    notes[idx].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  if (keyMatch(e, twKey('prev'))) {
+    e.preventDefault();
+    const notes = [...document.querySelectorAll('#river .note')];
+    if (notes.length === 0) return;
+    const current = notes.findIndex(n => {
+      const rect = n.getBoundingClientRect();
+      return rect.top >= -1;
+    });
+    const idx = current <= 0 ? 0 : current - 1;
+    notes[idx].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  if (keyMatch(e, twKey('tag'))) {
+    const top = topmostNote();
+    if (top && top.dataset.readOnly !== 'true') {
+      const tagDiv = top.querySelector('.note-tags');
+      if (tagDiv) startAddTag(tagDiv, top.dataset.title);
+    }
+    return;
   }
 });
 
