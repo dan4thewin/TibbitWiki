@@ -945,7 +945,7 @@ document.addEventListener('keydown', e => {
   }
   if (keyMatch(e, twKey('close'))) {
     const notes = document.querySelectorAll('#river .note');
-    if (notes.length > 0) notes[0].remove();
+    if (notes.length > 0) notes[notes.length - 1].remove();
     return;
   }
   if (keyMatch(e, twKey('edit'))) {
