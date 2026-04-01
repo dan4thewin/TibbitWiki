@@ -51,6 +51,15 @@ theme:
     # Identity
     wiki_title:     "TibbitWiki"  # Displayed in header and browser tab
     auto_open:      ""            # Note to display on page load
+    # Keyboard shortcuts (set to "" to disable)
+    key_search:     "/"           # Open search bar
+    key_close:      "q"           # Close topmost note
+    key_edit:       "e"           # External editor on topmost note
+    key_textarea:   "E"           # In-browser edit on topmost note (shift)
+    key_new:        "a"           # Create new note
+    key_next:       "Tab"         # Jump to next note card
+    key_prev:       "Shift-Tab"   # Jump to previous note card
+    key_tag:        "#"           # Add tag to topmost note
   # Per-wiki overrides: section name matches the subdirectory name.
   demo:
     auto_open:      "TibbitWiki"  # Open welcome note on first visit
