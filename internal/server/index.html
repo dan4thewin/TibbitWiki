@@ -434,13 +434,18 @@ function startTextareaEdit(card, t) {
       ta.className = 'note-edit-area';
       ta.value = fresh.text || '';
       ta.rows = Math.max(10, (fresh.text || '').split('\n').length + 2);
-      // Allow Tab key to insert a tab character.
+      // Allow Tab key to insert a tab character; Ctrl-[ or Escape to cancel.
       ta.addEventListener('keydown', e => {
         if (e.key === 'Tab') {
           e.preventDefault();
           const s = ta.selectionStart, end = ta.selectionEnd;
           ta.value = ta.value.substring(0, s) + '\t' + ta.value.substring(end);
           ta.selectionStart = ta.selectionEnd = s + 1;
+        }
+        if (isDismiss(e)) {
+          body.innerHTML = savedHTML;
+          injectLineIcons(body, t.title);
+          attachCodeBlockEditing(body, t.title);
         }
       });
       body.innerHTML = '';
@@ -928,6 +933,11 @@ function keyMatch(e, binding) {
   return e.key === binding && !e.ctrlKey && !e.metaKey && !e.altKey;
 }
 
+// Escape or Ctrl-[ (vim equivalent, avoids Vimium intercepting Escape).
+function isDismiss(e) {
+  return e.key === 'Escape' || (e.key === '[' && e.ctrlKey);
+}
+
 // Get the first (topmost) real note card in the river.
 function topmostNote() {
   return document.querySelector('#river .note:not([data-title="__search__"]):not([data-title="__revisions__"])');
@@ -1004,7 +1014,7 @@ document.addEventListener('keydown', e => {
 });
 
 searchInput.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
+  if (isDismiss(e)) {
     searchBar.classList.remove('active');
     searchInput.blur();
   }
@@ -1128,7 +1138,7 @@ function startAddTag(tagDiv, noteTitle) {
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter' && input.value.trim()) {
       addTag(noteTitle, input.value.trim());
-    } else if (e.key === 'Escape') {
+    } else if (isDismiss(e)) {
       input.remove();
     }
   });
@@ -1190,7 +1200,7 @@ function startLineEdit(el, noteTitle, isInsert) {
       // Place cursor at end of prefill.
       input.selectionStart = input.selectionEnd = input.value.length;
       input.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') wrapper.remove();
+        if (isDismiss(e)) wrapper.remove();
       });
       input.addEventListener('blur', () => { if (!submitted) wrapper.remove(); });
     });
@@ -1208,7 +1218,7 @@ function startLineEdit(el, noteTitle, isInsert) {
         injectLineIcons(el.closest('.note-body'), noteTitle);
       };
       input.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') cancelEdit();
+        if (isDismiss(e)) cancelEdit();
       });
       input.addEventListener('blur', () => { if (!submitted) cancelEdit(); });
     });
