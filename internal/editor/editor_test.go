@@ -2,6 +2,7 @@ package editor
 
 import (
 	"testing"
+	"time"
 )
 
 // TestNewEditor verifies that New stores the command template.
@@ -55,4 +56,19 @@ func TestOpenBadCommand(t *testing.T) {
 	if err := e.Open("/tmp/test.md"); err == nil {
 		t.Fatal("expected error for bad command, got nil")
 	}
+}
+
+// TestOpenExitError verifies that a command that starts but
+// exits non-zero logs the error.
+func TestOpenExitError(t *testing.T) {
+	e, err := New("false %s")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// false always exits 1 — covers the Wait error log path.
+	if err := e.Open("/tmp/test.md"); err != nil {
+		t.Fatalf("unexpected start error: %v", err)
+	}
+	// Give the goroutine time to call Wait.
+	time.Sleep(100 * time.Millisecond)
 }

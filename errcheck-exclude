@@ -1,0 +1,15 @@
+# ResponseWriter writes — errors are unrecoverable (client disconnected).
+(net/http.ResponseWriter).Write
+(*encoding/json.Encoder).Encode
+fmt.Fprint(net/http.ResponseWriter)
+fmt.Fprintf(net/http.ResponseWriter)
+fmt.Fprintln(net/http.ResponseWriter)
+
+# bytes.Buffer Write never fails.
+(*github.com/alecthomas/chroma/v2/formatters/html.Formatter).WriteCSS(*bytes.Buffer)
+
+# Read-only file close — no data to flush.
+(*os.File).Close
+
+# Temp-file cleanup — best-effort.
+os.Remove

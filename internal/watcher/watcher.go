@@ -63,7 +63,9 @@ func (w *Watcher) Start() error {
 // Stop halts the watcher.
 func (w *Watcher) Stop() {
 	close(w.done)
-	w.watcher.Close()
+	if err := w.watcher.Close(); err != nil {
+		log.Printf("watcher close: %v", err)
+	}
 }
 
 // eventLoop reads fsnotify events and queues them for debouncing.

@@ -255,7 +255,7 @@ func unifiedDiff(path, rev1, rev2, text1, text2 string) string {
 
 func splitLines(s string) []string {
 	if s == "" {
-		return nil
+		return []string{}
 	}
 	lines := strings.Split(s, "\n")
 	if len(lines) > 0 && lines[len(lines)-1] == "" {

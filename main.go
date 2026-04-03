@@ -91,7 +91,9 @@ func main() {
 		log.Printf("restart requested — shutting down")
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		httpSrv.Shutdown(ctx)
+		if err := httpSrv.Shutdown(ctx); err != nil {
+			log.Printf("shutdown: %v", err)
+		}
 	}()
 
 	if err := httpSrv.ListenAndServe(); err != http.ErrServerClosed {
@@ -104,7 +106,9 @@ func main() {
 		log.Fatalf("restart: %v", err)
 	}
 	log.Printf("restarting: %s %v", exe, os.Args[1:])
-	syscall.Exec(exe, os.Args, os.Environ())
+	if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
+		log.Fatalf("exec: %v", err)
+	}
 }
 
 // resolveConfigPath finds the --config flag value from args.
