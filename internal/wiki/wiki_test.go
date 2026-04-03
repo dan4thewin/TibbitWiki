@@ -2734,3 +2734,30 @@ func TestEnqueuePdfsWikiNameExpansion(t *testing.T) {
 		t.Errorf("arg[2] = %q, want path ending in pic.pdf", calledArgs[2])
 	}
 }
+
+// TestSetTemplates verifies templates are applied during Get.
+func TestSetTemplates(t *testing.T) {
+	dir := t.TempDir()
+	wk := New("test", dir, nil, 100)
+	wk.SetTemplates(map[string]string{
+		"img":    `<img src="{{.}}">`,
+		"center": `<div style="text-align:center">{{.}}</div>`,
+	})
+	wk.Start()
+	defer wk.Stop()
+
+	// Create a note with a template directive.
+	note := "title: TemplateTest\n\n{{img \"pic.png\" | center}}"
+	os.WriteFile(filepath.Join(dir, "TemplateTest.md"), []byte(note), 0644)
+	wk.Reload(filepath.Join(dir, "TemplateTest.md"))
+	wk.do(func() {}) // drain the queue
+
+	fields := wk.Get("TemplateTest", false)
+	html := fields["html"]
+	if !strings.Contains(html, `<img src="pic.png">`) {
+		t.Errorf("template not expanded in html: %s", html)
+	}
+	if !strings.Contains(html, `text-align:center`) {
+		t.Errorf("pipeline not applied in html: %s", html)
+	}
+}

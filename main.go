@@ -321,6 +321,7 @@ func configureHub(wikis map[string]*wiki.Wiki, cfg config.Config) *wiki.Hub {
 		wk.SetHub(hub)
 		wk.SetAttachExclude(cfg.AttachmentExclude)
 		wk.SetPdfConvertCmd(cfg.PdfConvertCmd)
+		wk.SetTemplates(cfg.Templates)
 	}
 	return hub
 }
