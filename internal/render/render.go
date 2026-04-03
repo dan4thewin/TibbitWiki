@@ -166,11 +166,11 @@ func ExpandTemplates(source string, templates map[string]string) string {
 
 	t, err := template.New("note").Funcs(funcMap).Parse(protected)
 	if err != nil {
-		return source
+		return templateError(err) + source
 	}
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, nil); err != nil {
-		return source
+		return templateError(err) + source
 	}
 	result := buf.String()
 
@@ -179,6 +179,12 @@ func ExpandTemplates(source string, templates map[string]string) string {
 		result = strings.Replace(result, fmt.Sprintf("\x00FENCE%d\x00", i), f, 1)
 	}
 	return result
+}
+
+func templateError(err error) string {
+	msg := stdhtml.EscapeString(err.Error())
+	return fmt.Sprintf("<div style=\"background:#fee;color:#900;padding:0.5em;"+
+		"border:1px solid #c00;margin-bottom:1em\">⚠ Template error: %s</div>\n\n", msg)
 }
 
 // buildFuncMap compiles template definitions into a FuncMap.

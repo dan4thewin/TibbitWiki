@@ -759,15 +759,18 @@ func TestExpandTemplatesProtectsTilde(t *testing.T) {
 	}
 }
 
-// TestExpandTemplatesBadTemplate returns source on parse error.
+// TestExpandTemplatesBadTemplate shows error banner on parse error.
 func TestExpandTemplatesBadTemplate(t *testing.T) {
 	templates := map[string]string{
 		"img": `<img src="{{.}}">`,
 	}
 	src := `{{img "pic.png"} bad`
 	got := ExpandTemplates(src, templates)
-	if got != src {
-		t.Errorf("expected source unchanged on parse error, got %q", got)
+	if !strings.Contains(got, "⚠ Template error:") {
+		t.Errorf("expected error banner, got %q", got)
+	}
+	if !strings.Contains(got, src) {
+		t.Errorf("expected source preserved after banner, got %q", got)
 	}
 }
 
@@ -783,7 +786,7 @@ func TestExpandTemplatesBadDefinition(t *testing.T) {
 	}
 }
 
-// TestExpandTemplatesExecuteError returns source on execute error.
+// TestExpandTemplatesExecuteError shows error banner on execute error.
 func TestExpandTemplatesExecuteError(t *testing.T) {
 	templates := map[string]string{
 		"img": `<img src="{{.}}">`,
@@ -791,8 +794,29 @@ func TestExpandTemplatesExecuteError(t *testing.T) {
 	// {{call nil}} triggers an execute-time error (call of nil).
 	src := `{{call nil}}`
 	got := ExpandTemplates(src, templates)
-	if got != src {
-		t.Errorf("expected source on error, got %q", got)
+	if !strings.Contains(got, "⚠ Template error:") {
+		t.Errorf("expected error banner, got %q", got)
+	}
+	if !strings.Contains(got, src) {
+		t.Errorf("expected source preserved after banner, got %q", got)
+	}
+}
+
+// TestExpandTemplatesUndefinedFunction shows error naming the unknown function.
+func TestExpandTemplatesUndefinedFunction(t *testing.T) {
+	templates := map[string]string{
+		"img": `<img src="{{.}}">`,
+	}
+	src := `{{img "pic.png" | paper}}`
+	got := ExpandTemplates(src, templates)
+	if !strings.Contains(got, "paper") {
+		t.Errorf("expected error to name 'paper', got %q", got)
+	}
+	if !strings.Contains(got, "⚠ Template error:") {
+		t.Errorf("expected error banner, got %q", got)
+	}
+	if !strings.Contains(got, src) {
+		t.Errorf("expected source preserved after banner, got %q", got)
 	}
 }
 
