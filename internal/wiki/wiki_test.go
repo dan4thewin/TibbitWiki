@@ -633,6 +633,27 @@ func TestMetaFieldsEqualIgnoresText(t *testing.T) {
 	}
 }
 
+// TestMetaFieldsEqualIgnoresManaged verifies that modified/created
+// differences between store and disk don't cause a false mismatch.
+func TestMetaFieldsEqualIgnoresManaged(t *testing.T) {
+	// Store has modified set by isoNow; file on disk has no modified.
+	stored := map[string]string{"title": "A", "modified": "2026-01-01"}
+	parsed := map[string]string{"title": "A"}
+	if !metaFieldsEqual(stored, parsed) {
+		t.Error("expected true: modified should be ignored")
+	}
+	// Both have modified but different values.
+	parsed["modified"] = "2025-01-01"
+	if !metaFieldsEqual(stored, parsed) {
+		t.Error("expected true: different modified values should be ignored")
+	}
+	// Store has created; parsed does not.
+	stored["created"] = "2024-01-01"
+	if !metaFieldsEqual(stored, parsed) {
+		t.Error("expected true: created should be ignored")
+	}
+}
+
 func TestSpliceFileLineReplace(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "splice.md")

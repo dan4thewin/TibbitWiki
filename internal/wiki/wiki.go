@@ -929,17 +929,32 @@ func fileAtime(path string) string {
 
 // metaFieldsEqual compares metadata fields (everything except text).
 // stored has no text (stripped by store); parsed may have text.
+// managedField returns true for server-managed timestamps that may
+// differ between store (set by isoNow) and disk (may be absent).
+func managedField(k string) bool {
+	return k == "modified" || k == "created"
+}
+
 func metaFieldsEqual(stored, parsed map[string]string) bool {
 	parsedMeta := 0
 	for k := range parsed {
-		if k != "text" {
+		if k != "text" && !managedField(k) {
 			parsedMeta++
 		}
 	}
-	if len(stored) != parsedMeta {
+	storedMeta := 0
+	for k := range stored {
+		if !managedField(k) {
+			storedMeta++
+		}
+	}
+	if storedMeta != parsedMeta {
 		return false
 	}
 	for k, v := range stored {
+		if managedField(k) {
+			continue
+		}
 		if parsed[k] != v {
 			return false
 		}
