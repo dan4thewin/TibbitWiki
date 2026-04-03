@@ -2631,3 +2631,36 @@ func TestE2ECheckoutRestoreRoundTrip(t *testing.T) {
 		t.Errorf("readOnly = %q after restore", fields["readOnly"])
 	}
 }
+
+// TestWikiErrorHeader verifies X-Wiki-Error header is sent and cleared.
+func TestWikiErrorHeader(t *testing.T) {
+	srv, wk := newTestServer(t)
+
+	// Make the note directory read-only so Put fails to write.
+	dir := wk.NoteDir()
+	os.Chmod(dir, 0555)
+	t.Cleanup(func() { os.Chmod(dir, 0755) })
+
+	// PUT a note — the write will fail, setting lastErr.
+	body := `{"title":"Fail","text":"body"}`
+	req := httptest.NewRequest("PUT", "/test/notes/Fail", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	// Next request should carry the error header.
+	req2 := httptest.NewRequest("GET", "/test/status", nil)
+	w2 := httptest.NewRecorder()
+	srv.ServeHTTP(w2, req2)
+	if w2.Header().Get("X-Wiki-Error") == "" {
+		t.Error("expected X-Wiki-Error header on response after write failure")
+	}
+
+	// Third request should have no error (cleared after delivery).
+	req3 := httptest.NewRequest("GET", "/test/status", nil)
+	w3 := httptest.NewRecorder()
+	srv.ServeHTTP(w3, req3)
+	if w3.Header().Get("X-Wiki-Error") != "" {
+		t.Error("expected X-Wiki-Error cleared after delivery")
+	}
+}

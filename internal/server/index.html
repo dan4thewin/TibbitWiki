@@ -143,6 +143,7 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
       </div>
     </span>
   </div>
+  <div id="error-banner" style="display:none;background:#fee;color:#900;padding:0.5em 1em;border:1px solid #c00;margin-bottom:0.5em;cursor:pointer" onclick="this.style.display='none'" title="Click to dismiss"></div>
   <div id="river"></div>
 </div>
 <div id="sidebar">
@@ -186,6 +187,20 @@ const ICON = {
 };
 // Derive wiki prefix from the URL path (e.g., "/work" from "/work/")
 const PREFIX = '/' + window.location.pathname.split('/').filter(Boolean)[0];
+
+// Intercept all fetch responses to surface server-side write errors.
+const _origFetch = window.fetch;
+window.fetch = function(...args) {
+  return _origFetch.apply(this, args).then(resp => {
+    const err = resp.headers.get('X-Wiki-Error');
+    if (err) {
+      const banner = document.getElementById('error-banner');
+      banner.textContent = '⚠ ' + err;
+      banner.style.display = 'block';
+    }
+    return resp;
+  });
+};
 
 // Read wiki title from CSS custom property; fall back to "TibbitWiki".
 function updateWikiTitle() {
