@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"text/template"
 
 	"github.com/alecthomas/chroma/v2"
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
@@ -109,6 +110,98 @@ func byteOffsetToLine(source []byte, n ast.Node) int {
 		}
 	}
 	return 0
+}
+
+// protectFences replaces fenced code blocks (``` or ~~~) with
+// placeholders so template expansion doesn't process them.
+// Returns the protected text and the list of original fences.
+func protectFences(source string) (string, []string) {
+	var fences []string
+	var result strings.Builder
+	lines := strings.SplitAfter(source, "\n")
+	inFence := false
+	var fenceMarker string
+	var fenceBuf strings.Builder
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !inFence {
+			if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+				inFence = true
+				fenceMarker = trimmed[:3]
+				fenceBuf.Reset()
+				fenceBuf.WriteString(line)
+				continue
+			}
+			result.WriteString(line)
+		} else {
+			fenceBuf.WriteString(line)
+			if strings.HasPrefix(trimmed, fenceMarker) && strings.TrimLeft(trimmed, fenceMarker[:1]) == "" {
+				idx := len(fences)
+				fences = append(fences, fenceBuf.String())
+				fmt.Fprintf(&result, "\x00FENCE%d\x00", idx)
+				inFence = false
+			}
+		}
+	}
+	// Unclosed fence: emit as-is.
+	if inFence {
+		result.WriteString(fenceBuf.String())
+	}
+	return result.String(), fences
+}
+
+// ExpandTemplates processes Go text/template directives in source,
+// using the provided template definitions as functions.  Code blocks
+// (fenced with ``` or ~~~) are protected from expansion.
+func ExpandTemplates(source string, templates map[string]string) string {
+	if len(templates) == 0 || !strings.Contains(source, "{{") {
+		return source
+	}
+	funcMap := buildFuncMap(templates)
+	if len(funcMap) == 0 {
+		return source
+	}
+	// Replace code fences with placeholders to protect them.
+	protected, fences := protectFences(source)
+
+	t, err := template.New("note").Funcs(funcMap).Parse(protected)
+	if err != nil {
+		return source
+	}
+	var buf bytes.Buffer
+	if err := t.Execute(&buf, nil); err != nil {
+		return source
+	}
+	result := buf.String()
+
+	// Restore code fences.
+	for i, f := range fences {
+		result = strings.Replace(result, fmt.Sprintf("\x00FENCE%d\x00", i), f, 1)
+	}
+	return result
+}
+
+// buildFuncMap compiles template definitions into a FuncMap.
+// Each entry is a function that takes a string and returns a string,
+// enabling pipeline composition: {{img "pic.png" | half | center}}.
+func buildFuncMap(templates map[string]string) template.FuncMap {
+	fm := template.FuncMap{}
+	for name, tmplStr := range templates {
+		t, err := template.New(name).Parse(tmplStr)
+		if err != nil {
+			continue
+		}
+		// Capture t for the closure.
+		fn := t
+		fm[name] = func(s string) string {
+			var buf bytes.Buffer
+			if err := fn.Execute(&buf, s); err != nil {
+				return s
+			}
+			return buf.String()
+		}
+	}
+	return fm
 }
 
 // ToHTML renders markdown source to HTML.

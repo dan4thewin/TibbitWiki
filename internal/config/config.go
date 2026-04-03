@@ -26,17 +26,18 @@ type Theme map[string]map[string]string
 
 // Config holds all server configuration.
 type Config struct {
-	WikiPath          string        `yaml:"wiki_path"`
-	Listen            string        `yaml:"listen"`
-	EditorCmd         string        `yaml:"editor_cmd"`
-	PollInterval      time.Duration `yaml:"poll_interval"`
-	TWCorePath        string        `yaml:"tw_core_path"`
-	IndexHTML         string        `yaml:"index_html"`
-	CacheSize         int           `yaml:"cache_size"`
-	MaxDiffs          int           `yaml:"max_diffs"`
-	AttachmentExclude []string      `yaml:"attachment_exclude"`
-	PdfConvertCmd     string        `yaml:"pdf_convert_cmd"`
-	Theme             Theme         `yaml:"theme"`
+	WikiPath          string            `yaml:"wiki_path"`
+	Listen            string            `yaml:"listen"`
+	EditorCmd         string            `yaml:"editor_cmd"`
+	PollInterval      time.Duration     `yaml:"poll_interval"`
+	TWCorePath        string            `yaml:"tw_core_path"`
+	IndexHTML         string            `yaml:"index_html"`
+	CacheSize         int               `yaml:"cache_size"`
+	MaxDiffs          int               `yaml:"max_diffs"`
+	AttachmentExclude []string          `yaml:"attachment_exclude"`
+	PdfConvertCmd     string            `yaml:"pdf_convert_cmd"`
+	Templates         map[string]string `yaml:"templates"`
+	Theme             Theme             `yaml:"theme"`
 }
 
 // Defaults returns a Config parsed from the embedded defaults.yaml.

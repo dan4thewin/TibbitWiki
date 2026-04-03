@@ -58,6 +58,7 @@ type Wiki struct {
 	hub           *Hub
 	attachExclude []string
 	pdfConvertCmd string // command to enqueue PDF conversion (empty = disabled)
+	templates     map[string]string
 }
 
 // New creates a Wiki for the given directory.
@@ -98,6 +99,9 @@ func (w *Wiki) SetAttachExclude(exts []string) { w.attachExclude = exts }
 
 // SetPdfConvertCmd sets the command used to enqueue unconverted PDFs.
 func (w *Wiki) SetPdfConvertCmd(cmd string) { w.pdfConvertCmd = cmd }
+
+// SetTemplates sets the note body template definitions.
+func (w *Wiki) SetTemplates(t map[string]string) { w.templates = t }
 
 // ScanRCS detects notes checked out at non-head revisions by
 // looking for read-only files with a CHECKOUT symbolic tag.
@@ -197,10 +201,11 @@ func (w *Wiki) buildNote(title string, td *tid.Note, renderPlain bool) map[strin
 		result["rcsHead"] = head
 	}
 	if text != "" {
+		expanded := render.ExpandTemplates(text, w.templates)
 		if renderPlain {
-			result["html"] = render.ToPlainHTML(text)
+			result["html"] = render.ToPlainHTML(expanded)
 		} else {
-			result["html"] = render.ToHTML(text)
+			result["html"] = render.ToHTML(expanded)
 		}
 	}
 	if a := w.noteAttachments(title); a != "" {
@@ -619,7 +624,7 @@ func (w *Wiki) LineEdit(title string, line int, text string, insert bool) (strin
 		bodyText := td.Text()
 		w.body.Add(title, bodyText)
 		w.store.PutWithPath(td, fp)
-		html = render.ToHTML(bodyText)
+		html = render.ToHTML(render.ExpandTemplates(bodyText, w.templates))
 		rev = w.store.Revision(title)
 	})
 	return html, rev, err

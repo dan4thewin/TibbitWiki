@@ -674,3 +674,186 @@ func TestAttachmentPageWrapsHTML(t *testing.T) {
 		t.Errorf("expected body content, got: %s", got)
 	}
 }
+
+// --- Template expansion tests ---
+
+// TestExpandTemplatesSimple verifies basic template expansion.
+func TestExpandTemplatesSimple(t *testing.T) {
+	templates := map[string]string{
+		"img": `<img src="{{.}}">`,
+	}
+	got := ExpandTemplates(`{{img "pic.png"}}`, templates)
+	if got != `<img src="pic.png">` {
+		t.Errorf("got %q", got)
+	}
+}
+
+// TestExpandTemplatesPipeline verifies pipeline composition.
+func TestExpandTemplatesPipeline(t *testing.T) {
+	templates := map[string]string{
+		"img":    `<img src="{{.}}">`,
+		"center": `<div style="text-align:center">{{.}}</div>`,
+	}
+	got := ExpandTemplates(`{{img "pic.png" | center}}`, templates)
+	want := `<div style="text-align:center"><img src="pic.png"></div>`
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// TestExpandTemplatesThreeStage verifies three-stage pipeline.
+func TestExpandTemplatesThreeStage(t *testing.T) {
+	templates := map[string]string{
+		"img":    `<img src="{{.}}">`,
+		"half":   `<div style="width:50%">{{.}}</div>`,
+		"center": `<div style="text-align:center">{{.}}</div>`,
+	}
+	got := ExpandTemplates(`{{img "pic.png" | half | center}}`, templates)
+	want := `<div style="text-align:center"><div style="width:50%"><img src="pic.png"></div></div>`
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// TestExpandTemplatesNoTemplates returns source unchanged when no templates defined.
+func TestExpandTemplatesNoTemplates(t *testing.T) {
+	src := `{{img "pic.png"}}`
+	got := ExpandTemplates(src, nil)
+	if got != src {
+		t.Errorf("got %q, want %q", got, src)
+	}
+}
+
+// TestExpandTemplatesNoBraces returns source unchanged when no {{ present.
+func TestExpandTemplatesNoBraces(t *testing.T) {
+	src := "hello world"
+	templates := map[string]string{"img": `<img src="{{.}}">`}
+	got := ExpandTemplates(src, templates)
+	if got != src {
+		t.Errorf("got %q, want %q", got, src)
+	}
+}
+
+// TestExpandTemplatesProtectsFences verifies code blocks are not expanded.
+func TestExpandTemplatesProtectsFences(t *testing.T) {
+	templates := map[string]string{
+		"img": `<img src="{{.}}">`,
+	}
+	src := "before\n```\n{{img \"pic.png\"}}\n```\nafter"
+	got := ExpandTemplates(src, templates)
+	// The code block should be untouched.
+	if !strings.Contains(got, `{{img "pic.png"}}`) {
+		t.Errorf("code block was expanded: %q", got)
+	}
+}
+
+// TestExpandTemplatesProtectsTilde verifies ~~~ fences are protected.
+func TestExpandTemplatesProtectsTilde(t *testing.T) {
+	templates := map[string]string{
+		"img": `<img src="{{.}}">`,
+	}
+	src := "~~~\n{{img \"pic.png\"}}\n~~~"
+	got := ExpandTemplates(src, templates)
+	if !strings.Contains(got, `{{img "pic.png"}}`) {
+		t.Errorf("tilde fence was expanded: %q", got)
+	}
+}
+
+// TestExpandTemplatesBadTemplate returns source on parse error.
+func TestExpandTemplatesBadTemplate(t *testing.T) {
+	templates := map[string]string{
+		"img": `<img src="{{.}}">`,
+	}
+	src := `{{img "pic.png"} bad`
+	got := ExpandTemplates(src, templates)
+	if got != src {
+		t.Errorf("expected source unchanged on parse error, got %q", got)
+	}
+}
+
+// TestExpandTemplatesBadDefinition skips invalid template definitions.
+func TestExpandTemplatesBadDefinition(t *testing.T) {
+	templates := map[string]string{
+		"bad": `{{`,
+		"img": `<img src="{{.}}">`,
+	}
+	got := ExpandTemplates(`{{img "pic.png"}}`, templates)
+	if got != `<img src="pic.png">` {
+		t.Errorf("got %q", got)
+	}
+}
+
+// TestExpandTemplatesExecuteError returns source on execute error.
+func TestExpandTemplatesExecuteError(t *testing.T) {
+	templates := map[string]string{
+		"img": `<img src="{{.}}">`,
+	}
+	// {{call nil}} triggers an execute-time error (call of nil).
+	src := `{{call nil}}`
+	got := ExpandTemplates(src, templates)
+	if got != src {
+		t.Errorf("expected source on error, got %q", got)
+	}
+}
+
+// TestProtectFencesUnclosed handles unclosed fence blocks.
+func TestProtectFencesUnclosed(t *testing.T) {
+	src := "```\nhello\nworld"
+	protected, fences := protectFences(src)
+	if len(fences) != 0 {
+		t.Errorf("expected no fences, got %d", len(fences))
+	}
+	if protected != src {
+		t.Errorf("unclosed fence should pass through, got %q", protected)
+	}
+}
+
+// TestProtectFencesMultiple handles multiple code blocks.
+func TestProtectFencesMultiple(t *testing.T) {
+	src := "a\n```\nfirst\n```\nb\n~~~\nsecond\n~~~\nc"
+	protected, fences := protectFences(src)
+	if len(fences) != 2 {
+		t.Fatalf("expected 2 fences, got %d", len(fences))
+	}
+	if strings.Contains(protected, "first") || strings.Contains(protected, "second") {
+		t.Errorf("fence content leaked into protected text: %q", protected)
+	}
+	if !strings.Contains(protected, "a\n") || !strings.Contains(protected, "b\n") || !strings.Contains(protected, "c") {
+		t.Errorf("non-fence content missing: %q", protected)
+	}
+}
+
+// TestBuildFuncMapEmpty returns empty map for empty input.
+func TestBuildFuncMapEmpty(t *testing.T) {
+	fm := buildFuncMap(nil)
+	if len(fm) != 0 {
+		t.Errorf("expected empty, got %d entries", len(fm))
+	}
+}
+
+// TestExpandTemplatesAllBadDefinitions returns source when all templates invalid.
+func TestExpandTemplatesAllBadDefinitions(t *testing.T) {
+	templates := map[string]string{
+		"bad1": `{{`,
+		"bad2": `{{`,
+	}
+	src := `{{bad1 "x"}}`
+	got := ExpandTemplates(src, templates)
+	if got != src {
+		t.Errorf("expected source unchanged, got %q", got)
+	}
+}
+
+// TestBuildFuncMapExecuteError verifies function returns input on execute error.
+func TestBuildFuncMapExecuteError(t *testing.T) {
+	// Template that expects a map but gets a string triggers execute error.
+	templates := map[string]string{
+		"fail": `{{.Missing}}`,
+	}
+	fm := buildFuncMap(templates)
+	fn := fm["fail"].(func(string) string)
+	got := fn("hello")
+	if got != "hello" {
+		t.Errorf("expected input passthrough on error, got %q", got)
+	}
+}
