@@ -59,6 +59,14 @@ type Wiki struct {
 	attachExclude []string
 	pdfConvertCmd string // command to enqueue PDF conversion (empty = disabled)
 	templates     map[string]string
+	lastErr       string
+}
+
+// setErr records a write error for client surfacing. Must be called
+// inside the event loop (w.do). Last error wins.
+func (w *Wiki) setErr(format string, args ...any) {
+	w.lastErr = fmt.Sprintf(format, args...)
+	log.Printf("wiki %s: %s", w.Name, w.lastErr)
 }
 
 // New creates a Wiki for the given directory.
@@ -102,6 +110,17 @@ func (w *Wiki) SetPdfConvertCmd(cmd string) { w.pdfConvertCmd = cmd }
 
 // SetTemplates sets the note body template definitions.
 func (w *Wiki) SetTemplates(t map[string]string) { w.templates = t }
+
+// TakeError returns and clears the last write error.
+// Called by the server to ship the error to the client.
+func (w *Wiki) TakeError() string {
+	var err string
+	w.do(func() {
+		err = w.lastErr
+		w.lastErr = ""
+	})
+	return err
+}
 
 // ScanRCS detects notes checked out at non-head revisions by
 // looking for read-only files with a CHECKOUT symbolic tag.
@@ -331,13 +350,13 @@ func (w *Wiki) Delete(title string) {
 		if _, err := os.Stat(rcsFile); err == nil {
 			lcDir := filepath.Join(w.noteDir, "last+chance")
 			if err := os.MkdirAll(lcDir, 0o755); err != nil {
-				log.Printf("wiki %s: cannot create last+chance: %v", w.Name, err)
+				w.setErr("cannot create last+chance: %v", err)
 			} else if err := os.Rename(rcsFile, filepath.Join(lcDir, base+",v")); err != nil {
-				log.Printf("wiki %s: cannot preserve %s: %v", w.Name, base+",v", err)
+				w.setErr("cannot preserve %s: %v", base+",v", err)
 			}
 		}
 		if err := os.Remove(fp); err != nil && !os.IsNotExist(err) {
-			log.Printf("wiki %s: error deleting %q: %v", w.Name, title, err)
+			w.setErr("error deleting %q: %v", title, err)
 		}
 		w.store.Delete(title)
 		w.body.Remove(title)
@@ -613,7 +632,7 @@ func (w *Wiki) LineEdit(title string, line int, text string, insert bool) (strin
 			return
 		}
 		if e := rcs.Checkin(fp); e != nil {
-			log.Printf("wiki %s: rcs checkin %q: %v", w.Name, title, e)
+			w.setErr("rcs checkin %q: %v", title, e)
 		}
 		td, e := ParseFunc(newData)
 		if e != nil {
@@ -728,9 +747,9 @@ func (w *Wiki) persistNote(td *tid.Note, title string) {
 		return
 	}
 	if err := os.WriteFile(filePath, tid.Serialize(td), 0644); err != nil {
-		log.Printf("wiki %s: error writing %q: %v", w.Name, title, err)
+		w.setErr("error writing %q: %v", title, err)
 	} else if err := rcs.Checkin(filePath); err != nil {
-		log.Printf("wiki %s: rcs checkin %q: %v", w.Name, title, err)
+		w.setErr("rcs checkin %q: %v", title, err)
 	}
 	w.store.PutWithPath(td, filePath)
 }
@@ -796,7 +815,7 @@ func (w *Wiki) reloadFile(path string) {
 	w.body.Add(td.Title(), td.Text())
 	td.Fields["modified"] = isoNow()
 	if err := os.WriteFile(path, tid.Serialize(td), 0644); err != nil {
-		log.Printf("wiki %s: error writing %q: %v", w.Name, td.Title(), err)
+		w.setErr("error writing %q: %v", td.Title(), err)
 	}
 	w.store.PutWithPath(td, path)
 	log.Printf("wiki %s: reloaded %q", w.Name, td.Title())
@@ -805,14 +824,14 @@ func (w *Wiki) reloadFile(path string) {
 		return
 	}
 	if err := rcs.Checkin(path); err != nil {
-		log.Printf("wiki %s: rcs checkin %s: %v", w.Name, path, err)
+		w.setErr("rcs checkin %s: %v", path, err)
 	}
 }
 
 func (w *Wiki) renameAndRescan(path, oldTitle, newTitle string) {
 	newPath := filepath.Join(filepath.Dir(path), tid.TitleToFilename(newTitle))
 	if err := os.Rename(path, newPath); err != nil {
-		log.Printf("wiki %s: rename %s → %s: %v", w.Name, path, newPath, err)
+		w.setErr("rename %s → %s: %v", path, newPath, err)
 		return
 	}
 	log.Printf("wiki %s: renamed %q → %q", w.Name, oldTitle, newTitle)
@@ -821,7 +840,7 @@ func (w *Wiki) renameAndRescan(path, oldTitle, newTitle string) {
 	newDir := filepath.Join(w.noteDir, newTitle)
 	if info, err := os.Stat(oldDir); err == nil && info.IsDir() {
 		if err := os.Rename(oldDir, newDir); err != nil {
-			log.Printf("wiki %s: rename attachments %s → %s: %v", w.Name, oldDir, newDir, err)
+			w.setErr("rename attachments %s → %s: %v", oldDir, newDir, err)
 		}
 	}
 	// Rename RCS archive to preserve history under the new name.
@@ -830,11 +849,11 @@ func (w *Wiki) renameAndRescan(path, oldTitle, newTitle string) {
 	newArchive := filepath.Join(rcsDir, tid.TitleToFilename(newTitle)+",v")
 	if _, err := os.Stat(oldArchive); err == nil {
 		if err := os.Rename(oldArchive, newArchive); err != nil {
-			log.Printf("wiki %s: rename RCS archive: %v", w.Name, err)
+			w.setErr("rename RCS archive: %v", err)
 		}
 	}
 	if err := rcs.Checkin(newPath); err != nil {
-		log.Printf("wiki %s: rcs checkin %s: %v", w.Name, newPath, err)
+		w.setErr("rcs checkin %s: %v", newPath, err)
 	}
 	w.rescan()
 }

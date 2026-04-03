@@ -113,6 +113,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	r2 := r.Clone(context.WithValue(r.Context(), wikiContextKey, wk))
 	r2.URL.Path = rest
+	if errMsg := wk.TakeError(); errMsg != "" {
+		w.Header().Set("X-Wiki-Error", errMsg)
+	}
 	s.mux.ServeHTTP(w, r2)
 }
 

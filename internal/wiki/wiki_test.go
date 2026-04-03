@@ -2782,3 +2782,28 @@ func TestSetTemplates(t *testing.T) {
 		t.Errorf("pipeline not applied in html: %s", html)
 	}
 }
+
+// TestTakeError verifies setErr stores and TakeError returns+clears.
+func TestTakeError(t *testing.T) {
+	wk := testWiki(t)
+
+	// No error initially.
+	if msg := wk.TakeError(); msg != "" {
+		t.Errorf("expected empty, got %q", msg)
+	}
+
+	// Inject an error via the event loop.
+	wk.do(func() {
+		wk.setErr("test error: %s", "disk full")
+	})
+
+	msg := wk.TakeError()
+	if msg != "test error: disk full" {
+		t.Errorf("expected error message, got %q", msg)
+	}
+
+	// Second take should be empty (cleared).
+	if msg := wk.TakeError(); msg != "" {
+		t.Errorf("expected cleared, got %q", msg)
+	}
+}
