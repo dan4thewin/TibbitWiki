@@ -795,6 +795,9 @@ func (w *Wiki) reloadFile(path string) {
 	}
 	w.body.Add(td.Title(), td.Text())
 	td.Fields["modified"] = isoNow()
+	if err := os.WriteFile(path, tid.Serialize(td), 0644); err != nil {
+		log.Printf("wiki %s: error writing %q: %v", w.Name, td.Title(), err)
+	}
 	w.store.PutWithPath(td, path)
 	log.Printf("wiki %s: reloaded %q", w.Name, td.Title())
 	// Skip checkin for read-only files (checked out at non-head revision).
