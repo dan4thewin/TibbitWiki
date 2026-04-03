@@ -3,6 +3,7 @@ package editor
 
 import (
 	"fmt"
+	"log"
 	"os/exec"
 	"strings"
 )
@@ -46,7 +47,11 @@ func (e *Editor) Open(filePath string) error {
 	}
 
 	// Don't wait — editor runs independently.
-	go cmd.Wait()
+	go func() {
+		if err := cmd.Wait(); err != nil {
+			log.Printf("editor exited: %v", err)
+		}
+	}()
 	return nil
 }
 

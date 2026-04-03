@@ -731,10 +731,11 @@ func TestDiffRangePureDelete(t *testing.T) {
 	}
 }
 
-// TestSplitLinesEmpty verifies splitLines returns nil for empty input.
+// TestSplitLinesEmpty verifies splitLines returns empty slice for empty input.
 func TestSplitLinesEmpty(t *testing.T) {
-	if got := splitLines(""); got != nil {
-		t.Errorf("splitLines(\"\") = %v, want nil", got)
+	got := splitLines("")
+	if got == nil || len(got) != 0 {
+		t.Errorf("splitLines(\"\") = %v, want []", got)
 	}
 }
 

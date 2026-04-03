@@ -466,7 +466,9 @@ func (w *Wiki) CheckoutRevision(title, rev string) error {
 		if rev == "" {
 			err = rcs.CheckoutHead(fp)
 			if err == nil {
-				rcs.DeleteTag(fp, "CHECKOUT")
+				if e := rcs.DeleteTag(fp, "CHECKOUT"); e != nil {
+					log.Printf("delete tag %s: %v", title, e)
+				}
 				w.store.SetRCS(title, "", "")
 				// Seed the body cache and store so the watcher sees
 				// restored content as unchanged and skips checkin.
@@ -481,7 +483,9 @@ func (w *Wiki) CheckoutRevision(title, rev string) error {
 			err = rcs.Checkout(fp, rev)
 			if err == nil {
 				head, _ := rcs.HeadRev(fp)
-				rcs.SetTag(fp, "CHECKOUT", rev)
+				if e := rcs.SetTag(fp, "CHECKOUT", rev); e != nil {
+					log.Printf("set tag %s: %v", title, e)
+				}
 				w.store.SetRCS(title, rev, head)
 				// Seed the body cache and store with the checked-out
 				// content so the watcher (and later promote) see it
@@ -528,7 +532,9 @@ func (w *Wiki) PromoteRevision(title string) error {
 		if err = rcs.ForceCheckin(fp); err != nil {
 			return
 		}
-		rcs.DeleteTag(fp, "CHECKOUT")
+		if e := rcs.DeleteTag(fp, "CHECKOUT"); e != nil {
+			log.Printf("delete tag %s: %v", title, e)
+		}
 		w.store.SetRCS(title, "", "")
 	})
 	return err
@@ -546,7 +552,9 @@ func isReadOnly(path string) bool {
 func buildRevList(head string) []string {
 	// Parse "1.N" to get N.
 	var major, minor int
-	fmt.Sscanf(head, "%d.%d", &major, &minor)
+	if _, err := fmt.Sscanf(head, "%d.%d", &major, &minor); err != nil {
+		return nil
+	}
 	revs := make([]string, 0, minor)
 	for i := 1; i <= minor; i++ {
 		revs = append(revs, fmt.Sprintf("%d.%d", major, i))

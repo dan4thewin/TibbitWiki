@@ -21,6 +21,12 @@ fi
 echo "=== pre-commit: vet ==="
 go vet ./...
 
+echo "=== pre-commit: errcheck ==="
+errcheck -exclude errcheck-exclude -ignoretests ./...
+
+echo "=== pre-commit: staticcheck ==="
+staticcheck ./...
+
 echo "=== pre-commit: test + coverage ==="
 go test -gcflags=all=-l -count=1 -coverprofile=cover.out ./... 2>&1
 total=$(go tool cover -func=cover.out | awk '/^total:/{print $3}' | tr -d '%')
