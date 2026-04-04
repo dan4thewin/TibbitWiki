@@ -124,7 +124,7 @@ config file < CLI flags.
 |------|-------------|
 | `--config` | Path to YAML config file |
 | `--wiki-path` | Path to wiki folder containing subdirs |
-| `--listen` | Host:port to listen on |
+| `--listen` | Host:port to listen on (overrides all config addresses) |
 | `--editor-cmd` | Editor command (`%s` = file path) |
 | `--index-html` | Override embedded HTML (for development) |
 | `--poll-interval` | Browser poll interval |
@@ -161,7 +161,7 @@ attachment listing with `attachment_exclude: [".pdf.md"]`.
 ```yaml
 # These settings require a server restart:
 wiki_path: .
-listen: 127.0.0.1:8080
+listen: 127.0.0.1:8080             # or array: ["addr1:port", "addr2:port"]
 editor_cmd: "open /Applications/Neovide.app --args %s"
 poll_interval: 3s
 cache_size: 200

@@ -24,10 +24,28 @@ var DefaultYAML []byte
 // overrides that are merged on top of shared.
 type Theme map[string]map[string]string
 
+// StringOrSlice is a []string that also accepts a bare YAML scalar,
+// treating it as a single-element slice.  This lets the "listen" key
+// work as both `listen: host:port` and `listen: [addr1, addr2]`.
+type StringOrSlice []string
+
+func (s *StringOrSlice) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		*s = []string{value.Value}
+		return nil
+	}
+	var slice []string
+	if err := value.Decode(&slice); err != nil {
+		return err
+	}
+	*s = slice
+	return nil
+}
+
 // Config holds all server configuration.
 type Config struct {
 	WikiPath          string            `yaml:"wiki_path"`
-	Listen            string            `yaml:"listen"`
+	Listen            StringOrSlice     `yaml:"listen"`
 	EditorCmd         string            `yaml:"editor_cmd"`
 	PollInterval      time.Duration     `yaml:"poll_interval"`
 	TWCorePath        string            `yaml:"tw_core_path"`
@@ -119,7 +137,7 @@ func (f *cliFlags) applyTo(cfg *Config) {
 		cfg.WikiPath = f.wikiPath
 	}
 	if f.listen != "" {
-		cfg.Listen = f.listen
+		cfg.Listen = StringOrSlice{f.listen}
 	}
 	if f.editorCmd != "" {
 		cfg.EditorCmd = f.editorCmd

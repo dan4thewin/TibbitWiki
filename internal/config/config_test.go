@@ -27,8 +27,8 @@ func TestDefaultsBadYAMLPanics(t *testing.T) {
 // TestDefaults verifies that Defaults returns expected values.
 func TestDefaults(t *testing.T) {
 	cfg := Defaults()
-	if cfg.Listen != "127.0.0.1:8080" {
-		t.Errorf("Listen = %q, want %q", cfg.Listen, "127.0.0.1:8080")
+	if len(cfg.Listen) != 1 || cfg.Listen[0] != "127.0.0.1:8080" {
+		t.Errorf("Listen = %v, want [127.0.0.1:8080]", cfg.Listen)
 	}
 	if cfg.WikiPath != "~/TibbitWiki" {
 		t.Errorf("WikiPath = %q, want %q", cfg.WikiPath, "~/TibbitWiki")
@@ -75,8 +75,8 @@ func TestLoadFlags(t *testing.T) {
 	if cfg.WikiPath != "/my/wiki" {
 		t.Errorf("WikiPath = %q, want %q", cfg.WikiPath, "/my/wiki")
 	}
-	if cfg.Listen != "0.0.0.0:9090" {
-		t.Errorf("Listen = %q, want %q", cfg.Listen, "0.0.0.0:9090")
+	if len(cfg.Listen) != 1 || cfg.Listen[0] != "0.0.0.0:9090" {
+		t.Errorf("Listen = %v, want [0.0.0.0:9090]", cfg.Listen)
 	}
 	if cfg.EditorCmd != "vim %s" {
 		t.Errorf("EditorCmd = %q, want %q", cfg.EditorCmd, "vim %s")
@@ -121,14 +121,66 @@ poll_interval: 2s
 	if cfg.WikiPath != "/yaml/wiki" {
 		t.Errorf("WikiPath = %q, want %q", cfg.WikiPath, "/yaml/wiki")
 	}
-	if cfg.Listen != "127.0.0.1:3000" {
-		t.Errorf("Listen = %q, want %q", cfg.Listen, "127.0.0.1:3000")
+	if len(cfg.Listen) != 1 || cfg.Listen[0] != "127.0.0.1:3000" {
+		t.Errorf("Listen = %v, want [127.0.0.1:3000]", cfg.Listen)
 	}
 	if cfg.EditorCmd != "code %s" {
 		t.Errorf("EditorCmd = %q, want %q", cfg.EditorCmd, "code %s")
 	}
 	if cfg.PollInterval != 2*time.Second {
 		t.Errorf("PollInterval = %v, want %v", cfg.PollInterval, 2*time.Second)
+	}
+}
+
+// TestLoadYAMLListenArray verifies that listen accepts an array of addresses.
+func TestLoadYAMLListenArray(t *testing.T) {
+	content := `wiki_path: /tmp/w
+listen:
+  - "127.0.0.1:8080"
+  - "100.70.53.76:8080"
+`
+	f, err := os.CreateTemp("", "tibbitwiki-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.WriteString(content); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	cfg, err := Load([]string{"--config", f.Name()})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Listen) != 2 {
+		t.Fatalf("Listen = %v, want 2 elements", cfg.Listen)
+	}
+	if cfg.Listen[0] != "127.0.0.1:8080" || cfg.Listen[1] != "100.70.53.76:8080" {
+		t.Errorf("Listen = %v, want [127.0.0.1:8080 100.70.53.76:8080]", cfg.Listen)
+	}
+}
+
+// TestStringOrSliceInvalidYAML verifies that a non-scalar, non-sequence
+// YAML node (e.g. a mapping) produces an error.
+func TestStringOrSliceInvalidYAML(t *testing.T) {
+	content := `wiki_path: /tmp/w
+listen:
+  bad: "mapping"
+`
+	f, err := os.CreateTemp("", "tibbitwiki-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.WriteString(content); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	_, err = Load([]string{"--config", f.Name()})
+	if err == nil {
+		t.Fatal("expected error for mapping value in listen, got nil")
 	}
 }
 
@@ -160,8 +212,8 @@ listen: "127.0.0.1:3000"
 		t.Errorf("WikiPath = %q, want %q", cfg.WikiPath, "/yaml/path")
 	}
 	// listen from flag should override YAML.
-	if cfg.Listen != "0.0.0.0:5555" {
-		t.Errorf("Listen = %q, want %q", cfg.Listen, "0.0.0.0:5555")
+	if len(cfg.Listen) != 1 || cfg.Listen[0] != "0.0.0.0:5555" {
+		t.Errorf("Listen = %v, want [0.0.0.0:5555]", cfg.Listen)
 	}
 }
 
@@ -208,8 +260,8 @@ func TestLoadNoArgs(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	defaults := Defaults()
-	if cfg.Listen != defaults.Listen {
-		t.Errorf("Listen = %q, want default %q", cfg.Listen, defaults.Listen)
+	if len(cfg.Listen) != len(defaults.Listen) || cfg.Listen[0] != defaults.Listen[0] {
+		t.Errorf("Listen = %v, want default %v", cfg.Listen, defaults.Listen)
 	}
 	// WikiPath should be tilde-expanded.
 	home, _ := os.UserHomeDir()

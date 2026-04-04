@@ -6,12 +6,14 @@ import (
 	_ "embed"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -82,9 +84,23 @@ func main() {
 
 	hub := configureHub(wikis, cfg)
 	srv := server.New(hub, ed, &themeRev, int(cfg.PollInterval.Milliseconds()), cfg.MaxDiffs, cfg.IndexHTML, cfg.WikiPath, configPath)
-	httpSrv := &http.Server{Addr: cfg.Listen, Handler: srv}
-	log.Printf("listening on http://%s", cfg.Listen)
+
+	// Pre-bind all listen addresses before serving any.
+	listeners := make([]net.Listener, 0, len(cfg.Listen))
+	for _, addr := range cfg.Listen {
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			for _, prev := range listeners {
+				_ = prev.Close()
+			}
+			log.Fatalf("listen %s: %v", addr, err)
+		}
+		listeners = append(listeners, ln)
+		log.Printf("listening on http://%s", ln.Addr())
+	}
 	log.Printf("wikis: %v", hub.Names())
+
+	httpSrv := &http.Server{Handler: srv}
 
 	go func() {
 		<-srv.RestartCh()
@@ -96,9 +112,17 @@ func main() {
 		}
 	}()
 
-	if err := httpSrv.ListenAndServe(); err != http.ErrServerClosed {
-		log.Fatalf("server: %v", err)
+	var wg sync.WaitGroup
+	for _, ln := range listeners {
+		wg.Add(1)
+		go func(ln net.Listener) {
+			defer wg.Done()
+			if err := httpSrv.Serve(ln); err != http.ErrServerClosed {
+				log.Fatalf("server %s: %v", ln.Addr(), err)
+			}
+		}(ln)
 	}
+	wg.Wait()
 
 	// Re-exec the same binary with the same args.
 	exe, err := os.Executable()
