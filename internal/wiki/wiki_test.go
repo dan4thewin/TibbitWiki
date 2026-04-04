@@ -107,7 +107,10 @@ func TestWikiPut(t *testing.T) {
 		"title": "NewNote",
 		"text":  "content",
 	}
-	rev, conflict := wk.Put("NewNote", fields, "")
+	rev, conflict, err := wk.Put("NewNote", fields, "")
+	if err != nil {
+		t.Fatalf("Put error: %v", err)
+	}
 	if conflict {
 		t.Error("unexpected conflict")
 	}
@@ -137,7 +140,7 @@ func TestWikiPutConflict(t *testing.T) {
 	wk := testWiki(t)
 	writeNote(t, wk, "Conflict", "v1")
 
-	_, conflict := wk.Put("Conflict", map[string]string{
+	_, conflict, _ := wk.Put("Conflict", map[string]string{
 		"title": "Conflict",
 		"text":  "v2",
 	}, "999")
@@ -912,7 +915,7 @@ func TestWikiLineEditWriteError(t *testing.T) {
 }
 
 // TestWikiLineEditRCSError verifies rcs.Checkin failure during
-// line-edit is logged but does not prevent completion.
+// line-edit returns an error.
 func TestWikiLineEditRCSError(t *testing.T) {
 	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error {
 		return fmt.Errorf("rcs failed")
@@ -922,15 +925,9 @@ func TestWikiLineEditRCSError(t *testing.T) {
 	wk := testWiki(t)
 	writeNote(t, wk, "RcsErr", "- alpha\n- beta")
 
-	html, rev, err := wk.LineEdit("RcsErr", 1, "- ALPHA", false)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if rev < 1 {
-		t.Errorf("rev = %d", rev)
-	}
-	if html == "" {
-		t.Error("expected html")
+	_, _, err := wk.LineEdit("RcsErr", 1, "- ALPHA", false)
+	if err == nil {
+		t.Fatal("expected error from LineEdit on RCS failure")
 	}
 }
 
@@ -976,8 +973,8 @@ func TestWikiEditExternalSuccess(t *testing.T) {
 
 // --- persistNote error paths ---
 
-// TestWikiPutWriteFileError verifies os.WriteFile error is logged
-// but note is still stored.
+// TestWikiPutWriteFileError verifies os.WriteFile error causes Put
+// to fail and the note is NOT stored.
 func TestWikiPutWriteFileError(t *testing.T) {
 	patches := gomonkey.ApplyFunc(os.WriteFile, func(name string, data []byte, perm os.FileMode) error {
 		return fmt.Errorf("disk full")
@@ -985,19 +982,21 @@ func TestWikiPutWriteFileError(t *testing.T) {
 	defer patches.Reset()
 
 	wk := testWiki(t)
-	wk.Put("WriteErr", map[string]string{
+	_, _, err := wk.Put("WriteErr", map[string]string{
 		"title": "WriteErr",
 		"text":  "body",
 	}, "")
 
-	// Note should still be in the store despite WriteFile error.
-	if wk.Store().Get("WriteErr") == nil {
-		t.Error("note should be in store despite write error")
+	if err == nil {
+		t.Error("expected error from Put on write failure")
+	}
+	if wk.Store().Get("WriteErr") != nil {
+		t.Error("note should NOT be in store after write error")
 	}
 }
 
-// TestWikiPutRCSError verifies rcs.Checkin error is logged but
-// note is still stored.
+// TestWikiPutRCSError verifies rcs.Checkin error causes Put to fail
+// and the note is NOT stored.
 func TestWikiPutRCSError(t *testing.T) {
 	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error {
 		return fmt.Errorf("rcs failed")
@@ -1005,13 +1004,16 @@ func TestWikiPutRCSError(t *testing.T) {
 	defer patches.Reset()
 
 	wk := testWiki(t)
-	wk.Put("RCSErr", map[string]string{
+	_, _, err := wk.Put("RCSErr", map[string]string{
 		"title": "RCSErr",
 		"text":  "body",
 	}, "")
 
-	if wk.Store().Get("RCSErr") == nil {
-		t.Error("note should be in store despite RCS error")
+	if err == nil {
+		t.Error("expected error from Put on RCS failure")
+	}
+	if wk.Store().Get("RCSErr") != nil {
+		t.Error("note should NOT be in store after RCS error")
 	}
 }
 

@@ -303,18 +303,7 @@ func reloadConfig(configPath, wikiPath string, wikiNames []string, themeRev *ato
 		return
 	}
 	// Fill missing shared keys from defaults.
-	theme := partial.Theme
-	if theme == nil {
-		theme = config.DefaultTheme()
-	} else if theme["shared"] == nil {
-		theme["shared"] = config.DefaultSharedTheme()
-	} else {
-		for k, v := range config.DefaultSharedTheme() {
-			if _, ok := theme["shared"][k]; !ok {
-				theme["shared"][k] = v
-			}
-		}
-	}
+	theme := config.FillThemeDefaults(partial.Theme)
 	for _, name := range wikiNames {
 		merged := config.MergedTheme(theme, name)
 		cssPath := filepath.Join(wikiPath, name+".css")

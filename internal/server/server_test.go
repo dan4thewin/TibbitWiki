@@ -81,8 +81,8 @@ func TestHandleStatus(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if body["username"] != "DG" {
-		t.Errorf("username = %v, want %q", body["username"], "DG")
+	if body["username"] != "" {
+		t.Errorf("username = %v, want empty string", body["username"])
 	}
 	if body["anonymous"] != false {
 		t.Errorf("anonymous = %v, want false", body["anonymous"])
@@ -673,8 +673,8 @@ func TestHandleEditExternalEditorFails(t *testing.T) {
 
 // --- gomonkey-based tests for error-logging branches ---
 
-// TestPutNoteWriteFileError verifies that an os.WriteFile error is
-// logged but does not prevent the note from being stored (204).
+// TestPutNoteWriteFileError verifies that an os.WriteFile error
+// causes a 500 and the note is NOT stored.
 func TestPutNoteWriteFileError(t *testing.T) {
 	patches := gomonkey.ApplyFunc(os.WriteFile, func(name string, data []byte, perm os.FileMode) error {
 		return fmt.Errorf("disk full")
@@ -689,17 +689,16 @@ func TestPutNoteWriteFileError(t *testing.T) {
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
 	}
-	// Note should still be stored (PutWithPath is called after the error log).
-	if got := wk.Store().Get("WriteErr"); got == nil {
-		t.Fatal("expected note in store despite WriteFile error")
+	if got := wk.Store().Get("WriteErr"); got != nil {
+		t.Fatal("note should NOT be in store after write error")
 	}
 }
 
 // TestPutNoteRCSCheckinError verifies that an rcs.Checkin error
-// is logged but does not prevent a 204 response.
+// causes a 500 and the note is NOT stored.
 func TestPutNoteRCSCheckinError(t *testing.T) {
 	patches := gomonkey.ApplyFunc(rcs.Checkin, func(path string) error {
 		return fmt.Errorf("rcs failed")
@@ -714,11 +713,11 @@ func TestPutNoteRCSCheckinError(t *testing.T) {
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
 	}
-	if got := wk.Store().Get("RCSErr"); got == nil {
-		t.Fatal("expected note in store despite rcs.Checkin error")
+	if got := wk.Store().Get("RCSErr"); got != nil {
+		t.Fatal("note should NOT be in store after RCS error")
 	}
 }
 
@@ -1180,7 +1179,7 @@ func TestLineEditWriteFileError(t *testing.T) {
 }
 
 // TestLineEditRCSCheckinError verifies that an rcs.Checkin failure
-// during line-edit is logged but doesn't prevent completion.
+// during line-edit returns 500.
 func TestLineEditRCSCheckinError(t *testing.T) {
 	patches := gomonkey.ApplyFunc(rcs.Checkin, func(path string) error {
 		return fmt.Errorf("rcs failed")
@@ -1202,9 +1201,9 @@ func TestLineEditRCSCheckinError(t *testing.T) {
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
-	// Should succeed (200) despite rcs error — the error is just logged.
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	// Should fail (500) due to rcs error.
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -1809,7 +1808,7 @@ func TestServeAttachmentMissing(t *testing.T) {
 }
 
 // TestServeAttachmentEscapeViaSymlink verifies that a symlinked subdir
-// pointing outside the note directory is blocked by the HasPrefix guard.
+// pointing outside the note directory is blocked by EvalSymlinks.
 func TestServeAttachmentEscapeViaSymlink(t *testing.T) {
 	dir := t.TempDir()
 	outside := t.TempDir()
@@ -1828,11 +1827,9 @@ func TestServeAttachmentEscapeViaSymlink(t *testing.T) {
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
-	// filepath.Join doesn't resolve symlinks — the string path is
-	// inside noteDir so HasPrefix passes. http.ServeFile serves it.
-	// This is acceptable: the admin controls what symlinks exist.
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d for symlinked subdir", w.Code, http.StatusOK)
+	// EvalSymlinks resolves the real path, which is outside noteDir.
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d for symlink escape", w.Code, http.StatusNotFound)
 	}
 }
 
@@ -2632,7 +2629,7 @@ func TestE2ECheckoutRestoreRoundTrip(t *testing.T) {
 	}
 }
 
-// TestWikiErrorHeader verifies X-Wiki-Error header is sent and cleared.
+// TestWikiErrorHeader verifies Put returns 500 on write failure.
 func TestWikiErrorHeader(t *testing.T) {
 	srv, wk := newTestServer(t)
 
@@ -2641,26 +2638,14 @@ func TestWikiErrorHeader(t *testing.T) {
 	os.Chmod(dir, 0555)
 	t.Cleanup(func() { os.Chmod(dir, 0755) })
 
-	// PUT a note — the write will fail, setting lastErr.
+	// PUT a note — the write should fail with 500.
 	body := `{"title":"Fail","text":"body"}`
 	req := httptest.NewRequest("PUT", "/test/notes/Fail", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 
-	// Next request should carry the error header.
-	req2 := httptest.NewRequest("GET", "/test/status", nil)
-	w2 := httptest.NewRecorder()
-	srv.ServeHTTP(w2, req2)
-	if w2.Header().Get("X-Wiki-Error") == "" {
-		t.Error("expected X-Wiki-Error header on response after write failure")
-	}
-
-	// Third request should have no error (cleared after delivery).
-	req3 := httptest.NewRequest("GET", "/test/status", nil)
-	w3 := httptest.NewRecorder()
-	srv.ServeHTTP(w3, req3)
-	if w3.Header().Get("X-Wiki-Error") != "" {
-		t.Error("expected X-Wiki-Error cleared after delivery")
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d for write failure", w.Code, http.StatusInternalServerError)
 	}
 }
