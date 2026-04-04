@@ -133,9 +133,11 @@ large rewrites.
   rollback). Startup loads all files and checkins any with stale archives
   (mtime comparison via NeedsCheckin).
 
-- **Config over constants.** Configurable values (listen address,
+- **Config over constants.** Configurable values (listen addresses,
   wiki path, editor command, poll interval, cache size, theme,
   max_diffs) live in a YAML config file with CLI flag overrides.
+  The `listen` key accepts a scalar (`host:port`) or an array
+  of addresses for multi-bind.
   Theme section is nested: `theme.shared` (base) + `theme.{wiki}`
   (overrides). CSS files written as `{wiki_path}/{wiki}.css`.
 

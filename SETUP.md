@@ -121,7 +121,7 @@ You can also specify a config file explicitly or use CLI flags:
 
 ```yaml
 wiki_path: ~/TibbitWiki
-listen: 127.0.0.1:8080
+listen: 127.0.0.1:8080             # or array: ["127.0.0.1:8080", "10.0.0.1:8080"]
 editor_cmd: ""
 poll_interval: 3s
 cache_size: 200
