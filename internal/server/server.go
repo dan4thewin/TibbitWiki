@@ -202,8 +202,18 @@ func (s *Server) serveAttachment(w http.ResponseWriter, r *http.Request) {
 	wk := wikiFrom(r)
 	clean := filepath.Clean(r.URL.Path)
 	fp := filepath.Join(wk.NoteDir(), clean)
-	// Ensure the resolved path stays within the note directory.
-	if !strings.HasPrefix(fp, wk.NoteDir()+string(filepath.Separator)) {
+	// Resolve symlinks so a symlink can't escape the note directory.
+	resolved, err := filepath.EvalSymlinks(fp)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	noteDir, err := filepath.EvalSymlinks(wk.NoteDir())
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if !strings.HasPrefix(resolved, noteDir+string(filepath.Separator)) {
 		http.NotFound(w, r)
 		return
 	}
@@ -261,7 +271,7 @@ func (s *Server) serveAttachment(w http.ResponseWriter, r *http.Request) {
 // handleStatus returns server status as JSON.
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	status := map[string]interface{}{
-		"username":  "DG",
+		"username":  "",
 		"anonymous": false,
 		"read_only": false,
 		"space":     map[string]string{"recipe": "default"},
@@ -345,9 +355,13 @@ func (s *Server) putNote(w http.ResponseWriter, r *http.Request, title string) {
 	}
 	fields["title"] = title
 
-	rev, conflict := wk.Put(title, fields, clientRev)
+	rev, conflict, err := wk.Put(title, fields, clientRev)
 	if conflict {
 		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("ETag", fmt.Sprintf("\"%s/%s/%d:\"", wk.Name, title, rev))

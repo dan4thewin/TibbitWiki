@@ -188,19 +188,27 @@ func Load(args []string) (Config, error) {
 	}
 
 	// Fill missing shared theme keys from embedded defaults.
-	if cfg.Theme == nil {
-		cfg.Theme = DefaultTheme()
-	} else if cfg.Theme["shared"] == nil {
-		cfg.Theme["shared"] = DefaultSharedTheme()
+	cfg.Theme = FillThemeDefaults(cfg.Theme)
+
+	return cfg, nil
+}
+
+// FillThemeDefaults fills missing shared theme keys from the embedded
+// defaults.  Safe to call on a nil or partial Theme.
+func FillThemeDefaults(t Theme) Theme {
+	if t == nil {
+		return DefaultTheme()
+	}
+	if t["shared"] == nil {
+		t["shared"] = DefaultSharedTheme()
 	} else {
 		for k, v := range DefaultSharedTheme() {
-			if _, ok := cfg.Theme["shared"][k]; !ok {
-				cfg.Theme["shared"][k] = v
+			if _, ok := t["shared"][k]; !ok {
+				t["shared"][k] = v
 			}
 		}
 	}
-
-	return cfg, nil
+	return t
 }
 
 // expandTilde replaces a leading ~ or ~/ with the user's home directory.

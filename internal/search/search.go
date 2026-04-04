@@ -2,11 +2,14 @@
 package search
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -297,9 +300,14 @@ func rgSearch(dir string, patterns []string, caseInsensitive bool) ([]Result, er
 	}
 	args = append(args, "--", dir)
 
-	cmd := exec.Command("rg", args...)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "rg", args...)
 	out, err := cmd.Output()
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("search timed out")
+		}
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
 			return nil, nil
 		}

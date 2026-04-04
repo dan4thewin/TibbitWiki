@@ -147,7 +147,10 @@ func (w *Wiki) ScanRCS() {
 // Start launches the event loop goroutine.
 func (w *Wiki) Start() { go w.loop() }
 
-// Stop halts the event loop.
+// Stop halts the event loop.  In production the process exits via
+// syscall.Exec (restart) or signal, so Stop is never called — all
+// goroutines vanish atomically.  Stop exists for test cleanup only;
+// no Reload/watcher activity should follow it.
 func (w *Wiki) Stop() { close(w.done) }
 
 func (w *Wiki) loop() {
@@ -317,9 +320,10 @@ func (w *Wiki) enqueuePdfs(paths []string) {
 
 // Put saves a note. clientRev is the client's last-known revision
 // was detected.
-func (w *Wiki) Put(title string, fields map[string]string, clientRev string) (int, bool) {
+func (w *Wiki) Put(title string, fields map[string]string, clientRev string) (int, bool, error) {
 	var rev int
 	var conflict bool
+	var putErr error
 	w.do(func() {
 		if clientRev != "" {
 			serverRev := w.store.Revision(title)
@@ -331,10 +335,13 @@ func (w *Wiki) Put(title string, fields map[string]string, clientRev string) (in
 		w.stampTimestamps(title, fields)
 		w.applySkinny(title, fields)
 		td := &tid.Note{Fields: fields}
-		w.persistNote(td, title)
+		if err := w.persistNote(td, title); err != nil {
+			putErr = err
+			return
+		}
 		rev = w.store.Revision(title)
 	})
-	return rev, conflict
+	return rev, conflict, putErr
 }
 
 // Delete removes a note file and preserves its RCS history in last+chance/.
@@ -640,7 +647,8 @@ func (w *Wiki) LineEdit(title string, line int, text string, insert bool) (strin
 			return
 		}
 		if e := rcs.Checkin(fp); e != nil {
-			w.setErr("rcs checkin %q: %v", title, e)
+			err = fmt.Errorf("rcs checkin %q: %w", title, e)
+			return
 		}
 		td, e := ParseFunc(newData)
 		if e != nil {
@@ -739,12 +747,10 @@ func (w *Wiki) applySkinny(title string, f map[string]string) {
 }
 
 // persistNote saves a note to disk and RCS, then updates the store.
-// Deliberate design choice: disk/RCS failures are logged but do not
-// fail the operation — the in-memory store is always updated. This
-// favors availability (note is accessible until restart) over strict
-// durability. Disk failures at this layer indicate a systemic problem
-// (full disk, permissions) that logging is the appropriate response to.
-func (w *Wiki) persistNote(td *tid.Note, title string) {
+// Returns an error if the file write or RCS checkin fails — the
+// in-memory store is NOT updated on failure, keeping it consistent
+// with disk.
+func (w *Wiki) persistNote(td *tid.Note, title string) error {
 	w.body.Add(title, td.Text())
 	filePath := w.store.FilePath(title)
 	if filePath == "" && w.noteDir != "" {
@@ -752,14 +758,16 @@ func (w *Wiki) persistNote(td *tid.Note, title string) {
 	}
 	if filePath == "" {
 		w.store.Put(td)
-		return
+		return nil
 	}
 	if err := os.WriteFile(filePath, tid.Serialize(td), 0644); err != nil {
-		w.setErr("error writing %q: %v", title, err)
-	} else if err := rcs.Checkin(filePath); err != nil {
-		w.setErr("rcs checkin %q: %v", title, err)
+		return fmt.Errorf("error writing %q: %w", title, err)
+	}
+	if err := rcs.Checkin(filePath); err != nil {
+		return fmt.Errorf("rcs checkin %q: %w", title, err)
 	}
 	w.store.PutWithPath(td, filePath)
+	return nil
 }
 
 func (w *Wiki) reloadFile(path string) {
