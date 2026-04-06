@@ -1,11 +1,15 @@
 package search
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/agiledragon/gomonkey/v2"
 )
 
 // --- parseMPattern ---
@@ -764,5 +768,26 @@ func TestParseRgJSONSkipsTopLevelNonMd(t *testing.T) {
 	results := parseRgJSON([]byte(input), "/wiki")
 	if len(results) != 0 {
 		t.Errorf("expected 0 results for top-level non-.md hit, got %d", len(results))
+	}
+}
+
+// TestSearchRgTimeout verifies that a search timeout returns a
+// descriptive error instead of a raw context error.
+func TestSearchRgTimeout(t *testing.T) {
+	checkRg(t)
+	dir := makeTidDir(t,
+		"A.md", "title: A\n\nalpha.",
+	)
+	patches := gomonkey.ApplyFunc(context.WithTimeout,
+		func(parent context.Context, _ time.Duration) (context.Context, context.CancelFunc) {
+			// Return an already-expired context.
+			ctx, cancel := context.WithDeadline(parent, time.Now().Add(-time.Second))
+			return ctx, cancel
+		})
+	defer patches.Reset()
+
+	_, err := Search(dir, "alpha")
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("expected timeout error, got: %v", err)
 	}
 }

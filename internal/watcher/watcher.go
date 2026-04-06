@@ -20,6 +20,9 @@ type Watcher struct {
 	watcher  *fsnotify.Watcher
 	done     chan struct{}
 
+	// closeFunc wraps watcher.Close; replaceable in tests.
+	closeFunc func() error
+
 	// debounce tracks pending file events to coalesce rapid
 	// successive writes (common with cloud drives).
 	mu       sync.Mutex
@@ -40,12 +43,13 @@ func New(dir string, onChange func(string)) (*Watcher, error) {
 		return nil, err
 	}
 	return &Watcher{
-		dir:      dir,
-		onChange: onChange,
-		watcher:  fw,
-		done:     make(chan struct{}),
-		pending:  make(map[string]time.Time),
-		debounce: 500 * time.Millisecond,
+		dir:       dir,
+		onChange:  onChange,
+		watcher:   fw,
+		closeFunc: fw.Close,
+		done:      make(chan struct{}),
+		pending:   make(map[string]time.Time),
+		debounce:  500 * time.Millisecond,
 	}, nil
 }
 
@@ -63,7 +67,7 @@ func (w *Watcher) Start() error {
 // Stop halts the watcher.
 func (w *Watcher) Stop() {
 	close(w.done)
-	if err := w.watcher.Close(); err != nil {
+	if err := w.closeFunc(); err != nil {
 		log.Printf("watcher close: %v", err)
 	}
 }

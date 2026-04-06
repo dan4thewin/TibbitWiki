@@ -2649,3 +2649,104 @@ func TestWikiErrorHeader(t *testing.T) {
 		t.Errorf("status = %d, want %d for write failure", w.Code, http.StatusInternalServerError)
 	}
 }
+
+// TestXWikiErrorHeader verifies the X-Wiki-Error header is delivered
+// on the request after a setErr-producing operation, then cleared.
+func TestXWikiErrorHeader(t *testing.T) {
+	patches := gomonkey.ApplyFunc(os.Remove, func(string) error {
+		return fmt.Errorf("permission denied")
+	})
+	defer patches.Reset()
+
+	srv, wk := newTestServer(t)
+	wk.Store().PutWithPath(&tid.Note{Fields: map[string]string{
+		"title": "ErrNote",
+		"text":  "Body.",
+	}}, "/fake/ErrNote.md")
+
+	// Delete triggers setErr (remove fails but note deleted from store).
+	req := httptest.NewRequest("DELETE", "/test/notes/ErrNote", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	// Next request should carry the error header.
+	req2 := httptest.NewRequest("GET", "/test/status", nil)
+	w2 := httptest.NewRecorder()
+	srv.ServeHTTP(w2, req2)
+	if w2.Header().Get("X-Wiki-Error") == "" {
+		t.Error("expected X-Wiki-Error header after delete failure")
+	}
+
+	// Third request: header should be cleared.
+	req3 := httptest.NewRequest("GET", "/test/status", nil)
+	w3 := httptest.NewRecorder()
+	srv.ServeHTTP(w3, req3)
+	if w3.Header().Get("X-Wiki-Error") != "" {
+		t.Error("expected X-Wiki-Error cleared after delivery")
+	}
+}
+
+// TestServeAttachmentEvalSymlinksNoteDirError verifies that an
+// EvalSymlinks failure on the note directory returns 404.
+func TestServeAttachmentEvalSymlinksNoteDirError(t *testing.T) {
+	srv, wk := newTestServer(t)
+
+	dir := wk.NoteDir()
+	noteFile := filepath.Join(dir, "Att.md")
+	os.WriteFile(noteFile, []byte("title: Att\n\ntext"), 0644)
+	attDir := filepath.Join(dir, "Att")
+	os.MkdirAll(attDir, 0755)
+	os.WriteFile(filepath.Join(attDir, "pic.png"), []byte("PNG"), 0644)
+	td, _ := tid.Parse([]byte("title: Att\n\ntext"))
+	wk.Store().PutWithPath(td, noteFile)
+
+	// Patch EvalSymlinks: first call succeeds, second fails.
+	patches := gomonkey.ApplyFuncSeq(filepath.EvalSymlinks, []gomonkey.OutputCell{
+		{Values: gomonkey.Params{filepath.Join(dir, "Att", "pic.png"), nil}},
+		{Values: gomonkey.Params{"", fmt.Errorf("eval error")}},
+	})
+	defer patches.Reset()
+
+	req := httptest.NewRequest("GET", "/test/attachments/Att/pic.png", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 for EvalSymlinks noteDir error", w.Code)
+	}
+}
+
+// TestServeAttachmentStatError verifies that an os.Stat failure on
+// the attachment path returns 404.
+func TestServeAttachmentStatError(t *testing.T) {
+	srv, wk := newTestServer(t)
+
+	dir := wk.NoteDir()
+	noteFile := filepath.Join(dir, "StatErr.md")
+	os.WriteFile(noteFile, []byte("title: StatErr\n\ntext"), 0644)
+	attDir := filepath.Join(dir, "StatErr")
+	os.MkdirAll(attDir, 0755)
+	attFile := filepath.Join(attDir, "file.txt")
+	os.WriteFile(attFile, []byte("data"), 0644)
+	td, _ := tid.Parse([]byte("title: StatErr\n\ntext"))
+	wk.Store().PutWithPath(td, noteFile)
+
+	// Both EvalSymlinks calls succeed, then Stat fails.
+	resolved := filepath.Join(dir, "StatErr", "file.txt")
+	patches := gomonkey.ApplyFuncSeq(filepath.EvalSymlinks, []gomonkey.OutputCell{
+		{Values: gomonkey.Params{resolved, nil}},
+		{Values: gomonkey.Params{dir, nil}},
+	})
+	defer patches.Reset()
+	patches.ApplyFunc(os.Stat, func(string) (os.FileInfo, error) {
+		return nil, fmt.Errorf("stat error")
+	})
+
+	req := httptest.NewRequest("GET", "/test/attachments/StatErr/file.txt", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404 for Stat error", w.Code)
+	}
+}
