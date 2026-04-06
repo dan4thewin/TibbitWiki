@@ -1,0 +1,40 @@
+# AGENTS.md — Agent Instructions
+
+## Project
+
+TibbitWiki — Go replacement for TiddlyWiki's Node.js server.
+Single HTML+JS client embedded via go:embed.
+Server-side markdown (goldmark + chroma).
+REST API (18+ endpoints).
+Multi-wiki via subdirectory auto-discovery.
+RCS version control (built-in Go library from golang-rcs).
+Single-user design — no auth, no concurrent-writer resolution.
+
+## Build
+
+mk (Plan 9).  GOFLAGS=-gcflags=all=-l.
+Work on main branch (no feature branches).
+
+## Testing
+
+100% statement + condition coverage target.
+gobco for condition coverage.
+gomonkey for mocking (with -gcflags=all=-l).
+Clarity over DRY in tests — descriptive CamelCase names.
+
+## macOS Caveats
+
+kqueue fd limits with many wikis.
+darwin/arm64 gomonkey + coverprofile SIGBUS — run coverage separately if needed.
+
+## Shared Conventions (Skills)
+
+This project uses shared skills for cross-project conventions.
+Load them if your harness supports it:
+- `go-quality-gates` — build system (mk), coverage, complexity,
+  testing conventions, pre-commit hooks
+- `ai-collaboration` — methodology for effective AI-assisted
+  development: broken assumptions, tactics, anti-patterns
+
+If you cannot find or load a listed skill, flag this to DG
+immediately as an urgent blocker.  Do not proceed without it.

@@ -332,7 +332,7 @@ func (w *Wiki) Put(title string, fields map[string]string, clientRev string) (in
 				return
 			}
 		}
-		w.stampTimestamps(title, fields)
+		w.normalizeHeaders(title, fields)
 		w.applySkinny(title, fields)
 		td := &tid.Note{Fields: fields}
 		if err := w.persistNote(td, title); err != nil {
@@ -655,7 +655,7 @@ func (w *Wiki) LineEdit(title string, line int, text string, insert bool) (strin
 			err = fmt.Errorf("parse error: %w", e)
 			return
 		}
-		td.Fields["modified"] = isoNow()
+		w.normalizeHeaders(title, td.Fields)
 		bodyText := td.Text()
 		w.body.Add(title, bodyText)
 		w.store.PutWithPath(td, fp)
@@ -724,14 +724,23 @@ func (w *Wiki) Reload(path string) {
 
 // --- internal helpers ---
 
-func (w *Wiki) stampTimestamps(title string, f map[string]string) {
+// normalizeHeaders ensures the four canonical headers (title, tags,
+// created, modified) are always present. Preserves existing created
+// from the store if available; otherwise stamps now.
+func (w *Wiki) normalizeHeaders(title string, f map[string]string) {
 	now := isoNow()
 	f["modified"] = now
-	if existing := w.store.Get(title); existing != nil {
-		if c := existing.Fields["created"]; c != "" && f["created"] == "" {
-			f["created"] = c
+	if _, ok := f["tags"]; !ok {
+		f["tags"] = ""
+	}
+	if f["created"] == "" {
+		if existing := w.store.Get(title); existing != nil {
+			if c := existing.Fields["created"]; c != "" {
+				f["created"] = c
+			}
 		}
-	} else {
+	}
+	if f["created"] == "" {
 		f["created"] = now
 	}
 }
@@ -829,7 +838,7 @@ func (w *Wiki) reloadFile(path string) {
 		return
 	}
 	w.body.Add(td.Title(), td.Text())
-	td.Fields["modified"] = isoNow()
+	w.normalizeHeaders(td.Title(), td.Fields)
 	if err := os.WriteFile(path, tid.Serialize(td), 0644); err != nil {
 		w.setErr("error writing %q: %v", td.Title(), err)
 	}
@@ -973,16 +982,23 @@ func managedField(k string) bool {
 	return k == "modified" || k == "created"
 }
 
+// significantField reports whether a field key/value pair should be
+// compared for change detection. Managed fields (created, modified)
+// and empty values (e.g. normalized tags:"") are ignored.
+func significantField(k, v string) bool {
+	return v != "" && !managedField(k)
+}
+
 func metaFieldsEqual(stored, parsed map[string]string) bool {
 	parsedMeta := 0
-	for k := range parsed {
-		if k != "text" && !managedField(k) {
+	for k, v := range parsed {
+		if k != "text" && significantField(k, v) {
 			parsedMeta++
 		}
 	}
 	storedMeta := 0
-	for k := range stored {
-		if !managedField(k) {
+	for k, v := range stored {
+		if significantField(k, v) {
 			storedMeta++
 		}
 	}
@@ -990,7 +1006,7 @@ func metaFieldsEqual(stored, parsed map[string]string) bool {
 		return false
 	}
 	for k, v := range stored {
-		if managedField(k) {
+		if !significantField(k, v) {
 			continue
 		}
 		if parsed[k] != v {
