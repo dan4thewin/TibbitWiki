@@ -60,6 +60,7 @@ type Wiki struct {
 	pdfConvertCmd string // command to enqueue PDF conversion (empty = disabled)
 	templates     map[string]string
 	lastErr       string
+	renameFunc    func(string, string) error
 }
 
 // setErr records a write error for client surfacing. Must be called
@@ -74,14 +75,15 @@ func (w *Wiki) setErr(format string, args ...any) {
 func New(name, noteDir string, ed *editor.Editor, cacheSize int) *Wiki {
 	cache, _ := lru.New[string, string](cacheSize)
 	return &Wiki{
-		Name:     name,
-		noteDir:  noteDir,
-		store:    store.New(),
-		editor:   ed,
-		body:     cache,
-		ops:      make(chan func(), 64),
-		done:     make(chan struct{}),
-		symlinks: map[string]string{},
+		Name:       name,
+		noteDir:    noteDir,
+		store:      store.New(),
+		editor:     ed,
+		body:       cache,
+		ops:        make(chan func(), 64),
+		done:       make(chan struct{}),
+		symlinks:   map[string]string{},
+		renameFunc: os.Rename,
 	}
 }
 
@@ -855,7 +857,7 @@ func (w *Wiki) reloadFile(path string) {
 
 func (w *Wiki) renameAndRescan(path, oldTitle, newTitle string) {
 	newPath := filepath.Join(filepath.Dir(path), tid.TitleToFilename(newTitle))
-	if err := os.Rename(path, newPath); err != nil {
+	if err := w.renameFunc(path, newPath); err != nil {
 		w.setErr("rename %s → %s: %v", path, newPath, err)
 		return
 	}
@@ -925,6 +927,10 @@ func (w *Wiki) rescan() {
 		if err != nil {
 			log.Printf("wiki %s: rescan skip %s: %v", w.Name, path, err)
 			continue
+		}
+		if fileTitle := tid.FilenameToTitle(entry.Name()); td.Title() != "" && td.Title() != fileTitle {
+			w.renameAndRescan(path, fileTitle, td.Title())
+			return
 		}
 		w.store.PutWithPath(td, path)
 		w.body.Add(td.Title(), td.Text())
