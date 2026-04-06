@@ -96,13 +96,11 @@ func Serialize(t *Note) []byte {
 	}
 	sort.Strings(keys)
 
-	// Write title first, tags second, then the rest.
+	// Write title first, tags second (always present), then the rest.
 	if v, ok := t.Fields["title"]; ok {
 		fmt.Fprintf(&b, "title: %s\n", v)
 	}
-	if v, ok := t.Fields["tags"]; ok {
-		fmt.Fprintf(&b, "tags: %s\n", v)
-	}
+	fmt.Fprintf(&b, "tags: %s\n", t.Fields["tags"])
 	for _, k := range keys {
 		fmt.Fprintf(&b, "%s: %s\n", k, t.Fields[k])
 	}
