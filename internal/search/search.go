@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/dan4thewin/tibbitwiki/internal/tid"
 )
 
 // Result holds a matched file and its matching lines.
@@ -407,6 +409,5 @@ func toSet(files []string) map[string]bool {
 // FileToTitle extracts a note title from a .md filename by stripping
 // the directory and extension. This is a fallback — prefer store lookup.
 func FileToTitle(path string) string {
-	base := filepath.Base(path)
-	return strings.TrimSuffix(base, ".md")
+	return tid.FilenameToTitle(filepath.Base(path))
 }

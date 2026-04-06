@@ -465,12 +465,14 @@ func TestIsDanglingRegularFile(t *testing.T) {
 // files that need checkin (no archive or file newer than archive).
 func TestLoadChecksInNewFiles(t *testing.T) {
 	checkedIn := map[string]bool{}
-	patches := gomonkey.ApplyFunc(rcs.NeedsCheckin, func(string) bool { return true })
-	patches.ApplyFunc(rcs.Checkin, func(path string) error {
+	origNeed := rcs.NeedsCheckin
+	origCI := rcs.Checkin
+	rcs.NeedsCheckin = func(string) bool { return true }
+	rcs.Checkin = func(path string) error {
 		checkedIn[filepath.Base(path)] = true
 		return nil
-	})
-	defer patches.Reset()
+	}
+	defer func() { rcs.NeedsCheckin = origNeed; rcs.Checkin = origCI }()
 
 	dir := t.TempDir()
 	writeFile(t, dir, "New.md", "title: New\n\nBody.")

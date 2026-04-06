@@ -16,6 +16,9 @@ import (
 
 var validRev = regexp.MustCompile(`^\d+\.\d+$`)
 
+// osRename is os.Rename by default; tests replace it to inject errors.
+var osRename = os.Rename
+
 // ValidRevision reports whether rev looks like an RCS revision (e.g. "1.5").
 func ValidRevision(rev string) bool {
 	return validRev.MatchString(rev)
@@ -52,7 +55,7 @@ func writeArchive(file *gorcs.File, archive string) error {
 		os.Remove(tmp)
 		return fmt.Errorf("write %s: %w", archive, err)
 	}
-	if err := os.Rename(tmp, archive); err != nil {
+	if err := osRename(tmp, archive); err != nil {
 		os.Remove(tmp)
 		return fmt.Errorf("rename %s: %w", archive, err)
 	}
@@ -63,7 +66,8 @@ func writeArchive(file *gorcs.File, archive string) error {
 // first use inside the RCS/ subdirectory. Keyword expansion is
 // suppressed (-ko). The working file is kept locked (writable).
 // Returns nil without creating a revision if content is unchanged.
-func Checkin(path string) error {
+// Declared as a variable so tests can replace it without gomonkey.
+var Checkin = func(path string) error {
 	return checkin(path, false)
 }
 
@@ -131,7 +135,8 @@ func HasArchive(path string) bool {
 // NeedsCheckin reports whether path should be checked in.
 // Returns true if no archive exists, or if the working file is
 // newer than the archive (edited while the server was down).
-func NeedsCheckin(path string) bool {
+// Declared as a variable so tests can replace it without gomonkey.
+var NeedsCheckin = func(path string) bool {
 	archive := archivePath(path)
 	ai, err := os.Stat(archive)
 	if err != nil {
@@ -409,7 +414,7 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 		os.Remove(tmp)
 		return fmt.Errorf("write %s: %w", path, err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := osRename(tmp, path); err != nil {
 		os.Remove(tmp)
 		return fmt.Errorf("rename %s: %w", path, err)
 	}

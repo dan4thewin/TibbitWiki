@@ -998,10 +998,9 @@ func TestWikiPutWriteFileError(t *testing.T) {
 // TestWikiPutRCSError verifies rcs.Checkin error causes Put to fail
 // and the note is NOT stored.
 func TestWikiPutRCSError(t *testing.T) {
-	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error {
-		return fmt.Errorf("rcs failed")
-	})
-	defer patches.Reset()
+	orig := rcs.Checkin
+	rcs.Checkin = func(string) error { return fmt.Errorf("rcs failed") }
+	defer func() { rcs.Checkin = orig }()
 
 	wk := testWiki(t)
 	_, _, err := wk.Put("RCSErr", map[string]string{
@@ -1317,10 +1316,7 @@ func TestRenameRCSArchiveError(t *testing.T) {
 // the wiki; the original file remains on disk.
 func TestReloadRenameError(t *testing.T) {
 	wk := testWiki(t)
-	patches := gomonkey.ApplyFunc(os.Rename, func(old, new string) error {
-		return fmt.Errorf("permission denied")
-	})
-	defer patches.Reset()
+	wk.renameFunc = func(_, _ string) error { return fmt.Errorf("permission denied") }
 
 	path := filepath.Join(wk.NoteDir(), "Src.md")
 	os.WriteFile(path, []byte("title: Different\ntags: \n\nBody."), 0644)
@@ -1360,8 +1356,9 @@ func TestReloadRenameRCSError(t *testing.T) {
 // rescan that clears the store and reloads all files from disk.
 func TestRescan(t *testing.T) {
 	wk := testWiki(t)
-	patches := gomonkey.ApplyFunc(rcs.Checkin, func(string) error { return nil })
-	defer patches.Reset()
+	orig := rcs.Checkin
+	rcs.Checkin = func(string) error { return nil }
+	defer func() { rcs.Checkin = orig }()
 
 	// Add a note the normal way
 	writeNote(t, wk, "Alpha", "alpha body")
@@ -1395,6 +1392,40 @@ func TestRescan(t *testing.T) {
 	}
 	if wk.Store().Get("WrongName") != nil {
 		t.Error("WrongName should not be in store")
+	}
+}
+
+// TestRescanFixesMismatch verifies that rescan detects a title/filename
+// mismatch on an existing disk file and renames it. This exercises the
+// startup path where files are loaded by rescan (not reloadFile).
+func TestRescanFixesMismatch(t *testing.T) {
+	orig := rcs.Checkin
+	rcs.Checkin = func(string) error { return nil }
+	defer func() { rcs.Checkin = orig }()
+
+	wk := testWiki(t)
+
+	// Place a mismatched file directly on disk (filename != title header).
+	os.WriteFile(filepath.Join(wk.NoteDir(), "ShortName.md"),
+		[]byte("title: LongNameLongName\ntags: \n\nBody."), 0644)
+	// Trigger rescan via a second mismatch through reloadFile.
+	// The first rescan after renaming "Trigger" will encounter ShortName's
+	// mismatch in the scan loop and rename it too.
+	trigger := filepath.Join(wk.NoteDir(), "Trigger.md")
+	os.WriteFile(trigger, []byte("title: TriggerRenamed\ntags: \n\nBody."), 0644)
+	wk.Reload(trigger)
+	wk.do(func() {})
+
+	if wk.Store().Get("LongNameLongName") == nil {
+		t.Error("LongNameLongName should be in store after rescan fix")
+	}
+	if wk.Store().Get("ShortName") != nil {
+		t.Error("ShortName should not be in store")
+	}
+	// Renamed file should exist on disk.
+	renamed := filepath.Join(wk.NoteDir(), "LongNameLongName.md")
+	if _, err := os.Stat(renamed); err != nil {
+		t.Errorf("renamed file should exist: %v", err)
 	}
 }
 

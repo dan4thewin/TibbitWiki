@@ -700,10 +700,9 @@ func TestPutNoteWriteFileError(t *testing.T) {
 // TestPutNoteRCSCheckinError verifies that an rcs.Checkin error
 // causes a 500 and the note is NOT stored.
 func TestPutNoteRCSCheckinError(t *testing.T) {
-	patches := gomonkey.ApplyFunc(rcs.Checkin, func(path string) error {
-		return fmt.Errorf("rcs failed")
-	})
-	defer patches.Reset()
+	orig := rcs.Checkin
+	rcs.Checkin = func(string) error { return fmt.Errorf("rcs failed") }
+	defer func() { rcs.Checkin = orig }()
 
 	srv, wk := newTestServer(t)
 
@@ -1834,32 +1833,25 @@ func TestServeAttachmentEscapeViaSymlink(t *testing.T) {
 }
 
 // TestServeAttachmentPathEscape verifies that a request resolving
-// outside the note directory returns 404. The HasPrefix guard on
-// line 179 is defense-in-depth (the mux and filepath.Clean prevent
-// traversal via normal HTTP). We trigger it by making NoteDir
-// return different values on consecutive calls: the first (for
-// filepath.Join) returns "/" so the joined path is "/sub/file.txt",
-// and the second (for HasPrefix) returns the real dir — mismatch.
+// outside the note directory returns 404. We create a symlink inside
+// the note dir that points to a file outside it; after EvalSymlinks
+// the resolved path won't have the noteDir prefix.
 func TestServeAttachmentPathEscape(t *testing.T) {
-	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "sub"), 0755)
-	os.WriteFile(filepath.Join(dir, "sub", "file.txt"), []byte("data"), 0644)
+	noteDir := t.TempDir()
+	outsideDir := t.TempDir()
+	os.WriteFile(filepath.Join(outsideDir, "secret.txt"), []byte("private"), 0644)
 
-	wk := wiki.New("test", dir, nil, 100)
+	// Symlink: noteDir/escape/secret.txt → outsideDir/secret.txt
+	escapeDir := filepath.Join(noteDir, "escape")
+	os.Symlink(outsideDir, escapeDir)
+
+	wk := wiki.New("test", noteDir, nil, 100)
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
 	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
-	// First call returns "/" (Join produces "/sub/file.txt"),
-	// second call returns real dir (HasPrefix fails).
-	patches := gomonkey.ApplyMethodSeq(wk, "NoteDir", []gomonkey.OutputCell{
-		{Values: gomonkey.Params{"/"}},
-		{Values: gomonkey.Params{dir}},
-	})
-	defer patches.Reset()
-
-	req := httptest.NewRequest("GET", "/test/sub/file.txt", nil)
+	req := httptest.NewRequest("GET", "/test/escape/secret.txt", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
 

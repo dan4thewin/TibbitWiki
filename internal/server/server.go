@@ -201,19 +201,20 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 func (s *Server) serveAttachment(w http.ResponseWriter, r *http.Request) {
 	wk := wikiFrom(r)
 	clean := filepath.Clean(r.URL.Path)
-	fp := filepath.Join(wk.NoteDir(), clean)
+	noteDir := wk.NoteDir()
+	fp := filepath.Join(noteDir, clean)
 	// Resolve symlinks so a symlink can't escape the note directory.
 	resolved, err := filepath.EvalSymlinks(fp)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	noteDir, err := filepath.EvalSymlinks(wk.NoteDir())
+	resolvedNoteDir, err := filepath.EvalSymlinks(noteDir)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	if !strings.HasPrefix(resolved, noteDir+string(filepath.Separator)) {
+	if !strings.HasPrefix(resolved, resolvedNoteDir+string(filepath.Separator)) {
 		http.NotFound(w, r)
 		return
 	}

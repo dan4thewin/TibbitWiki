@@ -946,10 +946,9 @@ func TestUnifiedDiffLineLimitSkips(t *testing.T) {
 // temp file on rename failure.
 func TestAtomicWriteFileRenameError(t *testing.T) {
 	dir := t.TempDir()
-	patches := gomonkey.ApplyFunc(os.Rename, func(_, _ string) error {
-		return fmt.Errorf("mock rename error")
-	})
-	defer patches.Reset()
+	orig := osRename
+	osRename = func(_, _ string) error { return fmt.Errorf("mock rename error") }
+	defer func() { osRename = orig }()
 
 	err := atomicWriteFile(filepath.Join(dir, "test.txt"), []byte("data"), 0644)
 	if err == nil {
@@ -974,10 +973,9 @@ func TestWriteArchiveRenameError(t *testing.T) {
 		t.Fatalf("parse: %v", err)
 	}
 
-	patches := gomonkey.ApplyFunc(os.Rename, func(_, _ string) error {
-		return fmt.Errorf("mock rename error")
-	})
-	defer patches.Reset()
+	orig := osRename
+	osRename = func(_, _ string) error { return fmt.Errorf("mock rename error") }
+	defer func() { osRename = orig }()
 
 	err = writeArchive(file, archive)
 	if err == nil {
