@@ -2809,3 +2809,65 @@ func TestTakeError(t *testing.T) {
 		t.Errorf("expected cleared, got %q", msg)
 	}
 }
+
+// TestCheckoutHeadDeleteTagError verifies that a DeleteTag failure
+// during restore-to-head is logged but does not prevent success.
+func TestCheckoutHeadDeleteTagError(t *testing.T) {
+	wk, _ := writeNoteWithRevisions(t, "TagDel", []string{"v1", "v2"})
+	// Checkout a non-head revision first.
+	if err := wk.CheckoutRevision("TagDel", "1.1"); err != nil {
+		t.Fatal(err)
+	}
+	patches := gomonkey.ApplyFunc(rcs.DeleteTag, func(string, string) error {
+		return fmt.Errorf("tag delete failed")
+	})
+	defer patches.Reset()
+
+	// Restore to head — should succeed despite DeleteTag error.
+	if err := wk.CheckoutRevision("TagDel", ""); err != nil {
+		t.Errorf("expected success despite DeleteTag error, got: %v", err)
+	}
+}
+
+// TestCheckoutRevSetTagError verifies that a SetTag failure during
+// checkout is logged but does not prevent success.
+func TestCheckoutRevSetTagError(t *testing.T) {
+	wk, _ := writeNoteWithRevisions(t, "TagSet", []string{"v1", "v2"})
+
+	patches := gomonkey.ApplyFunc(rcs.SetTag, func(string, string, string) error {
+		return fmt.Errorf("tag set failed")
+	})
+	defer patches.Reset()
+
+	// Checkout revision 1.1 — should succeed despite SetTag error.
+	if err := wk.CheckoutRevision("TagSet", "1.1"); err != nil {
+		t.Errorf("expected success despite SetTag error, got: %v", err)
+	}
+}
+
+// TestPromoteDeleteTagError verifies that a DeleteTag failure during
+// promote is logged but does not prevent success.
+func TestPromoteDeleteTagError(t *testing.T) {
+	wk, _ := writeNoteWithRevisions(t, "PromTag", []string{"v1", "v2"})
+	if err := wk.CheckoutRevision("PromTag", "1.1"); err != nil {
+		t.Fatal(err)
+	}
+
+	patches := gomonkey.ApplyFunc(rcs.DeleteTag, func(string, string) error {
+		return fmt.Errorf("tag delete failed")
+	})
+	defer patches.Reset()
+
+	if err := wk.PromoteRevision("PromTag"); err != nil {
+		t.Errorf("expected success despite DeleteTag error, got: %v", err)
+	}
+}
+
+// TestBuildRevListParseError verifies that a malformed head revision
+// returns nil.
+func TestBuildRevListParseError(t *testing.T) {
+	got := buildRevList("not-a-rev")
+	if got != nil {
+		t.Errorf("expected nil for malformed head, got %v", got)
+	}
+}

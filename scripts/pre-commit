@@ -28,15 +28,29 @@ echo "=== pre-commit: staticcheck ==="
 staticcheck ./...
 
 echo "=== pre-commit: test + coverage ==="
-go test -gcflags=all=-l -count=1 -coverprofile=cover.out ./... 2>&1
-total=$(go tool cover -func=cover.out | awk '/^total:/{print $3}' | tr -d '%')
-echo "coverage: ${total}%"
-rm -f cover.out
-threshold=800
-# Compare as integer tenths: 86.5 → 865
-total_int=${total/./}
-if (( total_int < threshold )); then
-	echo "FAIL: coverage ${total}% < $((threshold/10))%"
+output=$(go test -gcflags=all=-l -count=1 -cover ./... 2>&1)
+rc=$?
+echo "$output"
+if (( rc != 0 )); then
+	exit 1
+fi
+
+# Enforce 100% statement coverage per internal/ package.
+# The root package (main) is excluded — it has no tests.
+fail=0
+while IFS= read -r line; do
+	[[ $line != ok* ]] && continue
+	pkg=$(awk '{print $2}' <<< "$line")
+	# skip root (main) package
+	case $pkg in */internal/*) ;; *) continue ;; esac
+	pct=$(grep -oP '\d+\.\d+(?=%)' <<< "$line")
+	if [[ $pct != "100.0" ]]; then
+		echo "FAIL: $pkg coverage ${pct}% < 100%"
+		fail=1
+	fi
+done <<< "$output"
+
+if (( fail )); then
 	exit 1
 fi
 

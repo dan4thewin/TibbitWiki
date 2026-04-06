@@ -346,3 +346,19 @@ func TestEventLoopHandlesError(t *testing.T) {
 	}()
 	w.eventLoop()
 }
+
+// TestStopCloseError verifies that a watcher.Close error is logged
+// but Stop still completes.
+func TestStopCloseError(t *testing.T) {
+	dir := t.TempDir()
+	w, err := New(dir, func(string) {})
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+	w.closeFunc = func() error {
+		return fmt.Errorf("close failed")
+	}
+	w.Stop()
+	// Real watcher left open — clean up.
+	w.watcher.Close()
+}
