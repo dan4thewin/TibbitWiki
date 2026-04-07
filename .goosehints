@@ -1,0 +1,5 @@
+When writing or modifying tests, read TESTING.md first.
+When adding features or changing package internals, read ARCHITECTURE.md first.
+When setting up the dev environment, read SETUP.md first.
+When doing browser integration or screenshot-based testing, read
+the "Browser automation via osascript" section of TESTING.md.
