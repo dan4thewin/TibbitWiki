@@ -903,10 +903,37 @@ func (w *Wiki) isUnchanged(td *tid.Note) bool {
 	return cached == td.Text()
 }
 
+// rescanSymlink records a symlinked .md file in the symlinks map
+// instead of loading it into the store. Returns true if the path
+// was a symlink (regardless of parse success).
+func (w *Wiki) rescanSymlink(path string, symlinks map[string]string) bool {
+	owner := loader.SymlinkOwner(path)
+	if owner == "" {
+		return false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Printf("wiki %s: rescan skip symlink %s: %v", w.Name, path, err)
+		return true
+	}
+	td, err := ParseFunc(data)
+	if err != nil {
+		log.Printf("wiki %s: rescan skip symlink %s: %v", w.Name, path, err)
+		return true
+	}
+	if td.Title() != "" {
+		symlinks[td.Title()] = owner
+	}
+	return true
+}
+
 // rescan clears all state and re-reads every .md file from noteDir.
+// Symlinks are recorded in w.symlinks (not loaded into the store),
+// mirroring loader.Load behaviour.
 func (w *Wiki) rescan() {
 	w.store.Clear()
 	w.body.Purge()
+	symlinks := make(map[string]string)
 	entries, err := os.ReadDir(w.noteDir)
 	if err != nil {
 		log.Printf("wiki %s: rescan readdir: %v", w.Name, err)
@@ -918,6 +945,9 @@ func (w *Wiki) rescan() {
 			continue
 		}
 		path := filepath.Join(w.noteDir, entry.Name())
+		if w.rescanSymlink(path, symlinks) {
+			continue
+		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			log.Printf("wiki %s: rescan skip %s: %v", w.Name, path, err)
@@ -929,6 +959,7 @@ func (w *Wiki) rescan() {
 			continue
 		}
 		if fileTitle := tid.FilenameToTitle(entry.Name()); td.Title() != "" && td.Title() != fileTitle {
+			w.symlinks = symlinks
 			w.renameAndRescan(path, fileTitle, td.Title())
 			return
 		}
@@ -936,6 +967,7 @@ func (w *Wiki) rescan() {
 		w.body.Add(td.Title(), td.Text())
 		count++
 	}
+	w.symlinks = symlinks
 	log.Printf("wiki %s: rescan loaded %d notes", w.Name, count)
 }
 

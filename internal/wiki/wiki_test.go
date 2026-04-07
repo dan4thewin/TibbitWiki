@@ -1521,6 +1521,15 @@ func TestRescanSkipsErrors(t *testing.T) {
 	t.Cleanup(func() { os.Chmod(unreadable, 0644) })
 	// Unparseable file
 	os.WriteFile(filepath.Join(wk.NoteDir(), "Bad.md"), []byte("no headers"), 0644)
+	// Symlink whose target is unreadable.
+	unreadSym := filepath.Join(wk.NoteDir(), "DeadLink.md")
+	os.Symlink("../other/DeadLink.md", unreadSym)
+	// Symlink whose target is unparseable.
+	badDir := filepath.Join(filepath.Dir(wk.NoteDir()), "badwiki")
+	os.Mkdir(badDir, 0755)
+	os.WriteFile(filepath.Join(badDir, "NoParse.md"), []byte("no headers"), 0644)
+	badSym := filepath.Join(wk.NoteDir(), "NoParse.md")
+	os.Symlink("../badwiki/NoParse.md", badSym)
 	// Subdir (should be skipped)
 	os.Mkdir(filepath.Join(wk.NoteDir(), "subdir"), 0755)
 	// Non-md file
@@ -1547,6 +1556,130 @@ func TestRescanReadDirError(t *testing.T) {
 	t.Cleanup(wk.Stop)
 	// Direct call — rescan should log error but not panic.
 	wk.do(func() { wk.rescan() })
+}
+
+// TestRescanPreservesSymlinks verifies that rescan() rebuilds the
+// symlinks map and does NOT load symlinked notes into the store.
+// This is the bug that caused duplicate notes in List(): rescan
+// blindly loaded all .md files (including symlinks) into the store
+// while the symlinks map still pointed at the same titles.
+func TestRescanPreservesSymlinks(t *testing.T) {
+	orig := rcs.Checkin
+	rcs.Checkin = func(string) error { return nil }
+	defer func() { rcs.Checkin = orig }()
+
+	parent := t.TempDir()
+	holdDir := filepath.Join(parent, "hold")
+	workDir := filepath.Join(parent, "work")
+	os.Mkdir(holdDir, 0755)
+	os.Mkdir(workDir, 0755)
+
+	// Real note in hold.
+	os.WriteFile(filepath.Join(holdDir, "Shared.md"),
+		[]byte("title: Shared\ntags: tech\n\nShared body."), 0644)
+
+	// Symlink in work pointing to hold.
+	os.Symlink("../hold/Shared.md", filepath.Join(workDir, "Shared.md"))
+
+	// Local note in work.
+	os.WriteFile(filepath.Join(workDir, "Local.md"),
+		[]byte("title: Local\ntags: \n\nLocal body."), 0644)
+
+	// Create work wiki with symlink already registered.
+	work := New("work", workDir, nil, 100)
+	work.symlinks = map[string]string{"Shared": "hold"}
+	work.Start()
+	t.Cleanup(work.Stop)
+
+	// Put Local into the store so the pre-rescan state is realistic.
+	localTd, _ := ParseFunc([]byte("title: Local\ntags: \n\nLocal body."))
+	work.Store().PutWithPath(localTd, filepath.Join(workDir, "Local.md"))
+	work.SeedBody("Local", "Local body.")
+
+	// Trigger rescan via a title/filename mismatch.
+	mismatch := filepath.Join(workDir, "WrongName.md")
+	os.WriteFile(mismatch, []byte("title: RightName\ntags: \n\nBody."), 0644)
+	work.Reload(mismatch)
+	work.do(func() {}) // drain queue
+
+	// After rescan: Shared must be in symlinks, NOT in the store.
+	if work.symlinks["Shared"] != "hold" {
+		t.Errorf("symlinks[Shared] = %q, want %q", work.symlinks["Shared"], "hold")
+	}
+	if work.Store().Get("Shared") != nil {
+		t.Error("Shared should not be in store (it's a symlink)")
+	}
+	// Local and RightName should be in the store.
+	if work.Store().Get("Local") == nil {
+		t.Error("Local should be in store after rescan")
+	}
+	if work.Store().Get("RightName") == nil {
+		t.Error("RightName should be in store after rescan")
+	}
+}
+
+// TestRescanSymlinkNoDuplicateInList verifies that after a rescan,
+// List() returns a symlinked note exactly once (from the symlink
+// path, not from the store).
+func TestRescanSymlinkNoDuplicateInList(t *testing.T) {
+	orig := rcs.Checkin
+	rcs.Checkin = func(string) error { return nil }
+	defer func() { rcs.Checkin = orig }()
+
+	parent := t.TempDir()
+	holdDir := filepath.Join(parent, "hold")
+	workDir := filepath.Join(parent, "work")
+	os.Mkdir(holdDir, 0755)
+	os.Mkdir(workDir, 0755)
+
+	// Real note in hold.
+	os.WriteFile(filepath.Join(holdDir, "Shared.md"),
+		[]byte("title: Shared\ntags: tech\n\nShared body."), 0644)
+
+	hold := New("hold", holdDir, nil, 100)
+	holdTd, _ := ParseFunc([]byte("title: Shared\ntags: tech\n\nShared body."))
+	hold.Store().PutWithPath(holdTd, filepath.Join(holdDir, "Shared.md"))
+	hold.SeedBody("Shared", "Shared body.")
+	hold.Start()
+	t.Cleanup(hold.Stop)
+
+	// Symlink in work pointing to hold.
+	os.Symlink("../hold/Shared.md", filepath.Join(workDir, "Shared.md"))
+
+	// Local note in work.
+	os.WriteFile(filepath.Join(workDir, "Local.md"),
+		[]byte("title: Local\ntags: \n\nLocal body."), 0644)
+
+	work := New("work", workDir, nil, 100)
+	localTd, _ := ParseFunc([]byte("title: Local\ntags: \n\nLocal body."))
+	work.Store().PutWithPath(localTd, filepath.Join(workDir, "Local.md"))
+	work.SeedBody("Local", "Local body.")
+	work.symlinks = map[string]string{"Shared": "hold"}
+	hub := NewHub(map[string]*Wiki{"hold": hold, "work": work})
+	work.SetHub(hub)
+	work.Start()
+	t.Cleanup(work.Stop)
+
+	// Trigger rescan via mismatch.
+	mismatch := filepath.Join(workDir, "WrongName.md")
+	os.WriteFile(mismatch, []byte("title: RightName\ntags: \n\nBody."), 0644)
+	work.Reload(mismatch)
+	work.do(func() {}) // drain queue
+
+	// List must contain Shared exactly once, with owner="hold".
+	list := work.List()
+	sharedCount := 0
+	for _, fields := range list {
+		if fields["title"] == "Shared" {
+			sharedCount++
+			if fields["owner"] != "hold" {
+				t.Errorf("Shared owner = %q, want %q", fields["owner"], "hold")
+			}
+		}
+	}
+	if sharedCount != 1 {
+		t.Errorf("Shared appeared %d times in List(), want 1", sharedCount)
+	}
 }
 
 // TestListIncludesSymlinkedNotes verifies that List() merges local
