@@ -62,6 +62,31 @@ highlighting via chroma (OneDark). List items annotated with
 literal words, `!` NOT, `#tag`, `@title`, `/regex/`, `m/regex/`,
 `a|b` OR, space for AND (set intersection).
 
+## Future: cross-wiki text search from wiki picker
+
+`search.Search(dir, query)` is almost general enough to run at the
+wiki root — rg doesn't care what directory you point it at. Two
+issues to resolve:
+
+1. `normalizeHitPath` treats subdirectories as attachment folders
+   (maps `hold/Note.md` → `hold.md`). Needs a depth-aware mode or
+   the cross-wiki caller handles path parsing itself.
+
+2. `wiki.Search()` looks up each result in `w.store.Get(name)` to
+   get the display title. A cross-wiki search has no single store.
+   But the store lookup is only used for `filename → title`, and
+   `search.FileToTitle()` already does that without the store.
+   The store lookup also filters out unknown files — a cross-wiki
+   caller would skip that filter or route results to per-wiki stores
+   via Hub.
+
+Design direction: the wiki picker screen gets a search box. Results
+show note title + wiki name (derived from path prefix). Clicking a
+result navigates into the owning wiki and opens the note. Per-wiki
+search is unchanged. This avoids architecture changes — the
+cross-wiki search is a thin layer at the Hub/server level, not a
+change to the search package or wiki goroutine model.
+
 ## Build system
 
 Plan 9 mk (dcjones/mk Go port). `mkfile` lists all .go and go:embed
