@@ -59,6 +59,30 @@ func TestToHTMLEmpty(t *testing.T) {
 	}
 }
 
+// TestToHTMLTaskListCheckbox verifies that task list items render as
+// checkboxes with data-line attributes.
+func TestToHTMLTaskListCheckbox(t *testing.T) {
+	src := "- [ ] unchecked\n- [x] checked\n- regular\n"
+	got := ToHTML(src)
+	// Unchecked: <li data-line="1"><input ... type="checkbox">
+	if !strings.Contains(got, `type="checkbox"`) {
+		t.Fatalf("expected checkbox input, got:\n%s", got)
+	}
+	if !strings.Contains(got, `data-line="1"`) {
+		t.Errorf("expected data-line on checkbox item, got:\n%s", got)
+	}
+	// Checked item should have the checked attribute.
+	if !strings.Contains(got, `checked=""`) {
+		t.Errorf("expected checked attribute, got:\n%s", got)
+	}
+	// Regular item should not have a checkbox.
+	// Count checkbox inputs — should be exactly 2.
+	count := strings.Count(got, `type="checkbox"`)
+	if count != 2 {
+		t.Errorf("expected 2 checkboxes, got %d in:\n%s", count, got)
+	}
+}
+
 // TestThemeCSSNotEmpty verifies ThemeCSS returns non-empty CSS
 // containing chroma class selectors.
 func TestThemeCSSNotEmpty(t *testing.T) {

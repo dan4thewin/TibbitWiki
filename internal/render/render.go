@@ -28,6 +28,7 @@ var md = goldmark.New(
 	goldmark.WithExtensions(
 		extension.Linkify,
 		extension.Table,
+		extension.TaskList,
 		highlighting.NewHighlighting(
 			highlighting.WithStyle("onedark"),
 			highlighting.WithFormatOptions(
