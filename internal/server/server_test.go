@@ -456,6 +456,68 @@ func TestNoteMethodNotAllowed(t *testing.T) {
 	}
 }
 
+// TestDeleteAttachment verifies DELETE /notes/{title}/{filename} removes
+// an attachment file and returns 204.
+func TestDeleteAttachment(t *testing.T) {
+	srv, _ := newTestServer(t)
+	// Create an attachment subdirectory and file.
+	dir := srv.hub.Wiki("test").NoteDir()
+	attDir := filepath.Join(dir, "Hello")
+	os.MkdirAll(attDir, 0755)
+	os.WriteFile(filepath.Join(attDir, "photo.png"), []byte("img"), 0644)
+
+	req := httptest.NewRequest("DELETE", "/test/notes/Hello/photo.png", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+	if _, err := os.Stat(filepath.Join(attDir, "photo.png")); !os.IsNotExist(err) {
+		t.Error("attachment file should be deleted")
+	}
+}
+
+// TestDeleteAttachmentNotFound verifies 404 for missing attachment.
+func TestDeleteAttachmentNotFound(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("DELETE", "/test/notes/Hello/noexist.png", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+// TestDeleteAttachmentBadFilename verifies invalid filenames are rejected.
+func TestDeleteAttachmentBadFilename(t *testing.T) {
+	srv, _ := newTestServer(t)
+	for _, path := range []string{
+		"/test/notes/Hello/",         // empty filename
+		"/test/notes/Hello/sub/file", // slash in filename (extra segment)
+	} {
+		req := httptest.NewRequest("DELETE", path, nil)
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("path %q: status = %d, want %d", path, w.Code, http.StatusBadRequest)
+		}
+	}
+}
+
+// TestAttachmentMethodNotAllowed verifies non-DELETE on attachment path returns 405.
+func TestAttachmentMethodNotAllowed(t *testing.T) {
+	srv, _ := newTestServer(t)
+	req := httptest.NewRequest("GET", "/test/notes/Hello/photo.png", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusMethodNotAllowed)
+	}
+}
+
 // TestHandleEditExternal verifies the edit-external endpoint
 // launches the editor.
 func TestHandleEditExternal(t *testing.T) {

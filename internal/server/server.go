@@ -293,12 +293,30 @@ func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleNote dispatches GET, PUT and DELETE for a single note.
+// Paths of the form /notes/{title}/{filename} dispatch attachment operations.
 func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
-	title := extractTitle(r.URL.Path, "/notes/")
-	if title == "" {
+	raw := strings.TrimPrefix(r.URL.Path, "/notes/")
+	if raw == "" {
 		http.Error(w, "missing note title", http.StatusBadRequest)
 		return
 	}
+	// Check for attachment sub-path: title/filename
+	if i := strings.IndexByte(raw, '/'); i >= 0 {
+		title := raw[:i]
+		filename := raw[i+1:]
+		if title == "" || filename == "" {
+			http.Error(w, "invalid path", http.StatusBadRequest)
+			return
+		}
+		switch r.Method {
+		case http.MethodDelete:
+			s.deleteAttachment(w, r, title, filename)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+		return
+	}
+	title := raw
 	switch r.Method {
 	case http.MethodGet:
 		s.getNote(w, r, title)
@@ -372,6 +390,19 @@ func (s *Server) putNote(w http.ResponseWriter, r *http.Request, title string) {
 // deleteNote removes a note.
 func (s *Server) deleteNote(w http.ResponseWriter, r *http.Request, title string) {
 	wikiFrom(r).Delete(title)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// deleteAttachment removes a single attachment file from a note.
+func (s *Server) deleteAttachment(w http.ResponseWriter, r *http.Request, title, filename string) {
+	if err := wikiFrom(r).DeleteAttachment(title, filename); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

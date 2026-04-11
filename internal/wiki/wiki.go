@@ -372,6 +372,33 @@ func (w *Wiki) Delete(title string) {
 	})
 }
 
+// DeleteAttachment removes a single attachment file from a note's
+// attachment directory. Returns an error if the note directory doesn't
+// exist, the filename is invalid, or the file cannot be removed.
+func (w *Wiki) DeleteAttachment(title, filename string) error {
+	var result error
+	w.do(func() {
+		if w.noteDir == "" {
+			result = fmt.Errorf("no note directory configured")
+			return
+		}
+		// Reject path traversal in filename.
+		if filename == "" || strings.Contains(filename, "/") || strings.Contains(filename, "\\") || filename == ".." || filename == "." {
+			result = fmt.Errorf("invalid attachment filename")
+			return
+		}
+		fp := filepath.Join(w.noteDir, title, filename)
+		if err := os.Remove(fp); err != nil {
+			if os.IsNotExist(err) {
+				result = fmt.Errorf("attachment not found")
+			} else {
+				result = fmt.Errorf("error deleting attachment: %v", err)
+			}
+		}
+	})
+	return result
+}
+
 // List returns skinny fields for all notes including access times.
 // Symlinked notes are fetched live from their owning wikis.
 func (w *Wiki) List() []map[string]string {
