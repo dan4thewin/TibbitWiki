@@ -126,6 +126,9 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
 .line-icons button { background: none; border: none; cursor: pointer; font-size: 14px; padding: 0; margin: 0; opacity: 0.4; color: var(--tw-accent); line-height: 1; }
 .line-icons button:hover { opacity: 1; }
 .line-edit-input { width: 100%; background: var(--tw-code_bg); border: 1px solid var(--tw-accent); border-radius: 3px; color: var(--tw-fg); font-family: inherit; font-size: inherit; padding: 2px 6px; outline: none; box-sizing: border-box; }
+
+/* Task list checkboxes */
+.note-body li > input[type="checkbox"] { cursor: pointer; margin-right: 6px; accent-color: var(--tw-accent); }
 </style>
 <link rel="stylesheet" href="theme.css">
 </head>
@@ -404,6 +407,7 @@ function renderNote(t) {
   if (t.readOnly !== 'true') {
     injectLineIcons(body, t.title);
     attachCodeBlockEditing(body, t.title);
+    attachCheckboxToggle(body, t.title);
   }
   card.appendChild(body);
 
@@ -461,6 +465,7 @@ function startTextareaEdit(card, t) {
           body.innerHTML = savedHTML;
           injectLineIcons(body, t.title);
           attachCodeBlockEditing(body, t.title);
+          attachCheckboxToggle(body, t.title);
         }
       });
       body.innerHTML = '';
@@ -486,7 +491,7 @@ function startTextareaEdit(card, t) {
       const cancelBtn = document.createElement('button');
       cancelBtn.className = 'action-btn';
       cancelBtn.textContent = 'Cancel';
-      cancelBtn.onclick = () => { body.innerHTML = savedHTML; injectLineIcons(body, t.title); attachCodeBlockEditing(body, t.title); };
+      cancelBtn.onclick = () => { body.innerHTML = savedHTML; injectLineIcons(body, t.title); attachCodeBlockEditing(body, t.title); attachCheckboxToggle(body, t.title); };
       bar.appendChild(saveBtn);
       bar.appendChild(cancelBtn);
       body.appendChild(bar);
@@ -652,6 +657,7 @@ function refreshNote(title) {
       if (!isReadOnly) {
         injectLineIcons(body, t.title);
         attachCodeBlockEditing(body, t.title);
+        attachCheckboxToggle(body, t.title);
       }
       // Update revision.
       card.dataset.revision = t.revision;
@@ -1288,12 +1294,41 @@ function submitLineEdit(noteTitle, lineNum, text, isInsert) {
       body.innerHTML = linkifyWikiWords(resp.html || '');
       injectLineIcons(body, noteTitle);
       attachCodeBlockEditing(body, noteTitle);
+      attachCheckboxToggle(body, noteTitle);
       card.dataset.revision = resp.revision;
       knownRevisions[noteTitle] = resp.revision;
     }
   })
   .catch(err => alert('Edit failed: ' + err.message));
 }
+// Attach checkbox toggle handlers to task list items.
+// Goldmark renders `- [ ]` as <input type="checkbox" disabled> inside
+// an <li data-line="N">.  We intercept clicks, toggle the source line
+// between `[ ]` and `[x]`, and submit via the line-edit endpoint.
+function attachCheckboxToggle(container, noteTitle) {
+  container.querySelectorAll('li[data-line] > input[type="checkbox"]').forEach(cb => {
+    if (cb.dataset.toggleBound) return;
+    cb.dataset.toggleBound = '1';
+    cb.disabled = false;
+    cb.addEventListener('click', (e) => {
+      e.preventDefault();
+      const li = cb.closest('li[data-line]');
+      const lineNum = parseInt(li.dataset.line);
+      fetchSourceLine(noteTitle, lineNum).then(srcLine => {
+        let toggled;
+        if (/\[\s\]/.test(srcLine)) {
+          toggled = srcLine.replace(/\[\s\]/, '[x]');
+        } else if (/\[x\]/i.test(srcLine)) {
+          toggled = srcLine.replace(/\[x\]/i, '[ ]');
+        } else {
+          return; // not a checkbox line
+        }
+        submitLineEdit(noteTitle, lineNum, toggled, false);
+      });
+    });
+  });
+}
+
 // Attach click-to-edit handlers to <pre> code blocks.
 // On click, refetch the note with ?render=plain to get per-line
 // data-line attributes, swap the block, inject line icons.
