@@ -108,6 +108,8 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
 .note-attachments li { padding: 2px 0; }
 .note-attachments a { color: var(--tw-link, var(--tw-accent)); text-decoration: none; font-size: 13px; }
 .note-attachments a:hover { text-decoration: underline; color: var(--tw-link_hover, var(--tw-accent_hover)); }
+.attach-delete { background: none; border: none; cursor: pointer; color: var(--tw-muted); padding: 0 0 0 6px; vertical-align: middle; opacity: 0.5; }
+.attach-delete:hover { color: var(--tw-danger, #e55); opacity: 1; }
 #search-bar { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--tw-code_bg); border-top: 1px solid var(--tw-border_light); padding: 8px 16px; z-index: 100; }
 #search-bar.active { display: flex; align-items: center; gap: 8px; }
 #search-bar label { color: var(--tw-accent); font-size: 16px; font-family: var(--tw-code_font); }
@@ -459,6 +461,23 @@ function renderNote(t) {
           a.target = '_blank';
           a.textContent = f;
           li.appendChild(a);
+          if (t.readOnly !== 'true') {
+            const del = document.createElement('button');
+            del.innerHTML = ICON.x;
+            del.title = 'Delete attachment';
+            del.className = 'attach-delete';
+            del.onclick = () => {
+              if (!confirm('Delete attachment "' + f + '"?')) return;
+              fetch(PREFIX + '/notes/' + encodeURIComponent(t.title) + '/' + encodeURIComponent(f), { method: 'DELETE' })
+                .then(r => { if (!r.ok) throw new Error(r.status); li.remove();
+                  // Update count in summary, remove section if empty.
+                  const remaining = ul.querySelectorAll('li').length;
+                  if (remaining === 0) { details.remove(); }
+                  else { summary.textContent = 'Attachments (' + remaining + ')'; }
+                });
+            };
+            li.appendChild(del);
+          }
           ul.appendChild(li);
         }
         details.appendChild(ul);

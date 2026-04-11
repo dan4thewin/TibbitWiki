@@ -3035,3 +3035,71 @@ func TestBuildRevListParseError(t *testing.T) {
 		t.Errorf("expected nil for malformed head, got %v", got)
 	}
 }
+
+// TestDeleteAttachment verifies deleting an attachment file.
+func TestDeleteAttachment(t *testing.T) {
+	wk := testWiki(t)
+	writeNote(t, wk, "Report", "body")
+
+	subdir := filepath.Join(wk.NoteDir(), "Report")
+	os.MkdirAll(subdir, 0755)
+	os.WriteFile(filepath.Join(subdir, "photo.png"), []byte("img"), 0644)
+
+	if err := wk.DeleteAttachment("Report", "photo.png"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(subdir, "photo.png")); !os.IsNotExist(err) {
+		t.Error("file should be deleted")
+	}
+}
+
+// TestDeleteAttachmentNotFound verifies error for missing file.
+func TestDeleteAttachmentNotFound(t *testing.T) {
+	wk := testWiki(t)
+	writeNote(t, wk, "Report", "body")
+
+	err := wk.DeleteAttachment("Report", "noexist.png")
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("expected 'not found' error, got: %v", err)
+	}
+}
+
+// TestDeleteAttachmentInvalidFilename verifies path traversal rejection.
+func TestDeleteAttachmentInvalidFilename(t *testing.T) {
+	wk := testWiki(t)
+	for _, name := range []string{"", "..", ".", "sub/file", "a\\b"} {
+		err := wk.DeleteAttachment("Report", name)
+		if err == nil || !strings.Contains(err.Error(), "invalid") {
+			t.Errorf("filename %q: expected 'invalid' error, got: %v", name, err)
+		}
+	}
+}
+
+// TestDeleteAttachmentNoNoteDir verifies error when noteDir is empty.
+func TestDeleteAttachmentNoNoteDir(t *testing.T) {
+	wk := New("test", "", nil, 100)
+	wk.Start()
+	defer wk.Stop()
+
+	err := wk.DeleteAttachment("X", "file.txt")
+	if err == nil || !strings.Contains(err.Error(), "no note directory") {
+		t.Fatalf("expected 'no note directory' error, got: %v", err)
+	}
+}
+
+// TestDeleteAttachmentRemoveError verifies the non-NotExist error path.
+func TestDeleteAttachmentRemoveError(t *testing.T) {
+	wk := testWiki(t)
+	writeNote(t, wk, "Report", "body")
+
+	// Create attachment dir as a non-removable target: a directory
+	// instead of a file, so os.Remove fails with a non-NotExist error.
+	subdir := filepath.Join(wk.NoteDir(), "Report")
+	os.MkdirAll(filepath.Join(subdir, "nested"), 0755)
+	os.WriteFile(filepath.Join(subdir, "nested", "f"), []byte("x"), 0644)
+
+	err := wk.DeleteAttachment("Report", "nested")
+	if err == nil || !strings.Contains(err.Error(), "error deleting attachment") {
+		t.Fatalf("expected 'error deleting attachment', got: %v", err)
+	}
+}
