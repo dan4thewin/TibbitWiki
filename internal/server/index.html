@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TibbitWiki</title>
 <style>
 :root {
@@ -129,6 +130,30 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
 
 /* Task list checkboxes */
 .note-body li > input[type="checkbox"] { cursor: pointer; margin-right: 6px; accent-color: var(--tw-accent); }
+
+/* Mobile / narrow-screen layout */
+@media (max-width: 768px) {
+  body { flex-direction: column; padding: 10px; gap: 10px; }
+  #sidebar { width: 100%; order: -1; }
+  #tab-headers .tab { padding: 8px 12px; font-size: 13px; }
+  .tab-panel li { padding: 8px 0; font-size: 16px; }
+  #top-bar { flex-wrap: wrap; }
+  #top-bar button { padding: 10px 14px; font-size: 16px; }
+  .note { padding: 12px; }
+  .note-toolbar button { padding: 6px 12px; font-size: 18px; }
+  .note-body { font-size: 16px; }
+  #search-bar { padding: 10px 12px; }
+  #search-bar input { font-size: 16px; padding: 8px 10px; }
+  #search-bar .hint { display: none; }
+  .tag-pill { padding: 4px 12px; font-size: 13px; }
+  .note-edit-area { font-size: 16px; }
+  .note-edit-bar button { padding: 8px 18px; font-size: 15px; }
+  /* Line-edit icons: no hover on touch, so hide insert icons and
+     rely on tap-to-edit on the line text itself. */
+  .note-body [data-line]::before { display: none; }
+  .note-body [data-line] > .line-icons { display: none !important; }
+  .note-body [data-line] { padding-left: 0; }
+}
 </style>
 <link rel="stylesheet" href="theme.css">
 </head>
@@ -145,6 +170,7 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
         <button onclick="restartServer()">Restart server</button>
       </div>
     </span>
+    <button onclick="openSearchBar()" title="Search"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"/></svg> Search</button>
   </div>
   <div id="error-banner" style="display:none;background:#fee;color:#900;padding:0.5em 1em;border:1px solid #c00;margin-bottom:0.5em;cursor:pointer" onclick="this.style.display='none'" title="Click to dismiss"></div>
   <div id="river"></div>
@@ -167,7 +193,7 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
 </div>
 
 <div id="search-bar">
-  <label>/</label>
+  <label id="search-label">/</label>
   <input id="search-input" type="text" placeholder="word !not #tag @title /regex/ m|regex|" autocomplete="off">
   <span class="hint">Enter=search  Esc=close</span>
 </div>
@@ -187,9 +213,13 @@ const ICON = {
   chevronDown: S('<path d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708"/>', true),
   trash: S('<path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/>'),
   clockHistory: S('<path d="M8 3.5a.5.5 0 0 0-1 0V8a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 7.71z"/><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0"/>'),
+  search: S('<path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"/>'),
 };
 // Derive wiki prefix from the URL path (e.g., "/work" from "/work/")
 const PREFIX = '/' + window.location.pathname.split('/').filter(Boolean)[0];
+
+// Touch device detection: true on iOS/Android, false on desktop.
+const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
 // Intercept all fetch responses to surface server-side write errors.
 const _origFetch = window.fetch;
@@ -352,7 +382,7 @@ function renderNote(t) {
   editBtn.innerHTML = ICON.pencil;
   editBtn.title = 'Edit note';
   editBtn.onclick = (e) => {
-    if (e.shiftKey || !hasEditor) {
+    if (isTouch || e.shiftKey || !hasEditor) {
       startTextareaEdit(card, t);
     } else {
       fetch(PREFIX + '/edit-external/' + encodeURIComponent(t.title), { method: 'POST' });
@@ -939,6 +969,17 @@ document.addEventListener('click', e => {
 const searchBar = document.getElementById('search-bar');
 const searchInput = document.getElementById('search-input');
 
+function openSearchBar() {
+  searchBar.classList.add('active');
+  searchInput.value = '';
+  searchInput.focus();
+}
+
+// On touch devices, show search icon instead of "/" in search bar label.
+if (isTouch) {
+  document.getElementById('search-label').innerHTML = ICON.search;
+}
+
 // Read a keyboard shortcut from CSS custom property.
 function twKey(name) {
   const raw = getComputedStyle(document.documentElement)
@@ -970,9 +1011,7 @@ document.addEventListener('keydown', e => {
 
   if (keyMatch(e, twKey('search')) && !searchBar.classList.contains('active')) {
     e.preventDefault();
-    searchBar.classList.add('active');
-    searchInput.value = '';
-    searchInput.focus();
+    openSearchBar();
     return;
   }
   if (keyMatch(e, twKey('close'))) {
@@ -983,7 +1022,16 @@ document.addEventListener('keydown', e => {
   if (keyMatch(e, twKey('edit'))) {
     const top = topmostNote();
     if (top && top.dataset.title) {
-      fetch(PREFIX + '/edit-external/' + encodeURIComponent(top.dataset.title), { method: 'POST' });
+      if (isTouch || !hasEditor) {
+        if (top.dataset.readOnly !== 'true') {
+          const title = top.dataset.title;
+          fetch(PREFIX + '/notes/' + encodeURIComponent(title))
+            .then(r => r.json())
+            .then(t => startTextareaEdit(top, t));
+        }
+      } else {
+        fetch(PREFIX + '/edit-external/' + encodeURIComponent(top.dataset.title), { method: 'POST' });
+      }
     }
     return;
   }
