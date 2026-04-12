@@ -93,6 +93,31 @@ func (w *Wiki) Store() *store.Store { return w.store }
 // NoteDir returns the notes directory path.
 func (w *Wiki) NoteDir() string { return w.noteDir }
 
+// NoteFilePath returns the on-disk path for a note title.
+// Safe for concurrent use — runs on the wiki event loop.
+func (w *Wiki) NoteFilePath(title string) string {
+	var fp string
+	w.do(func() {
+		fp = w.store.FilePath(title)
+	})
+	return fp
+}
+
+// GetBody returns the markdown body text for a note.
+// Safe for concurrent use — runs on the wiki event loop.
+func (w *Wiki) GetBody(title string) (string, bool) {
+	var text string
+	var ok bool
+	w.do(func() {
+		if w.store.Get(title) == nil {
+			return
+		}
+		text = w.fetchBody(title)
+		ok = text != ""
+	})
+	return text, ok
+}
+
 // SeedBody populates the body cache for a title (test/loader use).
 func (w *Wiki) SeedBody(title, text string) { w.body.Add(title, text) }
 

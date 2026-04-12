@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 
 	"github.com/dan4thewin/tibbitwiki/internal/editor"
+	"github.com/dan4thewin/tibbitwiki/internal/rag"
 	"github.com/dan4thewin/tibbitwiki/internal/rcs"
 	"github.com/dan4thewin/tibbitwiki/internal/render"
 	"github.com/dan4thewin/tibbitwiki/internal/tid"
@@ -39,6 +40,7 @@ func wikiFrom(r *http.Request) *wiki.Wiki {
 type Server struct {
 	hub        *wiki.Hub
 	editor     *editor.Editor
+	ragIndexer *rag.Indexer
 	themeRev   *atomic.Int64
 	pollMS     int
 	maxDiffs   int
@@ -51,10 +53,11 @@ type Server struct {
 
 // New creates a Server backed by the given Hub.
 // themeRev is bumped externally when per-wiki CSS is regenerated.
-func New(hub *wiki.Hub, ed *editor.Editor, themeRev *atomic.Int64, pollMS, maxDiffs int, indexHTML, wikiPath, configPath string) *Server {
+func New(hub *wiki.Hub, ed *editor.Editor, ragIndexer *rag.Indexer, themeRev *atomic.Int64, pollMS, maxDiffs int, indexHTML, wikiPath, configPath string) *Server {
 	srv := &Server{
 		hub:        hub,
 		editor:     ed,
+		ragIndexer: ragIndexer,
 		themeRev:   themeRev,
 		pollMS:     pollMS,
 		maxDiffs:   maxDiffs,
@@ -86,6 +89,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/theme.css", s.handleThemeCSS)
 	s.mux.HandleFunc("/search", s.handleSearch)
 	s.mux.HandleFunc("/revisions/", s.handleRevisions)
+	s.mux.HandleFunc("/rag", s.handleRAG)
 }
 
 // ServeHTTP extracts the wiki name from the first path segment,
@@ -622,4 +626,75 @@ func extractTitle(path, prefix string) string {
 		return ""
 	}
 	return raw
+}
+
+// handleRAG handles semantic search requests.
+// This is a wiki-scoped endpoint (mounted in the per-wiki mux),
+// but the RAG index is global. The wiki context is used only to
+// resolve note file paths for QueryByNote.
+//
+// Query params:
+//
+//	q    — query text (embedded via Ollama, then searched)
+//	note — note title; uses that note's existing vector
+//	n    — max results (default 5)
+//	full — if "true", include full note body
+func (s *Server) handleRAG(w http.ResponseWriter, r *http.Request) {
+	if s.ragIndexer == nil {
+		http.Error(w, "RAG not enabled", http.StatusServiceUnavailable)
+		return
+	}
+
+	q := r.URL.Query().Get("q")
+	note := r.URL.Query().Get("note")
+	nStr := r.URL.Query().Get("n")
+	full := r.URL.Query().Get("full") == "true"
+
+	n := 5
+	if nStr != "" {
+		if parsed, err := strconv.Atoi(nStr); err == nil && parsed > 0 {
+			n = parsed
+		}
+	}
+
+	var results []rag.Result
+
+	switch {
+	case note != "":
+		// Find the note's file path via the wiki store.
+		wk := wikiFrom(r)
+		filePath := wk.NoteFilePath(note)
+		if filePath == "" {
+			http.Error(w, "note not found", http.StatusNotFound)
+			return
+		}
+		results = s.ragIndexer.QueryByNote(filePath, n)
+	case q != "":
+		var err error
+		results, err = s.ragIndexer.Query(r.Context(), q, n)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	default:
+		http.Error(w, "q or note parameter required", http.StatusBadRequest)
+		return
+	}
+
+	if results == nil {
+		results = []rag.Result{}
+	}
+
+	if full {
+		for i := range results {
+			wk := s.hub.Wiki(results[i].Wiki)
+			if wk != nil {
+				body, _ := wk.GetBody(results[i].Title)
+				results[i].Body = body
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
 }

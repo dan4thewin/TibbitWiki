@@ -3,6 +3,7 @@
 # Functions listed here use flat early-return chains or switch
 # statements where high CC does not indicate real complexity.
 main.watchConfig 15
-main.main 15
+main.main 17
 wiki.(*Wiki).reloadFile 15
 loader.Load 15
+server.(*Server).handleRAG 14

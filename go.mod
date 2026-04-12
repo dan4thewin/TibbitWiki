@@ -1,6 +1,6 @@
 module github.com/dan4thewin/tibbitwiki
 
-go 1.25.5
+go 1.26.1
 
 require (
 	github.com/agiledragon/gomonkey/v2 v2.14.0
@@ -14,8 +14,11 @@ require (
 )
 
 require (
+	github.com/dan4thewin/akin-vecsearch v0.0.0-20260411200222-570bb85166ad
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	golang.org/x/sys v0.13.0 // indirect
 )
 
 replace github.com/arran4/golang-rcs => /Users/dg/src/golang-rcs
+
+replace github.com/dan4thewin/akin-vecsearch => /Users/dg/src/akin

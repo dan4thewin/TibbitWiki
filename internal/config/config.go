@@ -56,6 +56,14 @@ type Config struct {
 	PdfConvertCmd     string            `yaml:"pdf_convert_cmd"`
 	Templates         map[string]string `yaml:"templates"`
 	Theme             Theme             `yaml:"theme"`
+	RAG               RAGConfig         `yaml:"rag"`
+}
+
+// RAGConfig holds semantic search configuration.
+type RAGConfig struct {
+	Enabled   bool   `yaml:"enabled"`
+	OllamaURL string `yaml:"ollama_url"`
+	Model     string `yaml:"model"`
 }
 
 // Defaults returns a Config parsed from the embedded defaults.yaml.

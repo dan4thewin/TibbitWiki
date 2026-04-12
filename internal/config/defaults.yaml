@@ -15,6 +15,13 @@ attachment_exclude: []
 # Example: "pdf2md-enqueue %s %d/.pdf-queue"
 pdf_convert_cmd: ""
 
+# Semantic search (RAG) via Ollama embeddings.
+# Requires Ollama running locally with the configured model pulled.
+rag:
+  enabled: false
+  ollama_url: http://localhost:11434
+  model: nomic-embed-text
+
 # Note body templates — expanded before markdown rendering.
 # Use Go text/template syntax: {{name "arg"}} or {{name "arg" | transform}}.
 # Each template is a function that takes a string and returns HTML.
