@@ -14,6 +14,7 @@ require (
 )
 
 require (
+	github.com/dan4thewin/akin-vecsearch v0.0.0-20260411200222-570bb85166ad
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/sgrankin/mk v0.0.0-20260226143916-183147f76d6f // indirect
@@ -23,3 +24,5 @@ require (
 tool github.com/sgrankin/mk
 
 replace github.com/arran4/golang-rcs => /Users/dg/src/golang-rcs
+
+replace github.com/dan4thewin/akin-vecsearch => /Users/dg/src/akin

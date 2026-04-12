@@ -18,6 +18,7 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/dan4thewin/tibbitwiki/internal/editor"
+	"github.com/dan4thewin/tibbitwiki/internal/rag"
 	"github.com/dan4thewin/tibbitwiki/internal/rcs"
 	"github.com/dan4thewin/tibbitwiki/internal/search"
 	"github.com/dan4thewin/tibbitwiki/internal/store"
@@ -61,7 +62,7 @@ func newTestServer(t *testing.T) (*Server, *wiki.Wiki) {
 	os.WriteFile(cssPath, []byte(":root{} .chroma{}"), 0644)
 
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, ed, new(atomic.Int64), 3000, 10, f.Name(), dir, "")
+	srv := New(hub, ed, nil, new(atomic.Int64), 3000, 10, f.Name(), dir, "")
 	return srv, wk
 }
 
@@ -111,7 +112,7 @@ func TestHandleIndexEmbedded(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 	req := httptest.NewRequest("GET", "/test/", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -178,7 +179,7 @@ func TestHandleListNotesNoEditor(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 	req := httptest.NewRequest("GET", "/test/notes", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -558,7 +559,7 @@ func TestHandleEditExternalNoEditor(t *testing.T) {
 	os.WriteFile(path, tid.Serialize(td), 0644)
 	wk.Store().PutWithPath(td, path)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("POST", "/test/edit-external/X", nil)
 	w := httptest.NewRecorder()
@@ -649,7 +650,7 @@ func TestPutNoteNoFilePathNoDir(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	body := `{"title":"NoFile","tags":"Mem","text":"In-memory only."}`
 	req := httptest.NewRequest("PUT", "/test/notes/NoFile",
@@ -722,7 +723,7 @@ func TestHandleEditExternalEditorFails(t *testing.T) {
 	wk.Store().PutWithPath(td, path)
 
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("POST", "/test/edit-external/FailEdit", nil)
 	w := httptest.NewRecorder()
@@ -955,7 +956,7 @@ func TestHandleSearchNoNoteDir(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/search?q=hello", nil)
 	w := httptest.NewRecorder()
@@ -1420,7 +1421,7 @@ func TestWikiSelectorMultiWiki(t *testing.T) {
 	t.Cleanup(wk2.Stop)
 
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"alpha": wk1, "beta": wk2})
-	srv := New(hub, ed, new(atomic.Int64), 3000, 10, "", dir, "")
+	srv := New(hub, ed, nil, new(atomic.Int64), 3000, 10, "", dir, "")
 
 	req := httptest.NewRequest("GET", "/", nil)
 	w := httptest.NewRecorder()
@@ -1542,7 +1543,7 @@ func TestHandleNewDraftError(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("POST", "/test/new-draft", nil)
 	w := httptest.NewRecorder()
@@ -1564,7 +1565,7 @@ func TestHandleEditConfig(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, ed, new(atomic.Int64), 3000, 10, "", "", configPath)
+	srv := New(hub, ed, nil, new(atomic.Int64), 3000, 10, "", "", configPath)
 
 	req := httptest.NewRequest("POST", "/test/edit-config", nil)
 	w := httptest.NewRecorder()
@@ -1582,7 +1583,7 @@ func TestHandleEditConfigNoEditor(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "/some/config.yaml")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "/some/config.yaml")
 
 	req := httptest.NewRequest("POST", "/test/edit-config", nil)
 	w := httptest.NewRecorder()
@@ -1601,7 +1602,7 @@ func TestHandleEditConfigNoPath(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, ed, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, ed, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("POST", "/test/edit-config", nil)
 	w := httptest.NewRecorder()
@@ -1637,7 +1638,7 @@ func TestHandleEditConfigEditorError(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, ed, new(atomic.Int64), 3000, 10, "", "", configPath)
+	srv := New(hub, ed, nil, new(atomic.Int64), 3000, 10, "", "", configPath)
 
 	req := httptest.NewRequest("POST", "/test/edit-config", nil)
 	w := httptest.NewRecorder()
@@ -1704,7 +1705,7 @@ func TestServeAttachment(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/Meeting/report.pdf", nil)
 	w := httptest.NewRecorder()
@@ -1730,7 +1731,7 @@ func TestServeAttachmentMdInSubdir(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/Notes/readme.md", nil)
 	w := httptest.NewRecorder()
@@ -1765,7 +1766,7 @@ func TestServeAttachmentMdEscapesHTML(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/Notes/evil.md", nil)
 	w := httptest.NewRecorder()
@@ -1794,7 +1795,7 @@ func TestServeAttachmentMdReadError(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/Notes/unreadable.md", nil)
 	w := httptest.NewRecorder()
@@ -1815,7 +1816,7 @@ func TestServeAttachmentNoSubdir(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/loose.pdf", nil)
 	w := httptest.NewRecorder()
@@ -1834,7 +1835,7 @@ func TestServeAttachmentTraversal(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/../../../etc/passwd", nil)
 	w := httptest.NewRecorder()
@@ -1857,7 +1858,7 @@ func TestServeAttachmentMissing(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/Meeting/nofile.pdf", nil)
 	w := httptest.NewRecorder()
@@ -1882,7 +1883,7 @@ func TestServeAttachmentEscapeViaSymlink(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/escape/secret.txt", nil)
 	w := httptest.NewRecorder()
@@ -1911,7 +1912,7 @@ func TestServeAttachmentPathEscape(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/escape/secret.txt", nil)
 	w := httptest.NewRecorder()
@@ -1934,7 +1935,7 @@ func TestServeAttachmentDirIndex(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	// Directory path with trailing slash serves index.html.
 	req := httptest.NewRequest("GET", "/test/playground/", nil)
@@ -1960,7 +1961,7 @@ func TestServeAttachmentDirRedirect(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/playground", nil)
 	w := httptest.NewRecorder()
@@ -1984,7 +1985,7 @@ func TestServeAttachmentDirNoIndex(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/empty/", nil)
 	w := httptest.NewRecorder()
@@ -2006,7 +2007,7 @@ func TestServeAttachmentIndexHtmlDirect(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	req := httptest.NewRequest("GET", "/test/playground/index.html", nil)
 	w := httptest.NewRecorder()
@@ -2032,7 +2033,7 @@ func TestServeAttachmentOpenError(t *testing.T) {
 	wk.Start()
 	t.Cleanup(wk.Stop)
 	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
-	srv := New(hub, nil, new(atomic.Int64), 3000, 10, "", "", "")
+	srv := New(hub, nil, nil, new(atomic.Int64), 3000, 10, "", "", "")
 
 	// Make the file unreadable after Stat can still see it.
 	os.Chmod(fp, 0000)
@@ -2802,5 +2803,321 @@ func TestServeAttachmentStatError(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404 for Stat error", w.Code)
+	}
+}
+
+// --- RAG endpoint tests ---
+
+func TestHandleRAGNotEnabled(t *testing.T) {
+	srv, _ := newTestServer(t)
+	// ragIndexer is nil by default in newTestServer.
+	req := httptest.NewRequest("GET", "/test/rag?q=hello", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func TestHandleRAGMissingParams(t *testing.T) {
+	srv, _ := newTestServer(t)
+	srv.ragIndexer = newTestRAGIndexer(t)
+
+	req := httptest.NewRequest("GET", "/test/rag", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleRAGQueryByText(t *testing.T) {
+	srv, _ := newTestServer(t)
+	ix := newTestRAGIndexer(t)
+	srv.ragIndexer = ix
+
+	req := httptest.NewRequest("GET", "/test/rag?q=test&n=2", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	var results []rag.Result
+	if err := json.NewDecoder(w.Body).Decode(&results); err != nil {
+		t.Fatal(err)
+	}
+	if len(results) == 0 {
+		t.Error("expected at least one result")
+	}
+}
+
+func TestHandleRAGQueryByNote(t *testing.T) {
+	dir := t.TempDir()
+	wk := wiki.New("test", dir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+
+	// Write a note file and register it in the store.
+	td := &tid.Note{Fields: map[string]string{
+		"title": "Alpha",
+		"text":  "alpha content",
+	}}
+	notePath := filepath.Join(dir, "Alpha.md")
+	os.WriteFile(notePath, tid.Serialize(td), 0644)
+	wk.Store().PutWithPath(td, notePath)
+	wk.SeedBody("Alpha", "alpha content")
+
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+	ix := newTestRAGIndexerWithPath(t, filepath.Dir(dir), notePath)
+	srv := New(hub, nil, ix, new(atomic.Int64), 3000, 10, "", dir, "")
+
+	req := httptest.NewRequest("GET", "/test/rag?note=Alpha&n=2", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestHandleRAGQueryByNoteNotFound(t *testing.T) {
+	srv, _ := newTestServer(t)
+	srv.ragIndexer = newTestRAGIndexer(t)
+
+	req := httptest.NewRequest("GET", "/test/rag?note=NoSuchNote", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+func TestHandleRAGEmptyResults(t *testing.T) {
+	srv, _ := newTestServer(t)
+	// Use an indexer with no entries — query returns [].
+	dir := t.TempDir()
+	cfg := rag.Config{
+		IndexPath: filepath.Join(dir, "empty.gob"),
+		WikiPath:  dir,
+		Model:     "test-model",
+		OllamaURL: "http://unused:9999",
+	}
+	ix, err := rag.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ix.SetEmbedFunc(func(_ context.Context, texts []string) ([][]float32, error) {
+		vecs := make([][]float32, len(texts))
+		for i := range texts {
+			vecs[i] = []float32{1, 0, 0}
+		}
+		return vecs, nil
+	})
+	srv.ragIndexer = ix
+
+	req := httptest.NewRequest("GET", "/test/rag?q=zzzznothing&n=1", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	body := strings.TrimSpace(w.Body.String())
+	if body != "[]" {
+		t.Errorf("body = %q, want %q", body, "[]")
+	}
+}
+
+func TestHandleRAGDefaultN(t *testing.T) {
+	srv, _ := newTestServer(t)
+	ix := newTestRAGIndexer(t)
+	srv.ragIndexer = ix
+
+	// No n param — should default to 5.
+	req := httptest.NewRequest("GET", "/test/rag?q=test", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestHandleRAGInvalidN(t *testing.T) {
+	srv, _ := newTestServer(t)
+	ix := newTestRAGIndexer(t)
+	srv.ragIndexer = ix
+
+	// Bad n — should use default 5.
+	req := httptest.NewRequest("GET", "/test/rag?q=test&n=abc", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+// newTestRAGIndexer creates a minimal RAG indexer with a fake embedder
+// and pre-populated entries for testing.
+func newTestRAGIndexer(t *testing.T) *rag.Indexer {
+	t.Helper()
+	dir := t.TempDir()
+	holdDir := filepath.Join(dir, "hold")
+	os.MkdirAll(holdDir, 0755)
+
+	notePath := filepath.Join(holdDir, "TestNote.md")
+	os.WriteFile(notePath,
+		[]byte("title: TestNote\ntags:\n\ntest content"), 0644)
+
+	return newTestRAGIndexerWithPath(t, dir, notePath)
+}
+
+func newTestRAGIndexerWithPath(t *testing.T, wikiPath, notePath string) *rag.Indexer {
+	t.Helper()
+	dir := t.TempDir()
+	idxPath := filepath.Join(dir, "test-rag.gob")
+
+	cfg := rag.Config{
+		IndexPath: idxPath,
+		WikiPath:  wikiPath,
+		Model:     "test-model",
+		OllamaURL: "http://unused:9999",
+	}
+	ix, err := rag.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Install a fake embedder so queries don't hit Ollama.
+	ix.SetEmbedFunc(func(_ context.Context, texts []string) ([][]float32, error) {
+		vecs := make([][]float32, len(texts))
+		for i := range texts {
+			vecs[i] = []float32{1, 0, 0}
+		}
+		return vecs, nil
+	})
+
+	// Pre-populate with a known entry matching the fake embed vector.
+	ix.AddTestEntries(notePath, []float32{1, 0, 0})
+
+	return ix
+}
+
+func TestHandleRAGQueryByTextFull(t *testing.T) {
+	// Build a directory structure matching the hub: wikiPath/hold/note.md
+	wikiPath := t.TempDir()
+	holdDir := filepath.Join(wikiPath, "hold")
+	os.MkdirAll(holdDir, 0755)
+
+	wk := wiki.New("hold", holdDir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+
+	// Write a note and register it.
+	td := &tid.Note{Fields: map[string]string{
+		"title": "TestNote",
+		"text":  "test content for full body",
+	}}
+	notePath := filepath.Join(holdDir, "TestNote.md")
+	os.WriteFile(notePath, tid.Serialize(td), 0644)
+	wk.Store().PutWithPath(td, notePath)
+	wk.SeedBody("TestNote", "test content for full body")
+
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"hold": wk})
+	ix := newTestRAGIndexerWithPath(t, wikiPath, notePath)
+	srv := New(hub, nil, ix, new(atomic.Int64), 3000, 10, "", holdDir, "")
+
+	req := httptest.NewRequest("GET", "/hold/rag?q=test&n=1&full=true", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	var results []rag.Result
+	json.NewDecoder(w.Body).Decode(&results)
+	if len(results) == 0 {
+		t.Fatal("expected results")
+	}
+	if results[0].Body == "" {
+		t.Error("expected non-empty body with full=true")
+	}
+}
+
+func TestHandleRAGQueryError(t *testing.T) {
+	dir := t.TempDir()
+	wk := wiki.New("test", dir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"test": wk})
+
+	cfg := rag.Config{
+		IndexPath: filepath.Join(t.TempDir(), "idx.gob"),
+		WikiPath:  dir,
+		Model:     "m",
+		OllamaURL: "http://unused:9999",
+	}
+	ix, _ := rag.New(cfg)
+	// Install embedder that always fails.
+	ix.SetEmbedFunc(func(_ context.Context, _ []string) ([][]float32, error) {
+		return nil, context.Canceled
+	})
+	srv := New(hub, nil, ix, new(atomic.Int64), 3000, 10, "", dir, "")
+
+	req := httptest.NewRequest("GET", "/test/rag?q=test", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", w.Code)
+	}
+}
+
+func TestHandleRAGQueryByNoteNilResults(t *testing.T) {
+	dir := t.TempDir()
+	holdDir := filepath.Join(dir, "hold")
+	os.MkdirAll(holdDir, 0755)
+
+	wk := wiki.New("hold", holdDir, nil, 100)
+	wk.Start()
+	t.Cleanup(wk.Stop)
+
+	// Note exists in store but NOT in the RAG index.
+	td := &tid.Note{Fields: map[string]string{
+		"title": "Unindexed",
+		"text":  "this note was never indexed",
+	}}
+	notePath := filepath.Join(holdDir, "Unindexed.md")
+	os.WriteFile(notePath, tid.Serialize(td), 0644)
+	wk.Store().PutWithPath(td, notePath)
+
+	hub := wiki.NewHub(map[string]*wiki.Wiki{"hold": wk})
+
+	// Create an empty RAG indexer — no entries at all.
+	cfg := rag.Config{
+		IndexPath: filepath.Join(t.TempDir(), "idx.gob"),
+		WikiPath:  dir,
+		Model:     "m",
+		OllamaURL: "http://unused:9999",
+	}
+	ix, _ := rag.New(cfg)
+	srv := New(hub, nil, ix, new(atomic.Int64), 3000, 10, "", holdDir, "")
+
+	req := httptest.NewRequest("GET", "/hold/rag?note=Unindexed&n=3", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	body := strings.TrimSpace(w.Body.String())
+	if body != "[]" {
+		t.Errorf("body = %q, want []", body)
 	}
 }

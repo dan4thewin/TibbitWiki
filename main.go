@@ -24,6 +24,7 @@ import (
 	"github.com/dan4thewin/tibbitwiki/internal/config"
 	"github.com/dan4thewin/tibbitwiki/internal/editor"
 	"github.com/dan4thewin/tibbitwiki/internal/loader"
+	"github.com/dan4thewin/tibbitwiki/internal/rag"
 	"github.com/dan4thewin/tibbitwiki/internal/rcs"
 	"github.com/dan4thewin/tibbitwiki/internal/render"
 	"github.com/dan4thewin/tibbitwiki/internal/server"
@@ -83,7 +84,18 @@ func main() {
 	go watchConfig(configPath, cfg.WikiPath, wikiNames, &themeRev)
 
 	hub := configureHub(wikis, cfg)
-	srv := server.New(hub, ed, &themeRev, int(cfg.PollInterval.Milliseconds()), cfg.MaxDiffs, cfg.IndexHTML, cfg.WikiPath, configPath)
+
+	var ragIndexer *rag.Indexer
+	if cfg.RAG.Enabled {
+		ragIndexer = initRAG(cfg, wikis)
+	}
+
+	// Start watchers after RAG init so they can include the indexing hook.
+	for name, wk := range wikis {
+		startWatcher(name, wk.NoteDir(), wk, ragIndexer)
+	}
+
+	srv := server.New(hub, ed, ragIndexer, &themeRev, int(cfg.PollInterval.Milliseconds()), cfg.MaxDiffs, cfg.IndexHTML, cfg.WikiPath, configPath)
 
 	// Pre-bind all listen addresses before serving any.
 	listeners := make([]net.Listener, 0, len(cfg.Listen))
@@ -374,14 +386,21 @@ func discoverWikis(dir string, ed *editor.Editor, cacheSize int) map[string]*wik
 		log.Printf("wiki %s: loaded %d notes from %s", name, n, subdir)
 		wk.ScanRCS()
 		wk.Start()
-		startWatcher(name, subdir, wk)
 		wikis[name] = wk
 	}
 	return wikis
 }
 
-func startWatcher(name, dir string, wk *wiki.Wiki) {
-	w, err := watcher.New(dir, wk.Reload)
+func startWatcher(name, dir string, wk *wiki.Wiki, ragIndexer *rag.Indexer) {
+	onChange := wk.Reload
+	if ragIndexer != nil {
+		orig := onChange
+		onChange = func(path string) {
+			orig(path)
+			ragIndexer.Index(path)
+		}
+	}
+	w, err := watcher.New(dir, onChange)
 	if err != nil {
 		log.Fatalf("wiki %s: watcher: %v", name, err)
 	}
@@ -389,4 +408,39 @@ func startWatcher(name, dir string, wk *wiki.Wiki) {
 		log.Fatalf("wiki %s: watcher start: %v", name, err)
 	}
 	log.Printf("wiki %s: watching for changes", name)
+}
+
+// initRAG creates and starts the RAG indexer, wires watcher hooks,
+// and queues all existing notes for initial indexing.
+func initRAG(cfg config.Config, wikis map[string]*wiki.Wiki) *rag.Indexer {
+	indexPath := filepath.Join(cfg.WikiPath, ".rag-index.gob")
+	ix, err := rag.New(rag.Config{
+		IndexPath: indexPath,
+		WikiPath:  cfg.WikiPath,
+		OllamaURL: cfg.RAG.OllamaURL,
+		Model:     cfg.RAG.Model,
+	})
+	if err != nil {
+		log.Printf("rag: init failed: %v — RAG disabled", err)
+		return nil
+	}
+	ix.Start()
+	log.Printf("rag: started (model=%s, index=%s)", cfg.RAG.Model, indexPath)
+
+	// Queue all existing .md files for indexing.
+	var count int
+	for _, wk := range wikis {
+		dir := wk.NoteDir()
+		if dir == "" {
+			continue
+		}
+		mds, _ := filepath.Glob(filepath.Join(dir, "*.md"))
+		for _, path := range mds {
+			ix.Index(path)
+			count++
+		}
+	}
+	log.Printf("rag: queued %d notes for initial indexing", count)
+
+	return ix
 }

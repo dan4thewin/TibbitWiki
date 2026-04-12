@@ -3103,3 +3103,62 @@ func TestDeleteAttachmentRemoveError(t *testing.T) {
 		t.Fatalf("expected 'error deleting attachment', got: %v", err)
 	}
 }
+
+// --- NoteFilePath / GetBody tests ---
+
+func TestNoteFilePath(t *testing.T) {
+	wk := testWiki(t)
+	path := writeNote(t, wk, "Hello", "world")
+
+	got := wk.NoteFilePath("Hello")
+	if got != path {
+		t.Errorf("NoteFilePath = %q, want %q", got, path)
+	}
+}
+
+func TestNoteFilePathNotFound(t *testing.T) {
+	wk := testWiki(t)
+
+	got := wk.NoteFilePath("NoSuch")
+	if got != "" {
+		t.Errorf("NoteFilePath = %q, want empty", got)
+	}
+}
+
+func TestGetBody(t *testing.T) {
+	wk := testWiki(t)
+	writeNote(t, wk, "Hello", "world")
+
+	body, ok := wk.GetBody("Hello")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if body != "world" {
+		t.Errorf("body = %q, want %q", body, "world")
+	}
+}
+
+func TestGetBodyNotFound(t *testing.T) {
+	wk := testWiki(t)
+
+	body, ok := wk.GetBody("NoSuch")
+	if ok {
+		t.Error("expected ok=false for non-existent note")
+	}
+	if body != "" {
+		t.Errorf("body = %q, want empty", body)
+	}
+}
+
+func TestGetBodyEmptyText(t *testing.T) {
+	wk := testWiki(t)
+	writeNote(t, wk, "Empty", "")
+
+	body, ok := wk.GetBody("Empty")
+	if ok {
+		t.Error("expected ok=false for empty body")
+	}
+	if body != "" {
+		t.Errorf("body = %q, want empty", body)
+	}
+}
