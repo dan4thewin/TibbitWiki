@@ -21,6 +21,7 @@ rag:
   enabled: false
   ollama_url: http://localhost:11434
   model: nomic-embed-text
+  chunk_size: 2000
 
 # Note body templates — expanded before markdown rendering.
 # Use Go text/template syntax: {{name "arg"}} or {{name "arg" | transform}}.

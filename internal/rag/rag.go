@@ -31,7 +31,8 @@ type Indexer struct {
 
 	// wikiPath is the root directory containing all wiki subdirs.
 	// Used to derive wiki names from file paths.
-	wikiPath string
+	wikiPath  string
+	chunkSize int // max tokens per chunk (0 = no chunking)
 
 	// saveInterval controls how often the index is persisted.
 	saveInterval time.Duration
@@ -44,6 +45,7 @@ type Config struct {
 	WikiPath     string        // root wiki directory
 	OllamaURL    string        // Ollama base URL
 	Model        string        // embedding model name
+	ChunkSize    int           // max tokens per chunk (0 = no chunking)
 	SaveInterval time.Duration // how often to flush to disk (0 = 30s)
 }
 
@@ -86,6 +88,7 @@ func New(cfg Config) (*Indexer, error) {
 		ch:           make(chan string, 256),
 		done:         make(chan struct{}),
 		wikiPath:     cfg.WikiPath,
+		chunkSize:    cfg.ChunkSize,
 		saveInterval: cfg.SaveInterval,
 	}, nil
 }
@@ -211,7 +214,21 @@ func (ix *Indexer) processPath(path string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	if err := ix.idx.IndexFile(ctx, ix.emb, path, akin.IndexOpts{}); err != nil {
+	chunkSize := ix.chunkSize
+	for {
+		err := ix.idx.IndexFile(ctx, ix.emb, path, akin.IndexOpts{ChunkSize: chunkSize})
+		if err == nil {
+			break
+		}
+		if chunkSize > 0 && strings.Contains(err.Error(), "context length") {
+			chunkSize /= 2
+			if chunkSize < 50 {
+				log.Printf("rag: indexing %s: giving up after halving to %d", path, chunkSize)
+				return
+			}
+			log.Printf("rag: indexing %s: context exceeded, retrying with chunk=%d", path, chunkSize)
+			continue
+		}
 		log.Printf("rag: indexing %s: %v", path, err)
 		return
 	}

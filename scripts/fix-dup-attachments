@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""fix-dup-attachments — re-extract attachments for notes with duplicate filenames.
+
+Usage: fix-dup-attachments <enex_dir> <notes_dir> <tsv_map> [--dry-run]
+
+Uses the naming TSV (old title → wikiword) to find renamed .md files.
+For each note with duplicate resource filenames, re-extracts attachments
+with sequenced names (Snapshot_2.png, Snapshot_3.png) and rewrites the
+.md body references to match.
+"""
+
+import base64
+import csv
+import glob
+import hashlib
+import mimetypes
+import os
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+
+UNSAFE_RE = re.compile(r'[/\\:*?"<>|]')
+
+
+def sanitize_filename(name):
+    name = UNSAFE_RE.sub("-", name).strip(" .-")
+    name = re.sub(r"-{2,}", "-", name)
+    return name or "untitled"
+
+
+def main():
+    if len(sys.argv) < 4:
+        print("usage: fix-dup-attachments <enex_dir> <notes_dir> <tsv_map> [--dry-run]",
+              file=sys.stderr)
+        sys.exit(1)
+
+    enex_dir = sys.argv[1]
+    notes_dir = sys.argv[2]
+    tsv_path = sys.argv[3]
+    dry_run = "--dry-run" in sys.argv
+
+    if dry_run:
+        print("=== DRY RUN ===\n")
+
+    # Load TSV: old title → wikiword
+    title_to_ww = {}
+    with open(tsv_path) as f:
+        reader = csv.DictReader(f, delimiter='\t')
+        for row in reader:
+            title_to_ww[row['title'].lower()] = row['wikiword']
+
+    enex_files = sorted(glob.glob(os.path.join(enex_dir, "*.enex")))
+    if not enex_files:
+        print(f"No .enex files in {enex_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    fixed = 0
+    for path in enex_files:
+        tree = ET.parse(path)
+        for note in tree.getroot().findall("note"):
+            title = note.findtext("title") or "untitled"
+            resources = note.findall("resource")
+            if not resources:
+                continue
+
+            # Collect filenames and data for each resource.
+            res_info = []  # (orig_fname, raw_data, mime, md5)
+            for res in resources:
+                data_el = res.find("data")
+                if data_el is None or not data_el.text:
+                    continue
+                raw = base64.b64decode(data_el.text)
+                md5 = hashlib.md5(raw).hexdigest()
+                mime = res.findtext("mime") or "application/octet-stream"
+                fname = res.findtext("resource-attributes/file-name")
+                if not fname:
+                    ext = mimetypes.guess_extension(mime) or ".bin"
+                    fname = md5[:12] + ext
+                fname = sanitize_filename(fname)
+                res_info.append((fname, raw, mime, md5))
+
+            # Check for duplicates.
+            name_counts = {}
+            for fname, _, _, _ in res_info:
+                name_counts[fname] = name_counts.get(fname, 0) + 1
+            if not any(c > 1 for c in name_counts.values()):
+                continue
+
+            # Find the .md file via TSV mapping.
+            ww = title_to_ww.get(title.lower())
+            if not ww:
+                print(f"SKIP: {title!r} — not in TSV mapping")
+                continue
+            md_path = os.path.join(notes_dir, ww + ".md")
+            if not os.path.exists(md_path):
+                print(f"SKIP: {title!r} — {ww}.md not found")
+                continue
+
+            note_stem = ww
+            att_dir = os.path.join(notes_dir, note_stem)
+
+            print(f"FIX: {title!r} → {ww}.md")
+
+            # Deduplicate filenames: first occurrence keeps original name,
+            # subsequent get _2, _3, etc.
+            seen = {}
+            deduped = []  # (orig_fname, new_fname, raw, mime, md5)
+            for fname, raw, mime, md5 in res_info:
+                if fname not in seen:
+                    seen[fname] = 1
+                    deduped.append((fname, fname, raw, mime, md5))
+                else:
+                    seen[fname] += 1
+                    base, ext = os.path.splitext(fname)
+                    new_name = f"{base}_{seen[fname]}{ext}"
+                    deduped.append((fname, new_name, raw, mime, md5))
+                    print(f"  {fname!r} → {new_name!r} ({len(raw)} bytes)")
+
+            if dry_run:
+                continue
+
+            # Write all attachments (including non-duplicates, to ensure completeness).
+            os.makedirs(att_dir, exist_ok=True)
+            for _, new_name, raw, _, _ in deduped:
+                with open(os.path.join(att_dir, new_name), "wb") as f:
+                    f.write(raw)
+
+            # Rewrite the markdown: replace sequential duplicate references.
+            md_text = open(md_path).read()
+            dup_names = {n for n, c in name_counts.items() if c > 1}
+            for dup_name in dup_names:
+                new_names = [d[1] for d in deduped if d[0] == dup_name]
+                encoded_dir = note_stem.replace(" ", "%20")
+                encoded_orig = dup_name.replace(" ", "%20")
+                # Match ![name](dir/name) or [name](dir/name)
+                pattern = re.compile(
+                    r'(!?\[)' + re.escape(dup_name) + r'(\]\()'
+                    + re.escape(encoded_dir + "/" + encoded_orig) + r'\)'
+                )
+                idx = [0]
+
+                def replacer(m, idx=idx, new_names=new_names, encoded_dir=encoded_dir):
+                    i = idx[0]
+                    nn = new_names[i] if i < len(new_names) else new_names[-1]
+                    idx[0] += 1
+                    encoded_nn = nn.replace(" ", "%20")
+                    return f"{m.group(1)}{nn}{m.group(2)}{encoded_dir}/{encoded_nn})"
+
+                md_text = pattern.sub(replacer, md_text)
+
+            with open(md_path, "w") as f:
+                f.write(md_text)
+
+            fixed += 1
+
+    print(f"\n{'Would fix' if dry_run else 'Fixed'}: {fixed} notes")
+
+
+if __name__ == "__main__":
+    main()
