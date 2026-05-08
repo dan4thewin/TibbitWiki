@@ -583,6 +583,82 @@ func TestProcessPathIndexFileError(t *testing.T) {
 	}
 }
 
+func TestProcessPathContextLengthRetry(t *testing.T) {
+	dir := t.TempDir()
+	holdDir := filepath.Join(dir, "hold")
+	os.MkdirAll(holdDir, 0755)
+
+	notePath := filepath.Join(holdDir, "Big.md")
+	os.WriteFile(notePath, []byte("title: Big\ntags:\n\nbig content"), 0644)
+
+	idxPath := filepath.Join(dir, "idx.gob")
+	idx, _ := akin.Open(idxPath)
+
+	calls := 0
+	emb := akin.NewEmbedder("test-model", "http://unused:9999")
+	emb.SetEmbedFunc(func(_ context.Context, texts []string) ([][]float32, error) {
+		calls++
+		if calls == 1 {
+			return nil, fmt.Errorf("context length exceeded")
+		}
+		vecs := make([][]float32, len(texts))
+		for i := range texts {
+			vecs[i] = []float32{0.1, 0.2, 0.3}
+		}
+		return vecs, nil
+	})
+
+	ix := &Indexer{
+		idx:       idx,
+		emb:       emb,
+		wikiPath:  dir,
+		chunkSize: 2000,
+	}
+
+	ix.processPath(notePath)
+	if calls < 2 {
+		t.Errorf("expected retry, got %d calls", calls)
+	}
+	if ix.Entries() == 0 {
+		t.Error("expected entries after retry succeeded")
+	}
+	if !ix.dirty {
+		t.Error("expected dirty after successful retry")
+	}
+}
+
+func TestProcessPathContextLengthGiveUp(t *testing.T) {
+	dir := t.TempDir()
+	holdDir := filepath.Join(dir, "hold")
+	os.MkdirAll(holdDir, 0755)
+
+	notePath := filepath.Join(holdDir, "Huge.md")
+	os.WriteFile(notePath, []byte("title: Huge\ntags:\n\nhuge content"), 0644)
+
+	idxPath := filepath.Join(dir, "idx.gob")
+	idx, _ := akin.Open(idxPath)
+
+	emb := akin.NewEmbedder("test-model", "http://unused:9999")
+	emb.SetEmbedFunc(func(_ context.Context, _ []string) ([][]float32, error) {
+		return nil, fmt.Errorf("context length exceeded")
+	})
+
+	ix := &Indexer{
+		idx:       idx,
+		emb:       emb,
+		wikiPath:  dir,
+		chunkSize: 100, // will halve to 50, then 25 (<50) → give up
+	}
+
+	ix.processPath(notePath)
+	if ix.Entries() != 0 {
+		t.Error("expected no entries after giving up")
+	}
+	if ix.dirty {
+		t.Error("expected not dirty after giving up")
+	}
+}
+
 func TestLoopTickerSaves(t *testing.T) {
 	dir := t.TempDir()
 	idxPath := filepath.Join(dir, "idx.gob")

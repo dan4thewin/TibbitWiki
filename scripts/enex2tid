@@ -145,6 +145,14 @@ def parse_note(note_el, notebook):
         if len(filename.encode("utf-8")) > 200:
             ext = mimetypes.guess_extension(mime) or ".bin"
             filename = md5[:12] + ext
+        # Deduplicate filenames: second occurrence becomes name_2.ext, etc.
+        seen_names = {r["filename"] for r in resources}
+        if filename in seen_names:
+            base, ext = os.path.splitext(filename)
+            seq = 2
+            while f"{base}_{seq}{ext}" in seen_names:
+                seq += 1
+            filename = f"{base}_{seq}{ext}"
         resources.append({"filename": filename, "data": raw, "mime": mime})
         resource_map[md5] = (filename, mime)
 

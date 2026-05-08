@@ -419,13 +419,14 @@ func initRAG(cfg config.Config, wikis map[string]*wiki.Wiki) *rag.Indexer {
 		WikiPath:  cfg.WikiPath,
 		OllamaURL: cfg.RAG.OllamaURL,
 		Model:     cfg.RAG.Model,
+		ChunkSize: cfg.RAG.ChunkSize,
 	})
 	if err != nil {
 		log.Printf("rag: init failed: %v — RAG disabled", err)
 		return nil
 	}
 	ix.Start()
-	log.Printf("rag: started (model=%s, index=%s)", cfg.RAG.Model, indexPath)
+	log.Printf("rag: started (model=%s, chunk=%d, index=%s)", cfg.RAG.Model, cfg.RAG.ChunkSize, indexPath)
 
 	// Queue all existing .md files for indexing.
 	var count int

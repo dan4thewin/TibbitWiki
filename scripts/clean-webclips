@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""clean-webclips — re-extract web-clipped notes through trafilatura.
+
+Reads ENEX files, identifies web clips, extracts article text via
+trafilatura, and overwrites the corresponding .md files in the wiki
+with clean content. Preserves YAML frontmatter and attachment references.
+
+Usage:
+    ./scripts/clean-webclips --dry-run   # show what would change
+    ./scripts/clean-webclips             # do it
+"""
+
+import csv
+import os
+import re
+import subprocess
+import sys
+import xml.etree.ElementTree as ET
+
+ENEX_DIR = os.path.expanduser("~/evernote-export/enex_output")
+TSV_PATH = os.path.expanduser("~/evernote-export/naming-output-final.tsv")
+WIKI_DIR = os.path.expanduser("~/notes/hold")
+
+CLIP_URL_RE = re.compile(r"--en-clipped-source-url:\s*([^;\"]+)")
+CLIP_TITLE_RE = re.compile(r"--en-clipped-source-title:\s*([^;\"]+)")
+
+
+def load_mapping():
+    mapping = {}
+    with open(TSV_PATH) as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            mapping[row["title"]] = row["wikiword"]
+    return mapping
+
+
+def extract_clips():
+    """Yield (enex_title, wikiword, html_content) for each web clip."""
+    mapping = load_mapping()
+    for fname in sorted(os.listdir(ENEX_DIR)):
+        if not fname.endswith(".enex"):
+            continue
+        tree = ET.parse(os.path.join(ENEX_DIR, fname))
+        for note in tree.findall(".//note"):
+            title = note.find("title").text or ""
+            content = note.find("content").text or ""
+            if "en-clipped-content" not in content and "clipped-source-url" not in content:
+                continue
+            ww = mapping.get(title)
+            if not ww:
+                continue
+            yield title, ww, content
+
+
+def enml_to_html(content):
+    """Convert ENML to something trafilatura can parse."""
+    html = re.sub(r"<\?xml[^>]*\?>", "", content)
+    html = re.sub(r"<!DOCTYPE[^>]*>", "", html)
+    html = html.replace("<en-note>", "<html><body>")
+    html = html.replace("</en-note>", "</body></html>")
+    return html
+
+
+def extract_with_trafilatura(html):
+    """Run trafilatura on HTML, return extracted text or None."""
+    proc = subprocess.run(
+        ["trafilatura"],
+        input=html,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    text = proc.stdout.strip()
+    return text if text else None
+
+
+def read_frontmatter(md_path):
+    """Read YAML frontmatter and return (frontmatter_lines, rest_of_body)."""
+    with open(md_path) as f:
+        lines = f.readlines()
+
+    # Frontmatter is the first N lines before blank line (no --- delimiters in our format)
+    fm_lines = []
+    body_start = 0
+    for i, line in enumerate(lines):
+        if line.strip() == "":
+            body_start = i
+            break
+        fm_lines.append(line)
+    else:
+        body_start = len(lines)
+
+    return fm_lines, lines[body_start:]
+
+
+def read_clip_url(content):
+    """Extract the source URL from ENML clip metadata."""
+    m = CLIP_URL_RE.search(content)
+    if m:
+        from urllib.parse import unquote
+        return unquote(m.group(1).strip())
+    return None
+
+
+def preserve_attachment_refs(old_body, new_body, wikiword):
+    """If the old body had attachment image refs, append them to new body."""
+    img_re = re.compile(r"!\[.*?\]\(" + re.escape(wikiword) + r"/.*?\)")
+    old_imgs = img_re.findall("".join(old_body))
+    if old_imgs:
+        new_body += "\n\n" + "\n".join(old_imgs)
+    return new_body
+
+
+def main():
+    dry_run = "--dry-run" in sys.argv
+    
+    changed = 0
+    skipped = 0
+    missing = 0
+    failed = 0
+
+    for enex_title, ww, content in extract_clips():
+        md_path = os.path.join(WIKI_DIR, ww + ".md")
+        if not os.path.exists(md_path):
+            missing += 1
+            continue
+
+        html = enml_to_html(content)
+        clean_text = extract_with_trafilatura(html)
+        if not clean_text:
+            failed += 1
+            if dry_run:
+                print(f"  FAIL (no extraction): {ww}")
+            continue
+
+        fm_lines, old_body = read_frontmatter(md_path)
+        
+        # Build new body
+        clip_url = read_clip_url(content)
+        new_body = ""
+        if clip_url:
+            new_body += f"Clipped from <{clip_url}>\n\n"
+        new_body += clean_text
+        new_body = preserve_attachment_refs(old_body, new_body, ww)
+
+        # Compare
+        old_text = "".join(old_body).strip()
+        if old_text == new_body.strip():
+            skipped += 1
+            continue
+
+        old_words = len(old_text.split())
+        new_words = len(new_body.split())
+
+        if dry_run:
+            print(f"  {ww}: {old_words} → {new_words} words ({new_words - old_words:+d})")
+        else:
+            with open(md_path, "w") as f:
+                for line in fm_lines:
+                    f.write(line)
+                f.write("\n")
+                f.write(new_body)
+                f.write("\n")
+            print(f"  {ww}: {old_words} → {new_words} words")
+
+        changed += 1
+
+    action = "Would change" if dry_run else "Changed"
+    print(f"\n{action}: {changed}, Skipped (unchanged): {skipped}, "
+          f"Missing .md: {missing}, Extraction failed: {failed}")
+
+
+if __name__ == "__main__":
+    main()

@@ -64,6 +64,7 @@ type RAGConfig struct {
 	Enabled   bool   `yaml:"enabled"`
 	OllamaURL string `yaml:"ollama_url"`
 	Model     string `yaml:"model"`
+	ChunkSize int    `yaml:"chunk_size"`
 }
 
 // Defaults returns a Config parsed from the embedded defaults.yaml.

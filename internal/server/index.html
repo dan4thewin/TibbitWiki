@@ -23,11 +23,12 @@ body { font-family: var(--tw-font_family); font-size: var(--tw-font_size); margi
 svg { vertical-align: -.125em; }
 h1 { margin-top: 0; color: var(--tw-title_fg, var(--tw-fg)); }
 #main { flex: 1; min-width: 0; }
-#sidebar { width: var(--tw-sidebar_width); flex-shrink: 0; }
+#sidebar { width: var(--tw-sidebar_width); flex-shrink: 0; position: sticky; top: 16px; align-self: flex-start; max-height: calc(100vh - 32px); overflow-y: auto; }
 
 /* Tab headers */
 #tab-headers { display: flex; gap: 0; margin-bottom: 8px; border-bottom: 1px solid var(--tw-border); }
-#tab-headers .tab { padding: 6px 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--tw-muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+#tab-headers .tab { padding: 6px 10px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; color: var(--tw-muted); display: flex; align-items: center; }
+#tab-headers .tab svg { width: 16px; height: 16px; fill: currentColor; }
 #tab-headers .tab:hover { color: var(--tw-muted_light); }
 #tab-headers .tab.active { color: var(--tw-accent); border-bottom-color: var(--tw-accent); }
 
@@ -37,6 +38,10 @@ h1 { margin-top: 0; color: var(--tw-title_fg, var(--tw-fg)); }
 .tab-panel ul { list-style: none; padding: 0; margin: 0; }
 .tab-panel li { padding: 4px 0; cursor: pointer; color: var(--tw-accent); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tab-panel li:hover { color: var(--tw-accent_hover); text-decoration: underline; }
+.related-item { padding: 6px 0; cursor: pointer; }
+.related-item .related-title { color: var(--tw-accent); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.related-item .related-title:hover { color: var(--tw-accent_hover); text-decoration: underline; }
+.related-item .related-snippet { color: var(--tw-muted); font-size: 12px; line-height: 1.4; margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ellipsis-btn { display: block; padding: 6px 0; color: var(--tw-muted); font-size: 18px; cursor: pointer; text-align: center; letter-spacing: 3px; }
 .ellipsis-btn:hover { color: var(--tw-muted_light); }
 
@@ -112,6 +117,12 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
 .attach-delete:hover { color: var(--tw-danger, #e55); opacity: 1; }
 #search-bar { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--tw-code_bg); border-top: 1px solid var(--tw-border_light); padding: 8px 16px; z-index: 100; }
 #search-bar.active { display: flex; align-items: center; gap: 8px; }
+#semantic-bar { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--tw-code_bg); border-top: 1px solid var(--tw-border_light); padding: 8px 16px; z-index: 100; }
+#semantic-bar.active { display: flex; align-items: center; gap: 8px; }
+#semantic-bar label { color: var(--tw-accent); font-size: 16px; font-family: var(--tw-code_font); }
+#semantic-bar input { flex: 1; background: var(--tw-bg); border: 1px solid var(--tw-border_light); border-radius: 4px; color: var(--tw-fg); font-size: 16px; font-family: var(--tw-code_font); padding: 6px 10px; outline: none; }
+#semantic-bar input:focus { border-color: var(--tw-accent); }
+#semantic-bar .hint { color: var(--tw-muted); font-size: 12px; }
 #search-bar label { color: var(--tw-accent); font-size: 16px; font-family: var(--tw-code_font); }
 #search-bar input { flex: 1; background: var(--tw-bg); border: 1px solid var(--tw-border_light); border-radius: 4px; color: var(--tw-fg); font-size: 16px; font-family: var(--tw-code_font); padding: 6px 10px; outline: none; }
 #search-bar input:focus { border-color: var(--tw-accent); }
@@ -147,6 +158,9 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
   #search-bar { padding: 10px 12px; }
   #search-bar input { font-size: 16px; padding: 8px 10px; }
   #search-bar .hint { display: none; }
+  #semantic-bar { padding: 10px 12px; }
+  #semantic-bar input { font-size: 16px; padding: 8px 10px; }
+  #semantic-bar .hint { display: none; }
   .tag-pill { padding: 4px 12px; font-size: 13px; }
   .note-edit-area { font-size: 16px; }
   .note-edit-bar button { padding: 8px 18px; font-size: 15px; }
@@ -179,9 +193,10 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
 </div>
 <div id="sidebar">
   <div id="tab-headers">
-    <span class="tab active" data-tab="recent" role="button">Recent</span>
-    <span class="tab" data-tab="journals" role="button">Journals</span>
-    <span class="tab" data-tab="tags" role="button">Tags</span>
+    <span class="tab active" data-tab="recent" role="button" title="Recent"></span>
+    <span class="tab" data-tab="journals" role="button" title="Journals"></span>
+    <span class="tab" data-tab="tags" role="button" title="Tags"></span>
+    <span class="tab" data-tab="related" role="button" title="Related" id="tab-related-header"></span>
   </div>
   <div id="tab-recent" class="tab-panel active">
     <ul id="recent-list"></ul>
@@ -192,11 +207,19 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
   <div id="tab-tags" class="tab-panel">
     <div id="tag-groups"></div>
   </div>
+  <div id="tab-related" class="tab-panel">
+    <ul id="related-list"></ul>
+  </div>
 </div>
 
 <div id="search-bar">
   <label id="search-label">/</label>
   <input id="search-input" type="text" placeholder="word !not #tag @title /regex/ m|regex|" autocomplete="off">
+  <span class="hint">Enter=search  Esc=close</span>
+</div>
+<div id="semantic-bar">
+  <label id="semantic-label">~</label>
+  <input id="semantic-input" type="text" placeholder="describe what you're looking for" autocomplete="off">
   <span class="hint">Enter=search  Esc=close</span>
 </div>
 <div id="restart-toast">Restarting…</div>
@@ -217,9 +240,19 @@ const ICON = {
   clockHistory: S('<path d="M8 3.5a.5.5 0 0 0-1 0V8a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 7.71z"/><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0"/>'),
   search: S('<path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"/>'),
   copy: S('<path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0z"/>'),
+  activity: S('<path fill-rule="evenodd" d="M6 2a.5.5 0 0 1 .47.33L10 12.036l1.53-4.208A.5.5 0 0 1 12 7.5h3.5a.5.5 0 0 1 0 1h-3.15l-1.88 5.17a.5.5 0 0 1-.94 0L6 3.964 4.47 8.171A.5.5 0 0 1 4 8.5H.5a.5.5 0 0 1 0-1h3.15l1.88-5.17A.5.5 0 0 1 6 2"/>'),
+  journals: S('<path d="M5 0h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2 2 2 0 0 1-2 2H3a2 2 0 0 1-2-2h1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1H1a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v9a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1H3a2 2 0 0 1 2-2"/><path d="M1 6v-.5a.5.5 0 0 1 1 0V6h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1zm0 3v-.5a.5.5 0 0 1 1 0V9h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1zm0 2.5v.5H.5a.5.5 0 0 0 0 1h2a.5.5 0 0 0 0-1H2v-.5a.5.5 0 0 0-1 0"/>'),
+  folder: S('<path d="M.54 3.87.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.826a2 2 0 0 1-1.991-1.819l-.637-7a2 2 0 0 1 .342-1.31zM2.19 4a1 1 0 0 0-.996 1.09l.637 7a1 1 0 0 0 .995.91h10.348a1 1 0 0 0 .995-.91l.637-7A1 1 0 0 0 13.81 4zm4.69-1.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981l.006.139q.323-.119.684-.12h5.396z"/>'),
+  diagram3: S('<path fill-rule="evenodd" d="M6 3.5A1.5 1.5 0 0 1 7.5 2h1A1.5 1.5 0 0 1 10 3.5v1A1.5 1.5 0 0 1 8.5 6v1H14a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0 1-1 0v-1A.5.5 0 0 1 2 7h5.5V6A1.5 1.5 0 0 1 6 4.5zM8.5 5a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5zM0 11.5A1.5 1.5 0 0 1 1.5 10h1A1.5 1.5 0 0 1 4 11.5v1A1.5 1.5 0 0 1 2.5 14h-1A1.5 1.5 0 0 1 0 12.5zm1.5-.5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5zm4.5.5A1.5 1.5 0 0 1 7.5 10h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0 1 8.5 14h-1A1.5 1.5 0 0 1 6 12.5zm1.5-.5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5zm4.5.5a1.5 1.5 0 0 1 1.5-1.5h1a1.5 1.5 0 0 1 1.5 1.5v1a1.5 1.5 0 0 1-1.5 1.5h-1a1.5 1.5 0 0 1-1.5-1.5zm1.5-.5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5z"/>'),
 };
 // Derive wiki prefix from the URL path (e.g., "/work" from "/work/")
 const PREFIX = '/' + window.location.pathname.split('/').filter(Boolean)[0];
+
+// Inject icons into sidebar tab headers.
+document.querySelector('[data-tab="recent"]').innerHTML = ICON.activity;
+document.querySelector('[data-tab="journals"]').innerHTML = ICON.journals;
+document.querySelector('[data-tab="tags"]').innerHTML = ICON.folder;
+document.querySelector('[data-tab="related"]').innerHTML = ICON.diagram3;
 
 // Touch device detection: true on iOS/Android, false on desktop.
 const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -419,7 +452,7 @@ function renderNote(t) {
   const closeBtn = document.createElement('button');
   closeBtn.innerHTML = ICON.xLg;
   closeBtn.title = 'Close';
-  closeBtn.onclick = () => card.remove();
+  closeBtn.onclick = () => { card.remove(); updateRelated(); };
   toolbar.appendChild(closeBtn);
   header.appendChild(toolbar);
   card.appendChild(header);
@@ -509,6 +542,67 @@ function renderNote(t) {
         card.appendChild(details);
       }
     } catch(e) {}
+  }
+
+  // Related notes: collapsible section, fetched lazily on expand.
+  if (ragEnabled) {
+    const relDetails = document.createElement('details');
+    relDetails.className = 'note-attachments';
+    const relSummary = document.createElement('summary');
+    relSummary.textContent = 'Related';
+    relDetails.appendChild(relSummary);
+    let relLoaded = false;
+    relDetails.addEventListener('toggle', () => {
+      if (!relDetails.open || relLoaded) return;
+      relLoaded = true;
+      relSummary.textContent = 'Related (loading…)';
+      fetch(PREFIX + '/rag?note=' + encodeURIComponent(t.title) + '&n=6')
+        .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+        .then(results => {
+          relSummary.textContent = 'Related (' + results.length + ')';
+          if (results.length === 0) {
+            const p = document.createElement('p');
+            p.style.cssText = 'color:var(--tw-muted);font-size:13px;margin:4px 0 0';
+            p.textContent = 'No related notes.';
+            relDetails.appendChild(p);
+            return;
+          }
+          const rul = document.createElement('ul');
+          rul.style.cssText = 'list-style:none;padding:0;margin:4px 0 0';
+          results.forEach(r => {
+            const li = document.createElement('li');
+            li.style.padding = '3px 0';
+            const a = document.createElement('span');
+            a.className = 'search-result-title';
+            a.setAttribute('role', 'button');
+            a.dataset.title = r.title;
+            a.textContent = r.title;
+            const rWikiPrefix = '/' + r.wiki;
+            if (rWikiPrefix === PREFIX) {
+              a.onclick = () => openNote(r.title);
+            } else {
+              a.textContent += ' [' + r.wiki + ']';
+              a.onclick = () => window.open(rWikiPrefix + '/#' + encodeURIComponent(r.title), r.wiki);
+            }
+            const sc = document.createElement('span');
+            sc.style.cssText = 'color:var(--tw-muted);font-size:11px;margin-left:6px';
+            sc.textContent = r.score.toFixed(2);
+            a.appendChild(sc);
+            li.appendChild(a);
+            if (r.snippet) {
+              const snip = document.createElement('div');
+              snip.className = 'search-result-lines';
+              const lines = r.snippet.split('\n').filter(l => !/^(title|tags|modified|created):/.test(l) && l.trim());
+              snip.textContent = lines.slice(0, 2).join(' ');
+              li.appendChild(snip);
+            }
+            rul.appendChild(li);
+          });
+          relDetails.appendChild(rul);
+        })
+        .catch(() => { relSummary.textContent = 'Related'; });
+    });
+    card.appendChild(relDetails);
   }
 
   return card;
@@ -690,7 +784,7 @@ function doPromote(title) {
 
 function openNote(title) {
   const existing = document.querySelector(`.note[data-title="${CSS.escape(title)}"]`);
-  if (existing) { existing.scrollIntoView({ behavior: 'smooth' }); return; }
+  if (existing) { existing.scrollIntoView({ behavior: 'smooth' }); updateRelated(); return; }
   fetch(PREFIX + '/notes/' + encodeURIComponent(title))
     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(t => {
@@ -698,6 +792,7 @@ function openNote(title) {
       const card = renderNote(t);
       document.getElementById('river').appendChild(card);
       card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      updateRelated();
     })
     .catch(() => console.warn('Note not found: ' + title));
 }
@@ -990,11 +1085,21 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('.gear-dropdown')) closeGearMenu();
 });
 
-// Initial load: poll to populate sidebar, then auto-open if configured.
+// Initial load: poll to populate sidebar, then auto-open from hash or config.
 poll().then(() => {
-  const raw = getComputedStyle(document.documentElement).getPropertyValue('--tw-auto_open').trim();
-  const autoOpen = raw ? raw.replace(/^["']|["']$/g, '') : '';
-  if (autoOpen && knownTitles.has(autoOpen)) openNote(autoOpen);
+  const hash = decodeURIComponent(location.hash.replace(/^#/, ''));
+  if (hash && knownTitles.has(hash)) {
+    openNote(hash);
+  } else {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--tw-auto_open').trim();
+    const autoOpen = raw ? raw.replace(/^["']|["']$/g, '') : '';
+    if (autoOpen && knownTitles.has(autoOpen)) openNote(autoOpen);
+  }
+});
+
+window.addEventListener('hashchange', () => {
+  const hash = decodeURIComponent(location.hash.replace(/^#/, ''));
+  if (hash && knownTitles.has(hash)) openNote(hash);
 });
 
 document.addEventListener('click', e => {
@@ -1002,21 +1107,46 @@ document.addEventListener('click', e => {
   if (link) {
     e.preventDefault();
     openNote(link.dataset.title);
+    return;
   }
   const sr = e.target.closest('.search-result-title');
   if (sr) {
-    openNote(sr.dataset.title);
+    if (sr.dataset.wiki) {
+      window.open('/' + sr.dataset.wiki + '/#' + encodeURIComponent(sr.dataset.title), sr.dataset.wiki);
+    } else {
+      openNote(sr.dataset.title);
+    }
+    return;
+  }
+  // External links open in a new tab.
+  const a = e.target.closest('a[href]');
+  if (a && a.href && !a.classList.contains('wikiword') && !a.dataset.title) {
+    const url = a.getAttribute('href');
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      e.preventDefault();
+      window.open(url, '_blank');
+    }
   }
 });
 
 // Search UI — vi-style / to open, Esc to close, Enter to search.
 const searchBar = document.getElementById('search-bar');
 const searchInput = document.getElementById('search-input');
+const semanticBar = document.getElementById('semantic-bar');
+const semanticInput = document.getElementById('semantic-input');
+let ragEnabled = true;
 
 function openSearchBar() {
   searchBar.classList.add('active');
   searchInput.value = '';
   searchInput.focus();
+}
+
+function openSemanticBar() {
+  if (!ragEnabled) return;
+  semanticBar.classList.add('active');
+  semanticInput.value = '';
+  semanticInput.focus();
 }
 
 // On touch devices, show search icon instead of "/" in search bar label.
@@ -1058,9 +1188,14 @@ document.addEventListener('keydown', e => {
     openSearchBar();
     return;
   }
+  if (e.key === '~' && !e.ctrlKey && !e.metaKey && !e.altKey && !semanticBar.classList.contains('active')) {
+    e.preventDefault();
+    openSemanticBar();
+    return;
+  }
   if (keyMatch(e, twKey('close'))) {
     const notes = document.querySelectorAll('#river .note');
-    if (notes.length > 0) notes[notes.length - 1].remove();
+    if (notes.length > 0) { notes[notes.length - 1].remove(); updateRelated(); }
     return;
   }
   if (keyMatch(e, twKey('edit'))) {
@@ -1143,6 +1278,20 @@ searchInput.addEventListener('keydown', e => {
   }
 });
 
+semanticInput.addEventListener('keydown', e => {
+  if (isDismiss(e)) {
+    semanticBar.classList.remove('active');
+    semanticInput.blur();
+  }
+  if (e.key === 'Enter') {
+    const q = semanticInput.value.trim();
+    if (!q) return;
+    semanticBar.classList.remove('active');
+    semanticInput.blur();
+    doSemanticSearch(q);
+  }
+});
+
 function doSearch(q) {
   fetch(PREFIX + '/search?q=' + encodeURIComponent(q))
     .then(r => r.json())
@@ -1204,6 +1353,160 @@ function doSearch(q) {
     })
     .catch(err => alert('Search failed: ' + err.message));
 }
+
+function doSemanticSearch(q) {
+  fetch(PREFIX + '/rag?q=' + encodeURIComponent(q) + '&n=10')
+    .then(r => { if (r.status === 503) { ragEnabled = false; throw new Error('RAG not enabled'); } return r.json(); })
+    .then(results => {
+      const prev = document.querySelector('.note[data-title="__semantic__"]');
+      if (prev) prev.remove();
+
+      const card = document.createElement('div');
+      card.className = 'note';
+      card.dataset.title = '__semantic__';
+
+      const header = document.createElement('div');
+      header.className = 'note-header';
+      const h2 = document.createElement('h2');
+      h2.textContent = 'Semantic: ' + q;
+      header.appendChild(h2);
+
+      const toolbar = document.createElement('div');
+      toolbar.className = 'note-toolbar';
+      const closeBtn = document.createElement('button');
+      closeBtn.innerHTML = ICON.xLg;
+      closeBtn.title = 'Close';
+      closeBtn.onclick = () => card.remove();
+      toolbar.appendChild(closeBtn);
+      header.appendChild(toolbar);
+      card.appendChild(header);
+
+      const body = document.createElement('div');
+      body.className = 'note-body';
+
+      if (results.length === 0) {
+        body.innerHTML = '<p style="color:#888">No results.</p>';
+      } else {
+        body.innerHTML = '<p style="color:#888;margin-top:0">' + results.length + ' notes</p>';
+        results.forEach(r => {
+          const div = document.createElement('div');
+          div.className = 'search-result';
+          const title = document.createElement('div');
+          title.className = 'search-result-title';
+          title.setAttribute('role', 'button');
+          title.dataset.title = r.title;
+          title.textContent = r.title;
+          const rWikiPrefix = '/' + r.wiki;
+          if (rWikiPrefix !== PREFIX) {
+            title.textContent += ' [' + r.wiki + ']';
+            title.dataset.wiki = r.wiki;
+          }
+          div.appendChild(title);
+          if (r.snippet) {
+            const snip = document.createElement('div');
+            snip.className = 'search-result-lines';
+            // Strip header lines, show first 3 content lines.
+            const lines = r.snippet.split('\n').filter(l => !/^(title|tags|modified|created):/.test(l) && l.trim());
+            snip.textContent = lines.slice(0, 3).join('\n');
+            div.appendChild(snip);
+          }
+          body.appendChild(div);
+        });
+      }
+      card.appendChild(body);
+      document.getElementById('river').appendChild(card);
+      card.scrollIntoView({ behavior: 'smooth' });
+    })
+    .catch(err => { if (ragEnabled) alert('Semantic search failed: ' + err.message); });
+}
+
+// Related notes sidebar — populated from visible notes in the river.
+// Fetches related notes for all visible note cards, combines scores
+// (notes related to multiple visible notes rank higher).
+let relatedKey = '';
+function getRiverNoteTitles() {
+  const cards = document.querySelectorAll('#river .note:not([data-title="__search__"]):not([data-title="__semantic__"]):not([data-title="__revisions__"])');
+  return Array.from(cards).map(c => c.dataset.title);
+}
+
+function updateRelated() {
+  if (!ragEnabled) return;
+  const titles = getRiverNoteTitles();
+  if (titles.length === 0) return;
+  const key = titles.join('\0');
+  if (key === relatedKey) return;
+  relatedKey = key;
+
+  const ul = document.getElementById('related-list');
+  ul.innerHTML = '<li style="color:var(--tw-muted);font-style:italic">Loading…</li>';
+
+  Promise.all(titles.map(t =>
+    fetch(PREFIX + '/rag?note=' + encodeURIComponent(t) + '&n=8')
+      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+      .catch(() => [])
+  )).then(allResults => {
+    if (titles.join('\0') !== relatedKey) return; // stale
+    // Combine scores: notes appearing in multiple result sets get summed scores.
+    const combined = {};
+    const visibleSet = new Set(titles);
+    allResults.forEach(results => {
+      results.forEach(r => {
+        if (visibleSet.has(r.title)) return; // exclude notes already visible
+        if (!combined[r.title]) combined[r.title] = { ...r, score: 0, count: 0 };
+        combined[r.title].score += r.score;
+        combined[r.title].count += 1;
+      });
+    });
+    const sorted = Object.values(combined).sort((a, b) => b.score - a.score);
+
+    ul.innerHTML = '';
+    if (sorted.length === 0) {
+      ul.innerHTML = '<li style="color:var(--tw-muted)">No related notes.</li>';
+      return;
+    }
+    sorted.slice(0, 10).forEach(r => {
+      const li = document.createElement('li');
+      li.className = 'related-item';
+      const t = document.createElement('div');
+      t.className = 'related-title';
+      t.textContent = r.title;
+      const wikiPrefix = '/' + r.wiki;
+      if (wikiPrefix !== PREFIX) t.textContent += ' [' + r.wiki + ']';
+      if (r.count > 1) t.textContent += ' ⬥';
+      const score = document.createElement('span');
+      score.style.cssText = 'color:var(--tw-muted);font-size:11px;margin-left:6px';
+      score.textContent = r.score.toFixed(2);
+      t.appendChild(score);
+      t.setAttribute('role', 'button');
+      t.onclick = () => {
+        if (wikiPrefix === PREFIX) {
+          openNote(r.title);
+        } else {
+          window.open(wikiPrefix + '/#' + encodeURIComponent(r.title), r.wiki);
+        }
+      };
+      li.appendChild(t);
+      if (r.snippet) {
+        const snip = document.createElement('div');
+        snip.className = 'related-snippet';
+        const lines = r.snippet.split('\n').filter(l => !/^(title|tags|modified|created):/.test(l) && l.trim());
+        snip.textContent = lines.slice(0, 2).join(' ');
+        li.appendChild(snip);
+      }
+      ul.appendChild(li);
+    });
+  });
+}
+
+// updateRelated is called when notes are opened or closed.
+
+// Probe RAG availability on load; hide tab if disabled.
+fetch(PREFIX + '/rag?q=test&n=1')
+  .then(r => { if (r.status === 503) throw new Error(); })
+  .catch(() => {
+    ragEnabled = false;
+    document.getElementById('tab-related-header').style.display = 'none';
+  });
 
 // --- Tag management ---
 
