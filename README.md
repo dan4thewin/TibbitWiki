@@ -300,8 +300,9 @@ mk complexity # gocyclo top 20
 mk check      # all of the above
 ```
 
-Build tool: [mk](https://github.com/dcjones/mk) (Plan 9 mk in Go).
-Install: `go install github.com/dcjones/mk@latest`
+Build tool: [mk](https://github.com/sgrankin/mk) (Plan 9 mk in Go).
+Pinned as a tool dependency in `go.mod` — use `go tool mk` or
+install to PATH with `go install github.com/sgrankin/mk@latest`.
 
 See [TESTING.md](TESTING.md) for browser automation and integration
 testing techniques.
