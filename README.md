@@ -82,9 +82,9 @@ for development.
 - Tag pills — colored pills on notes, click to search by tag
 - Tabbed sidebar — Recent (non-journals), Journals, Tags with
   per-tag groups; ellipsis to expand
-- Line-level quick edit — hover ✏️/➕ icons on list items for
-  inline edit and insert-below without leaving the browser; Escape
-  or click-away to cancel
+- Line-level quick edit — Shift-click a line to edit it in place (on touch,
+  tap the ✎ edit handle in the margin); a per-line insert handle adds a
+  line below; Escape or click-away to cancel
 - Configurable poll interval (default 3s) for external changes
 - Edit button per note (launches neovim via server)
 - New note and Journal buttons

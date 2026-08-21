@@ -52,7 +52,7 @@ h1 { margin-top: 0; color: var(--tw-title_fg, var(--tw-fg)); }
 .note { border: 1px solid var(--tw-border); border-radius: var(--tw-note_radius); padding: 16px; margin-bottom: 16px; background: var(--tw-note_bg); }
 .note-header { display: flex; align-items: center; justify-content: space-between; }
 .note-header h2 { margin: 0; color: var(--tw-title_fg, var(--tw-fg)); }
-.note-date { margin-left: 12px; font-size: 13px; font-weight: 400; color: var(--tw-muted); }
+.note-date { margin-left: 12px; font-size: 13px; font-weight: 400; color: var(--tw-muted); white-space: nowrap; }
 .note-toolbar { display: flex; gap: 4px; }
 .note-toolbar button { background: none; border: 1px solid var(--tw-border_light); border-radius: 4px; cursor: pointer; padding: 2px 8px; font-size: 16px; color: var(--tw-muted_light); }
 .note-toolbar button:hover { background: var(--tw-button_bg); color: var(--tw-fg); }
@@ -132,28 +132,41 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
 .search-result-title:hover { text-decoration: underline; color: var(--tw-accent_hover); }
 .search-result-lines { font-family: var(--tw-code_font); font-size: 13px; color: var(--tw-muted_light); margin: 2px 0 0 16px; white-space: pre-wrap; word-break: break-word; }
 
-/* Line-edit hover icons */
+/* Line-edit handles (hover on desktop, pinned in a right gutter on touch) */
 .note-body [data-line] { position: relative; }
 .note-body [data-line]::before { content: ''; position: absolute; left: -2.5em; top: 0; bottom: 0; width: 2.5em; }
 .note-body [data-line] > .line-icons { display: none; position: absolute; left: -2.5em; bottom: 0.25em; white-space: nowrap; }
 .note-body [data-line]:hover > .line-icons { display: inline-flex; align-items: center; }
+/* Desktop uses Shift-click to edit, so only the insert handle shows on hover;
+   the ✎ edit handle is for touch (no Shift key) — see the hover:none block. */
+.note-body [data-line] > .line-icons .line-edit-btn { display: none; }
 .line-icons button { background: none; border: none; cursor: pointer; font-size: 14px; padding: 0; margin: 0; opacity: 0.4; color: var(--tw-accent); line-height: 1; }
 .line-icons button:hover { opacity: 1; }
 .line-edit-input { width: 100%; background: var(--tw-code_bg); border: 1px solid var(--tw-accent); border-radius: 3px; color: var(--tw-fg); font-family: inherit; font-size: inherit; padding: 2px 6px; outline: none; box-sizing: border-box; }
 
 /* Task list checkboxes */
-.note-body li > input[type="checkbox"] { cursor: pointer; margin-right: 6px; accent-color: var(--tw-accent); }
+.note-body li input[type="checkbox"] { cursor: pointer; margin-right: 6px; accent-color: var(--tw-accent); }
 
 /* Mobile / narrow-screen layout */
 @media (max-width: 768px) {
   body { flex-direction: column; padding: 10px; gap: 10px; }
-  #sidebar { width: 100%; order: -1; }
+  /* Sidebar sits above the river as a compact, non-sticky panel; the base
+     sticky + full-height rules would otherwise fill the screen and overlap
+     the note that opens below it. */
+  #sidebar { width: 100%; order: -1; position: static; max-height: 40vh; }
   #tab-headers .tab { padding: 8px 12px; font-size: 13px; }
   .tab-panel li { padding: 8px 0; font-size: 16px; }
   #top-bar { flex-wrap: wrap; }
   #top-bar button { padding: 10px 14px; font-size: 16px; }
+  /* Icon-only top-bar buttons on phones to save width. */
+  #top-bar .btn-label { display: none; }
   .note { padding: 12px; }
-  .note-toolbar button { padding: 6px 12px; font-size: 18px; }
+  /* Note header: toolbar rides above the title as a compact, right-aligned
+     control strip (window-style), so the title/date/rev get the full width
+     and the buttons never push off-screen. */
+  .note-header { flex-direction: column; align-items: stretch; gap: 4px; }
+  .note-toolbar { order: -1; align-self: flex-end; flex-wrap: wrap; justify-content: flex-end; }
+  .note-toolbar button { padding: 3px 9px; font-size: 16px; }
   .note-body { font-size: 16px; }
   #search-bar { padding: 10px 12px; }
   #search-bar input { font-size: 16px; padding: 8px 10px; }
@@ -164,11 +177,23 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
   .tag-pill { padding: 4px 12px; font-size: 13px; }
   .note-edit-area { font-size: 16px; }
   .note-edit-bar button { padding: 8px 18px; font-size: 15px; }
-  /* Line-edit icons: no hover on touch, so hide insert icons and
-     rely on tap-to-edit on the line text itself. */
+  /* Line-edit handles: shown via the (hover: none) block below on touch;
+     on narrow non-touch screens they follow the desktop hover rule. */
   .note-body [data-line]::before { display: none; }
-  .note-body [data-line] > .line-icons { display: none !important; }
   .note-body [data-line] { padding-left: 0; }
+}
+
+/* Touch devices have no hover, so pin the edit/insert handles in a
+   right-hand gutter. Tapping the line text or a link does the natural
+   thing; tap the ✎ handle to edit that line. */
+@media (hover: none) {
+  .note-body [data-line] { padding-right: 3.2em; }
+  .note-body [data-line] > .line-icons {
+    display: inline-flex; align-items: center; gap: 6px;
+    left: auto; right: 0; top: 0.15em; bottom: auto;
+  }
+  .note-body [data-line] > .line-icons button { opacity: 0.5; padding: 3px 4px; }
+  .note-body [data-line] > .line-icons .line-edit-btn { display: inline-block; }
 }
 </style>
 <link rel="stylesheet" href="theme.css">
@@ -177,8 +202,8 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
 <div id="main">
   <h1 id="wiki-title">TibbitWiki</h1>
   <div id="top-bar">
-    <button onclick="newNote()"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2"/></svg> New</button>
-    <button onclick="newJournal()"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 5.5a.5.5 0 0 1 .5.5v1.5H10a.5.5 0 0 1 0 1H8.5V10a.5.5 0 0 1-1 0V8.5H6a.5.5 0 0 1 0-1h1.5V6a.5.5 0 0 1 .5-.5"/><path d="M3 0h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-1h1v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v1H1V2a2 2 0 0 1 2-2"/><path d="M1 5v-.5a.5.5 0 0 1 1 0V5h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1zm0 3v-.5a.5.5 0 0 1 1 0V8h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1zm0 3v-.5a.5.5 0 0 1 1 0v.5h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1z"/></svg> Journal</button>
+    <button onclick="newNote()" title="New note"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2"/></svg><span class="btn-label"> New</span></button>
+    <button onclick="newJournal()" title="New journal"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 5.5a.5.5 0 0 1 .5.5v1.5H10a.5.5 0 0 1 0 1H8.5V10a.5.5 0 0 1-1 0V8.5H6a.5.5 0 0 1 0-1h1.5V6a.5.5 0 0 1 .5-.5"/><path d="M3 0h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-1h1v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v1H1V2a2 2 0 0 1 2-2"/><path d="M1 5v-.5a.5.5 0 0 1 1 0V5h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1zm0 3v-.5a.5.5 0 0 1 1 0V8h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1zm0 3v-.5a.5.5 0 0 1 1 0v.5h.5a.5.5 0 0 1 0 1h-2a.5.5 0 0 1 0-1z"/></svg><span class="btn-label"> Journal</span></button>
     <span class="gear-dropdown">
       <button onclick="toggleGearMenu()" title="Settings"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492M5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0"/><path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115z"/></svg></button>
       <div class="gear-menu" id="gear-menu">
@@ -186,7 +211,7 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
         <button onclick="restartServer()">Restart server</button>
       </div>
     </span>
-    <button onclick="openSearchBar()" title="Search"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"/></svg> Search</button>
+    <button onclick="openSearchBar()" title="Search"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"/></svg><span class="btn-label"> Search</span></button>
   </div>
   <div id="error-banner" style="display:none;background:#fee;color:#900;padding:0.5em 1em;border:1px solid #c00;margin-bottom:0.5em;cursor:pointer" onclick="this.style.display='none'" title="Click to dismiss"></div>
   <div id="river"></div>
@@ -229,6 +254,7 @@ a.wikiword.missing { color: var(--tw-danger); font-style: italic; }
 const S = (d, fr) => `<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"${fr ? ' fill-rule="evenodd"' : ''}>${d}</svg>`;
 const ICON = {
   pencil: S('<path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325"/>'),
+  check: S('<path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0"/>'),
   x: S('<path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708"/>'),
   xLg: S('<path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8z"/>'),
   plus: S('<path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4"/>'),
@@ -439,6 +465,7 @@ function renderNote(t) {
   toolbar.appendChild(chevBtn);
 
   const editBtn = document.createElement('button');
+  editBtn.className = 'edit-btn';
   editBtn.innerHTML = ICON.pencil;
   editBtn.title = 'Edit note';
   editBtn.onclick = (e) => {
@@ -450,6 +477,7 @@ function renderNote(t) {
   };
   toolbar.appendChild(editBtn);
   const closeBtn = document.createElement('button');
+  closeBtn.className = 'close-btn';
   closeBtn.innerHTML = ICON.xLg;
   closeBtn.title = 'Close';
   closeBtn.onclick = () => { card.remove(); updateRelated(); };
@@ -608,20 +636,69 @@ function renderNote(t) {
   return card;
 }
 
-// Open a textarea editor for the note inside its card.
+// Open a textarea editor for the note inside its card. While editing, the
+// toolbar's ✎ button becomes Save (✓) and the ✕ button becomes Cancel-edit;
+// both are restored when the edit ends.
 function startTextareaEdit(card, t) {
-  if (card.querySelector('.note-edit-area')) return; // already editing
-  // Fetch fresh text to edit.
+  if (card.dataset.editing) return; // already editing (also guards the fetch race)
+  card.dataset.editing = '1';
+  const baseRevision = card.dataset.revision; // snapshot: PUT against the rev we opened
   fetch(PREFIX + '/notes/' + encodeURIComponent(t.title))
     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(fresh => {
+      if (!card.isConnected) { delete card.dataset.editing; return; } // card was closed mid-fetch
       const body = card.querySelector('.note-body');
       const savedHTML = body.innerHTML;
       const ta = document.createElement('textarea');
       ta.className = 'note-edit-area';
       ta.value = fresh.text || '';
       ta.rows = Math.max(10, (fresh.text || '').split('\n').length + 2);
-      // Allow Tab key to insert a tab character; Ctrl-G or Escape to cancel.
+
+      // Repurpose the toolbar ✎/✕ as Save/Cancel; capture state to restore.
+      const editBtn = card.querySelector('.note-toolbar .edit-btn');
+      const closeBtn = card.querySelector('.note-toolbar .close-btn');
+      const orig = (editBtn && closeBtn) ? {
+        eHTML: editBtn.innerHTML, eTitle: editBtn.title, eClick: editBtn.onclick,
+        cTitle: closeBtn.title, cClick: closeBtn.onclick,
+      } : null;
+      let busy = false; // a Save PUT is in flight
+
+      const restoreView = () => {
+        body.innerHTML = savedHTML;
+        injectLineIcons(body, t.title);
+        attachCodeBlockEditing(body, t.title);
+        attachCheckboxToggle(body, t.title);
+      };
+      const restoreToolbar = () => {
+        if (!orig) return;
+        editBtn.innerHTML = orig.eHTML; editBtn.title = orig.eTitle; editBtn.onclick = orig.eClick;
+        closeBtn.title = orig.cTitle; closeBtn.onclick = orig.cClick;
+      };
+      const cancelEdit = () => {
+        if (busy) return;
+        delete card.dataset.editing;
+        restoreToolbar();
+        restoreView();
+      };
+      const saveEdit = () => {
+        if (busy) return;
+        busy = true;
+        fetch(PREFIX + '/notes/' + encodeURIComponent(t.title), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: ta.value, revision: baseRevision })
+        }).then(r => {
+          if (r.status === 409) { alert('Conflict: note was modified externally. Reload and try again.'); busy = false; return; }
+          if (!r.ok) throw new Error(r.status);
+          delete card.dataset.editing;
+          restoreToolbar();
+          refreshNote(t.title);
+        }).catch(err => {
+          busy = false;
+          alert('Save failed: ' + (err.message || err));
+        });
+      };
+
       ta.addEventListener('keydown', e => {
         if (e.key === 'Tab') {
           e.preventDefault();
@@ -629,41 +706,37 @@ function startTextareaEdit(card, t) {
           ta.value = ta.value.substring(0, s) + '\t' + ta.value.substring(end);
           ta.selectionStart = ta.selectionEnd = s + 1;
         }
-        if (isDismiss(e)) {
-          body.innerHTML = savedHTML;
-          injectLineIcons(body, t.title);
-          attachCodeBlockEditing(body, t.title);
-          attachCheckboxToggle(body, t.title);
-        }
+        if (isDismiss(e)) cancelEdit();
       });
+
       body.innerHTML = '';
       body.appendChild(ta);
-      const bar = document.createElement('div');
-      bar.className = 'note-edit-bar';
-      const saveBtn = document.createElement('button');
-      saveBtn.className = 'action-btn';
-      saveBtn.textContent = 'Save';
-      saveBtn.style.cssText = 'background:var(--tw-accent);color:#fff;border:none;';
-      saveBtn.onclick = () => {
-        const payload = { text: ta.value, revision: card.dataset.revision };
-        fetch(PREFIX + '/notes/' + encodeURIComponent(t.title), {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        }).then(r => {
-          if (r.status === 409) { alert('Conflict: note was modified externally. Reload and try again.'); return; }
-          if (!r.ok) throw new Error(r.status);
-          refreshNote(t.title);
-        });
-      };
-      const cancelBtn = document.createElement('button');
-      cancelBtn.className = 'action-btn';
-      cancelBtn.textContent = 'Cancel';
-      cancelBtn.onclick = () => { body.innerHTML = savedHTML; injectLineIcons(body, t.title); attachCodeBlockEditing(body, t.title); attachCheckboxToggle(body, t.title); };
-      bar.appendChild(saveBtn);
-      bar.appendChild(cancelBtn);
-      body.appendChild(bar);
       ta.focus();
+
+      if (orig) {
+        editBtn.innerHTML = ICON.check; editBtn.title = 'Save'; editBtn.onclick = saveEdit;
+        closeBtn.title = 'Cancel edit'; closeBtn.onclick = cancelEdit;
+      } else {
+        // Fallback (no toolbar buttons found): inline Save/Cancel bar.
+        const bar = document.createElement('div');
+        bar.className = 'note-edit-bar';
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'action-btn';
+        saveBtn.textContent = 'Save';
+        saveBtn.style.cssText = 'background:var(--tw-accent);color:#fff;border:none;';
+        saveBtn.onclick = saveEdit;
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'action-btn';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.onclick = cancelEdit;
+        bar.appendChild(saveBtn);
+        bar.appendChild(cancelBtn);
+        body.appendChild(bar);
+      }
+    })
+    .catch(err => {
+      delete card.dataset.editing;
+      alert('Edit failed: ' + (err.message || err));
     });
 }
 
@@ -800,9 +873,12 @@ function openNote(title) {
 function refreshNote(title) {
   const card = document.querySelector(`.note[data-title="${CSS.escape(title)}"]`);
   if (!card) return;
-  fetch(PREFIX + '/notes/' + encodeURIComponent(title))
+  return fetch(PREFIX + '/notes/' + encodeURIComponent(title))
     .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(t => {
+      // Don't clobber an in-progress in-browser edit (e.g. a poll-driven
+      // refresh after an external change); the pending Save handles conflicts.
+      if (card.dataset.editing) return;
       // If readOnly state changed, rebuild the whole card (toolbar changes).
       const wasReadOnly = card.dataset.readOnly === 'true';
       const isReadOnly = t.readOnly === 'true';
@@ -1567,24 +1643,50 @@ function startAddTag(tagDiv, noteTitle) {
 
 // --- Line-level quick edit ---
 
-// Inject insert icon into every element with data-line in a container.
-// Clicking the text itself starts edit mode.
+// Elements whose click-to-edit listener is already bound. Restoring a note
+// body from an innerHTML snapshot yields fresh nodes (handlers dropped), so
+// those get re-bound; live nodes reused across a cancel are not re-bound,
+// which avoids stacking duplicate listeners.
+const lineEditBound = new WeakSet();
+
+// Inject per-line edit (✎) and insert-below handles into every element with
+// data-line. Desktop: handles appear on hover, or Shift-click the text to edit.
+// Touch: handles are pinned in a right gutter (see the hover:none CSS); a plain
+// tap never edits, so links in a line stay tappable.
+//
+// The handle span is rebuilt on every call: innerHTML snapshots preserve the
+// markup but not the buttons' onclick handlers, so a stale span would render a
+// dead pencil after a cancel. Removing and recreating guarantees live handles.
 function injectLineIcons(container, noteTitle) {
   container.querySelectorAll('[data-line]').forEach(el => {
-    if (el.querySelector('.line-icons')) return;
+    const stale = el.querySelector(':scope > .line-icons');
+    if (stale) stale.remove();
     const icons = document.createElement('span');
     icons.className = 'line-icons';
+    const editBtn = document.createElement('button');
+    editBtn.className = 'line-edit-btn';
+    editBtn.innerHTML = ICON.pencil;
+    editBtn.title = 'Edit this line';
+    editBtn.onclick = (e) => { e.stopPropagation(); startLineEdit(el, noteTitle, false); };
+    icons.appendChild(editBtn);
     const insertBtn = document.createElement('button');
     insertBtn.innerHTML = ICON.chevronDown;
     insertBtn.title = 'Insert line below';
     insertBtn.onclick = (e) => { e.stopPropagation(); startLineEdit(el, noteTitle, true); };
     icons.appendChild(insertBtn);
     el.prepend(icons);
-    // Click on text starts edit mode.
-    el.addEventListener('click', (e) => {
-      if (e.target.closest('.line-icons') || e.target.closest('.line-edit-input')) return;
-      startLineEdit(el, noteTitle, false);
-    });
+    // Desktop: Shift-click the text to edit a line. Touch: tap the ✎ handle.
+    // A plain click/tap leaves wiki links, checkboxes and buttons to their
+    // own handlers so links can be visited without starting an edit.
+    if (!lineEditBound.has(el)) {
+      lineEditBound.add(el);
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.line-icons') || e.target.closest('.line-edit-input')) return;
+        if (e.target.closest('a, input, button, label')) return;
+        if (!e.shiftKey) return;
+        startLineEdit(el, noteTitle, false);
+      });
+    }
   });
 }
 
@@ -1635,7 +1737,9 @@ function startLineEdit(el, noteTitle, isInsert) {
 
       const cancelEdit = () => {
         el.innerHTML = savedHTML;
-        injectLineIcons(el.closest('.note-body'), noteTitle);
+        const nb = el.closest('.note-body');
+        injectLineIcons(nb, noteTitle);
+        attachCheckboxToggle(nb, noteTitle);
       };
       input.addEventListener('keydown', (e) => {
         if (isDismiss(e)) cancelEdit();
@@ -1697,14 +1801,18 @@ function submitLineEdit(noteTitle, lineNum, text, isInsert) {
   .catch(err => alert('Edit failed: ' + err.message));
 }
 // Attach checkbox toggle handlers to task list items.
-// Goldmark renders `- [ ]` as <input type="checkbox" disabled> inside
-// an <li data-line="N">.  We intercept clicks, toggle the source line
-// between `[ ]` and `[x]`, and submit via the line-edit endpoint.
+// Goldmark renders `- [ ]` as <input type="checkbox" disabled> inside an
+// <li data-line="N">.  Tight lists put the input directly under the <li>;
+// loose lists wrap it in a <p>, so we match with a descendant selector.
+// We intercept clicks, toggle the source line between `[ ]` and `[x]`, and
+// submit via the line-edit endpoint. A WeakSet tracks bound inputs so bodies
+// restored from an innerHTML snapshot re-bind fresh nodes without duplicates.
+const checkboxBound = new WeakSet();
 function attachCheckboxToggle(container, noteTitle) {
-  container.querySelectorAll('li[data-line] > input[type="checkbox"]').forEach(cb => {
-    if (cb.dataset.toggleBound) return;
-    cb.dataset.toggleBound = '1';
+  container.querySelectorAll('li[data-line] input[type="checkbox"]').forEach(cb => {
     cb.disabled = false;
+    if (checkboxBound.has(cb)) return;
+    checkboxBound.add(cb);
     cb.addEventListener('click', (e) => {
       e.preventDefault();
       const li = cb.closest('li[data-line]');
