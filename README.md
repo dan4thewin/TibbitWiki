@@ -53,6 +53,10 @@ go build -o tibbitwiki .
 
 Then open http://127.0.0.1:8080 in your browser.
 
+**Using it across machines or on your phone?** Run it over Tailscale
+rather than exposing it on the open network — see [Access across
+devices](#access-across-devices-tailscale), the recommended setup.
+
 The server auto-discovers wiki subdirectories under `--wiki-path`.
 Each subdirectory with `.md` files becomes a wiki at `/{name}/`.
 Wikis are flat — only `.md` files directly in the subdirectory are
@@ -62,6 +66,43 @@ See [SETUP.md](SETUP.md) for the full setup guide: prerequisites,
 editor integration, PDF conversion, theme playground, and Evernote
 migration. Copy `TibbitWiki.md` and `QuickRef.md` from the repo into
 your first wiki directory for a welcome note and markdown reference.
+
+## Access across devices (Tailscale)
+
+TibbitWiki has no built-in authentication or TLS, so it should never be
+bound to `0.0.0.0` or exposed directly on the LAN or internet. The
+recommended way to use it across machines and phones is over a
+[Tailscale](https://tailscale.com) tailnet: traffic is wrapped in
+WireGuard encryption and only the devices you have enrolled can reach it
+— covering the transport encryption and (device-level) authentication
+the server itself doesn't provide.
+
+Bind the server to both localhost and the host's Tailscale IP with the
+`listen` array in `config.yaml`, so it stays off the wider LAN while
+remaining reachable inside the encrypted tailnet:
+
+```yaml
+wiki_path: .
+listen:
+  - "127.0.0.1:8080"     # local access on the host
+  - "100.x.y.z:8080"     # the host's Tailscale IP
+```
+
+Then open the wiki from any device on the tailnet — laptop, desktop, or
+mobile browser — at `http://100.x.y.z:8080/`, or the MagicDNS hostname
+(e.g. `http://myhost:8080/`). The client is touch-friendly on phones:
+single-column layout, icon-only toolbar, and a per-line ✎ handle to edit.
+
+Notes:
+- Don't run `tailscale serve` on port 8080 — it also binds the Tailscale
+  IP there and collides with the direct bind (`tailscale serve reset`
+  clears it).
+- Hosts where Tailscale can't run natively (e.g. Windows) can reach the
+  wiki through a localhost→host proxy — e.g. `systemd-socket-proxyd`
+  inside WSL forwarding `127.0.0.1:8080` to
+  `<host>.<tailnet>.ts.net:8080`.
+- `--listen` overrides the whole list with a single address; use the
+  config array for multi-bind.
 
 ## Browser client
 
@@ -329,8 +370,12 @@ with attachments. See [SETUP.md](SETUP.md) for details.
 - **Dangling symlinks** in a wiki directory are moved to
   `lost+found/` at startup with a log warning. This prevents macOS
   kqueue (which must open every file) from blocking the file watcher.
-- **Single-user design.** No authentication, no concurrent-writer
-  conflict resolution. Intended for one person on localhost.
+- **Single-user design.** No built-in authentication or TLS, and no
+  concurrent-writer conflict resolution — it is built for a single
+  writer. For access beyond the host (other machines, phones), run it
+  over Tailscale (see [Access across
+  devices](#access-across-devices-tailscale)) for encrypted transport
+  and tailnet-scoped access rather than exposing it on the LAN.
 - **Search requires ripgrep** (`rg`) on PATH.
 - **PDF conversion requires** `pdftotext` (poppler) and optionally
   [ollama](https://ollama.com) with a local model for markdown cleanup.
