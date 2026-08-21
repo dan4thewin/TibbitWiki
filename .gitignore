@@ -27,3 +27,7 @@ config.yaml
 theme.css
 scripts/wikiname
 scripts/__pycache__/
+
+# Local dev — per-machine module overrides (e.g. co-developing ~/src/akin)
+go.work
+go.work.sum
