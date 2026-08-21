@@ -899,3 +899,45 @@ func TestLoopDrainOnStop(t *testing.T) {
 		t.Errorf("expected 0 entries after drain, got %d", ix.Entries())
 	}
 }
+
+// TestDrainProcessesBuffered drives drain() synchronously with items already
+// buffered in ix.ch, so the <-ix.ch case (and then the default) run
+// deterministically — the goroutine path in loop() only hits it as a race.
+func TestDrainProcessesBuffered(t *testing.T) {
+	dir := t.TempDir()
+	holdDir := filepath.Join(dir, "hold")
+	os.MkdirAll(holdDir, 0755)
+
+	pathA := filepath.Join(holdDir, "A.md")
+	pathB := filepath.Join(holdDir, "B.md")
+	os.WriteFile(pathA, []byte("a"), 0644)
+	os.WriteFile(pathB, []byte("b"), 0644)
+
+	idx, _ := akin.Open(filepath.Join(dir, "idx.gob"))
+	idx.AddEntries([]akin.Entry{
+		{File: pathA, Offset: 0, Length: 1, Vector: []float32{1, 0, 0}},
+		{File: pathB, Offset: 0, Length: 1, Vector: []float32{0, 1, 0}},
+	}, "m", 3)
+
+	ix := &Indexer{
+		idx:          idx,
+		emb:          akin.NewEmbedder("m", "http://unused:9999"),
+		ch:           make(chan string, 256),
+		done:         make(chan struct{}),
+		wikiPath:     dir,
+		saveInterval: time.Hour,
+	}
+
+	// Pre-buffer removals, then drain synchronously: the <-ix.ch case runs
+	// for each buffered item, then the default saves and returns.
+	ix.ch <- "\x00" + pathA
+	ix.ch <- "\x00" + pathB
+	ix.drain()
+
+	if len(ix.ch) != 0 {
+		t.Errorf("expected channel fully drained, got %d remaining", len(ix.ch))
+	}
+	if ix.Entries() != 0 {
+		t.Errorf("expected 0 entries after drain, got %d", ix.Entries())
+	}
+}

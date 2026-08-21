@@ -179,16 +179,24 @@ func (ix *Indexer) loop() {
 		case <-ticker.C:
 			ix.save()
 		case <-ix.done:
-			// Drain remaining items.
-			for {
-				select {
-				case path := <-ix.ch:
-					ix.processPath(path)
-				default:
-					ix.save()
-					return
-				}
-			}
+			ix.drain()
+			return
+		}
+	}
+}
+
+// drain processes any buffered index/remove requests, then saves. It is
+// split out of loop() so tests can drive it directly: the top-level select
+// in loop() otherwise races to empty ix.ch before the <-ix.done case wins,
+// leaving the buffered-item branch only intermittently covered.
+func (ix *Indexer) drain() {
+	for {
+		select {
+		case path := <-ix.ch:
+			ix.processPath(path)
+		default:
+			ix.save()
+			return
 		}
 	}
 }
