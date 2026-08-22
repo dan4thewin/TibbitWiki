@@ -36,6 +36,21 @@ func wikiFrom(r *http.Request) *wiki.Wiki {
 	return r.Context().Value(wikiContextKey).(*wiki.Wiki)
 }
 
+// methodNotAllowed writes a 405 response with the standard message.
+func methodNotAllowed(w http.ResponseWriter) {
+	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+}
+
+// requireMethod writes a 405 and returns false when the request method
+// doesn't match. Handlers call it as: if !requireMethod(w, r, m) { return }.
+func requireMethod(w http.ResponseWriter, r *http.Request, method string) bool {
+	if r.Method != method {
+		methodNotAllowed(w)
+		return false
+	}
+	return true
+}
+
 // Server is the HTTP handler for the TibbitWiki API.
 type Server struct {
 	hub        *wiki.Hub
@@ -316,7 +331,7 @@ func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
 		case http.MethodDelete:
 			s.deleteAttachment(w, r, title, filename)
 		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			methodNotAllowed(w)
 		}
 		return
 	}
@@ -329,7 +344,7 @@ func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
 	case http.MethodDelete:
 		s.deleteNote(w, r, title)
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		methodNotAllowed(w)
 	}
 }
 
@@ -412,8 +427,7 @@ func (s *Server) deleteAttachment(w http.ResponseWriter, r *http.Request, title,
 
 // handleEditExternal launches the configured editor for a note.
 func (s *Server) handleEditExternal(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	title := extractTitle(r.URL.Path, "/edit-external/")
@@ -434,8 +448,7 @@ func (s *Server) handleEditExternal(w http.ResponseWriter, r *http.Request) {
 
 // handleNewDraft creates a Draft.md and opens the editor.
 func (s *Server) handleNewDraft(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	if _, err := wikiFrom(r).NewDraft(); err != nil {
@@ -447,8 +460,7 @@ func (s *Server) handleNewDraft(w http.ResponseWriter, r *http.Request) {
 
 // handleEditConfig launches the editor on the config file.
 func (s *Server) handleEditConfig(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	if s.editor == nil {
@@ -468,8 +480,7 @@ func (s *Server) handleEditConfig(w http.ResponseWriter, r *http.Request) {
 
 // handleRestart signals main to gracefully shut down and re-exec.
 func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	select {
@@ -481,8 +492,7 @@ func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (s *Server) handleLineEdit(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	title := extractTitle(r.URL.Path, "/line-edit/")
@@ -555,8 +565,7 @@ func (s *Server) handleRevisions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid note title", http.StatusBadRequest)
 		return
 	}
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 	s.getRevisions(w, r, path)
@@ -577,8 +586,7 @@ func (s *Server) getRevisions(w http.ResponseWriter, r *http.Request, title stri
 }
 
 func (s *Server) checkoutRevision(w http.ResponseWriter, r *http.Request, title string) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	rev := r.URL.Query().Get("rev")
@@ -598,8 +606,7 @@ func (s *Server) checkoutRevision(w http.ResponseWriter, r *http.Request, title 
 }
 
 func (s *Server) promoteRevision(w http.ResponseWriter, r *http.Request, title string) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	if err := wikiFrom(r).PromoteRevision(title); err != nil {
