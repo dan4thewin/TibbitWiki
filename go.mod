@@ -23,4 +23,4 @@ require (
 
 tool github.com/sgrankin/mk
 
-replace github.com/arran4/golang-rcs => /Users/dg/src/golang-rcs
+replace github.com/arran4/golang-rcs => github.com/dan4thewin/golang-rcs v0.0.19-0.20261104210209-23fce1f36f0c

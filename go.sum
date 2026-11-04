@@ -10,6 +10,8 @@ github.com/alecthomas/repr v0.5.2 h1:SU73FTI9D1P5UNtvseffFSGmdNci/O6RsqzeXJtP0Qs
 github.com/alecthomas/repr v0.5.2/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
 github.com/dan4thewin/akin-vecsearch v0.1.0 h1:QfTcVXERAhOw8UMjzgzblJHo3eFG6cm7OT2Kdj8mFls=
 github.com/dan4thewin/akin-vecsearch v0.1.0/go.mod h1:9NmdlMJQeLxnvlGyuzL7D0sBblxWzNEm4fRDIRJLqHY=
+github.com/dan4thewin/golang-rcs v0.0.19-0.20261104210209-23fce1f36f0c h1:lkB++gJQ9wibr7tGCio+MSzt2Kdbvq2XhwhNXkpiufU=
+github.com/dan4thewin/golang-rcs v0.0.19-0.20261104210209-23fce1f36f0c/go.mod h1:tXDt2I98uPEBQP+nHmT3qSaT2rNK/bncjTaoOh0zjSI=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dlclark/regexp2 v1.4.0/go.mod h1:2pZnwuY/m+8K6iRw6wQdMtk+rH5tNGR1i55kozfMjCc=
