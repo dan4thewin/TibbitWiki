@@ -7,13 +7,14 @@ A personal wiki served from plain markdown files on disk.
 
 ## Getting started
 
-Your wikis live in `~/TibbitWiki/`.  Each subdirectory is a
-separate wiki — this demo wiki is one example.
+Your wikis live in `~/TibbitWiki/`. Each subdirectory containing
+`.md` files is a separate wiki — this demo wiki is one example.
 
-**To create a new wiki,** just make a directory and restart:
+**To create a new wiki,** make a directory, add a note, and restart:
 
 ```bash
-mkdir ~/TibbitWiki/work
+mkdir -p ~/TibbitWiki/work
+cp ~/TibbitWiki/demo/QuickRef.md ~/TibbitWiki/work/
 # restart the server (⚙ → Restart, or Ctrl-C and relaunch)
 ```
 

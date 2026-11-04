@@ -209,8 +209,8 @@ func TestTitleToFilename(t *testing.T) {
 		},
 		{
 			name:  "TitleWithSlash",
-			title: "/Users/dg/notes/Test",
-			want:  "%2FUsers%2Fdg%2Fnotes%2FTest.md",
+			title: "/notes/personal/Test",
+			want:  "%2Fnotes%2Fpersonal%2FTest.md",
 		},
 		{
 			name:  "SimpleTitleNoSlash",
@@ -243,8 +243,8 @@ func TestFilenameToTitle(t *testing.T) {
 		},
 		{
 			name:     "URLEncodedFilename",
-			filename: "%2FUsers%2Fdg%2Fnotes%2FTest.md",
-			want:     "/Users/dg/notes/Test",
+			filename: "%2Fnotes%2Fpersonal%2FTest.md",
+			want:     "/notes/personal/Test",
 		},
 	}
 	for _, tc := range tests {

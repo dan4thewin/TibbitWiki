@@ -286,7 +286,7 @@ func (ix *Indexer) toResult(r akin.Result) Result {
 }
 
 // parseFilePath extracts wiki name and note title from a file path.
-// e.g. /Users/dg/TibbitWiki/hold/SomeNote.md → ("hold", "SomeNote")
+// e.g. /notes/personal/SomeNote.md → ("personal", "SomeNote")
 func (ix *Indexer) parseFilePath(path string) (wiki, title string) {
 	rel, err := filepath.Rel(ix.wikiPath, path)
 	if err != nil || strings.HasPrefix(rel, "..") {

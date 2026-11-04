@@ -7,7 +7,10 @@ Everything needed to recreate this setup from zero.
 - Go (version matching go.mod — `brew install go` or https://go.dev/dl)
 - ripgrep (`brew install ripgrep` or `apt install ripgrep`) —
   required for search
-- Git with SSH key configured for GitHub
+- Git; the HTTPS clone below needs no GitHub account or SSH key
+
+The server supports macOS and Linux, including WSL on Windows.
+Browser clients can run on other platforms.
 
 ### Optional
 
@@ -32,20 +35,65 @@ Then enable JavaScript automation:
 This allows `osascript` to drive Safari for automated integration
 tests. See [TESTING.md](TESTING.md) for details.
 
-## Wiki directory setup
+## TibbitWiki setup
 
-Create or use an existing notes directory with wiki subdirectories:
+### Build and install from source
 
 ```bash
-mkdir -p ~/notes/personal
-mkdir -p ~/notes/work
+mkdir -p ~/src
+cd ~/src
+git clone https://github.com/dan4thewin/TibbitWiki.git tibbitwiki
+cd tibbitwiki
+go build -o tibbitwiki .
 ```
 
-Copy the sample notes into your first wiki:
+Run the resulting `./tibbitwiki` binary directly. To install it into
+`$GOPATH/bin` (typically `~/go/bin`), run this from the checkout:
 
 ```bash
+go install .
+```
+
+Build from the checkout rather than using `go install ...@latest`:
+`go.mod` pins the gorcs fork with a replacement, which version-suffixed
+installs do not support. Source builds need no local dependency checkouts.
+
+### Run the server
+
+```bash
+./tibbitwiki
+```
+
+On first run, `~/TibbitWiki/demo/` is created with sample notes.
+Open http://127.0.0.1:8080/ in your browser. With a single wiki
+directory, you're taken directly to the demo wiki.
+
+Add more wikis by creating subdirectories:
+
+```bash
+mkdir ~/TibbitWiki/work
+cp ~/TibbitWiki/demo/QuickRef.md ~/TibbitWiki/work/
+# restart the server (⚙ → Restart, or relaunch)
+```
+
+Only subdirectories containing `.md` files are discovered as wikis.
+
+### Wiki directory setup
+
+To use an existing notes directory instead of the default demo, create
+wiki subdirectories and copy starter notes into one of them:
+
+```bash
+mkdir -p ~/notes/personal ~/notes/work
 cp ~/src/tibbitwiki/TibbitWiki.md ~/notes/personal/
 cp ~/src/tibbitwiki/QuickRef.md ~/notes/personal/
+cp ~/src/tibbitwiki/HotKeys.md ~/notes/personal/
+```
+
+Stop the previously started server before switching directories, then run:
+
+```bash
+./tibbitwiki --wiki-path ~/notes
 ```
 
 Notes are `.md` files — RFC822-style headers, blank line, markdown body:
@@ -59,59 +107,12 @@ title: 2023-07-10
 Body text goes here. Uses **markdown** formatting.
 ```
 
-### Filename conventions
-
 | Note title      | Filename                           |
 |-----------------|------------------------------------|
 | `My Note`       | `My Note.md`                       |
 | `path/to/thing` | `path%2Fto%2Fthing.md` (URL-encoded) |
 
 Spaces in titles are literal spaces in filenames.
-
-## TibbitWiki setup
-
-### Install
-
-The simplest way to install:
-
-```bash
-go install github.com/dan4thewin/tibbitwiki@latest
-```
-
-This puts the `tibbitwiki` binary in `$GOPATH/bin` (typically `~/go/bin`).
-
-### Build from source
-
-```bash
-cd ~/src
-git clone git@github.com:dan4thewin/tibbitwiki.git
-cd tibbitwiki
-go build -o tibbitwiki .
-```
-
-Optionally use Plan 9 mk (Go port) for the full build/test/lint cycle:
-
-```bash
-go install github.com/dcjones/mk@latest
-mk check   # build, vet, fmt, test, coverage, complexity
-```
-
-### Run the server
-
-```bash
-tibbitwiki
-```
-
-On first run, `~/TibbitWiki/demo/` is created with sample notes.
-Open http://127.0.0.1:8080/ in your browser. With a single wiki
-directory, you're taken directly to the demo wiki.
-
-Add more wikis by creating subdirectories:
-
-```bash
-mkdir ~/TibbitWiki/work
-# restart the server (⚙ → Restart, or relaunch)
-```
 
 ### Configuration
 
@@ -121,7 +122,7 @@ You can also specify a config file explicitly or use CLI flags:
 
 ```yaml
 wiki_path: ~/TibbitWiki
-listen: 127.0.0.1:8080             # or array: ["127.0.0.1:8080", "10.0.0.1:8080"]
+listen: 127.0.0.1:8080             # or array: ["127.0.0.1:8080", "100.x.y.z:8080"]
 editor_cmd: ""
 poll_interval: 3s
 cache_size: 200
@@ -137,8 +138,9 @@ theme:
 
 ### Editor setup
 
-Without configuration, the pencil icon opens an in-browser
-textarea editor. To use an external editor:
+The server uses `editor_cmd` when configured; otherwise it auto-detects
+the system file opener. If neither is available, the pencil opens the
+in-browser textarea editor. Touch devices always use the browser editor.
 
 **macOS** — `open` is auto-detected at startup. The pencil icon
 will open the file in your default `.md` handler. To use a
@@ -156,7 +158,8 @@ editor_cmd: "xterm -e vim %s"
 
 **Any platform** — Shift-click the pencil icon to force the
 in-browser textarea editor (useful for quick edits even with
-an external editor configured).
+an external editor configured). The pencil becomes Save and X becomes
+Cancel while editing.
 
 ### Neovide wrapper (`vide`) — optional
 
@@ -209,8 +212,8 @@ Every note write (browser PUT or external file save) creates
 an RCS archive in an `RCS/` subdirectory. This uses a built-in Go
 library — no external `rcs` install is required.
 
-Archives live in `RCS/` alongside the notes directory, not inside
-it (avoids the file watcher treating them as notes).
+For `~/notes/personal/MyNote.md`, the archive is
+`~/notes/personal/RCS/MyNote.md,v`. Archives are not loaded as notes.
 
 If you have `rcs` installed (`brew install rcs` or `apt install rcs`),
 you can inspect archives manually:
@@ -280,7 +283,7 @@ Batch convert with `find`:
 find ~/notes/work -name '*.pdf' ! -exec test -f '{}.md' \; -print -exec pdf2md {} \;
 
 # Vision-first batch for known image-only PDFs
-find ~/notes/hold -name '*.pdf' ! -exec test -f '{}.md' \; -print -exec pdf2md --vision-first {} \;
+find ~/notes/work -name '*.pdf' ! -exec test -f '{}.md' \; -print -exec pdf2md --vision-first {} \;
 ```
 
 ## Development tools
@@ -294,16 +297,19 @@ go test -gcflags=all=-l -count=1 ./...           # test (inlining disabled for g
 go test -gcflags=all=-l -coverprofile=c.out ./... # coverage
 ```
 
-With Plan 9 mk (`go install github.com/dcjones/mk@latest`):
+The Plan 9 mk tool is pinned in `go.mod`; invoke it with `go tool mk`:
 
 ```bash
-mk build      # go build ./...
-mk test       # go test (inlining disabled for gomonkey)
-mk lint       # go vet + gofmt
-mk coverage   # statement coverage report
-mk complexity # gocyclo top 20
-mk check      # all of the above
+go tool mk build      # go build ./...
+go tool mk test       # go test (inlining disabled for gomonkey)
+go tool mk lint       # go vet + gofmt
+go tool mk coverage   # statement coverage report
+go tool mk complexity # gocyclo top 20
+go tool mk check      # lint + test + complexity
 ```
+
+The `complexity` and `check` targets also require `gocyclo` on PATH:
+`go install github.com/fzipp/gocyclo/cmd/gocyclo@latest`.
 
 See [TESTING.md](TESTING.md) for browser automation techniques.
 
@@ -366,4 +372,3 @@ This is a separate batch step — it reads a TSV of titles and body
 excerpts, queries the model once per note, and writes a mapping
 TSV. A post-processing step guarantees CamelCase format compliance
 regardless of model output quality. See the script for usage.
-

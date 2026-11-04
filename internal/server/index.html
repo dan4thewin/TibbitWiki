@@ -683,10 +683,13 @@ function startTextareaEdit(card, t) {
       const saveEdit = () => {
         if (busy) return;
         busy = true;
+        const fields = { ...fresh, text: ta.value, revision: baseRevision };
+        // PUT replaces headers; keep stored metadata, not response-only fields.
+        for (const key of ['html', 'readOnly', 'rcsRev', 'rcsHead', 'owner']) delete fields[key];
         fetch(PREFIX + '/notes/' + encodeURIComponent(t.title), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: ta.value, revision: baseRevision })
+          body: JSON.stringify(fields)
         }).then(r => {
           if (r.status === 409) { alert('Conflict: note was modified externally. Reload and try again.'); busy = false; return; }
           if (!r.ok) throw new Error(r.status);

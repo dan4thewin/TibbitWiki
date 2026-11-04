@@ -17,7 +17,7 @@ DG maintains this project. The AI implements under his direction.
     mk check            # lint + test + complexity
     mk coverage         # statement coverage report
 
-All 11 internal/ packages are at 100% statement coverage.
+All internal/ packages are at 100% statement coverage.
 The pre-commit hook enforces this — don't let it regress.
 
 ## The mistakes you will make
@@ -64,8 +64,7 @@ Clarity over DRY in tests — each test self-contained and obvious.
 
 An audit using 5 LLM models (50 runs) found that 100% statement
 coverage hides significant gaps: 8 production bugs, 8 security
-findings, 270 total findings with 0 false alarms. The full lab
-notebook is `AdversarialTestAudit` in the hold wiki. The prompt
+findings, 270 total findings with 0 false alarms. The prompt
 template and model comparison are in TESTING.md.
 
 ## Attribution

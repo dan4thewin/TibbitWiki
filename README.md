@@ -43,15 +43,25 @@ and RCS version control.
 
 ## Quick start
 
+The server supports macOS and Linux (including WSL). You need Git,
+Go matching the version in `go.mod`, and ripgrep (`rg`) for search.
+No external RCS installation is required.
+
 ```bash
+# Get the source (no GitHub account or SSH key required)
+git clone https://github.com/dan4thewin/TibbitWiki.git tibbitwiki
+cd tibbitwiki
+
 # Build
 go build -o tibbitwiki .
 
-# Run (auto-creates config.yaml in wiki path)
-./tibbitwiki --wiki-path ~/notes
+# Run (creates ~/TibbitWiki/demo and config.yaml on first use)
+./tibbitwiki
 ```
 
 Then open http://127.0.0.1:8080 in your browser.
+To use an existing notes directory, run
+`./tibbitwiki --wiki-path ~/notes` instead.
 
 **Using it across machines or on your phone?** Run it over Tailscale
 rather than exposing it on the open network — see [Access across
@@ -97,10 +107,10 @@ Notes:
 - Don't run `tailscale serve` on port 8080 — it also binds the Tailscale
   IP there and collides with the direct bind (`tailscale serve reset`
   clears it).
-- Hosts where Tailscale can't run natively (e.g. Windows) can reach the
-  wiki through a localhost→host proxy — e.g. `systemd-socket-proxyd`
-  inside WSL forwarding `127.0.0.1:8080` to
-  `<host>.<tailnet>.ts.net:8080`.
+- If device policy prevents installing native Tailscale on Windows,
+  a localhost→tailnet proxy inside WSL can provide access — e.g.
+  `systemd-socket-proxyd` forwarding `127.0.0.1:8080` to
+  `<host>.<tailnet>.ts.net:8080`. Windows itself supports native Tailscale.
 - `--listen` overrides the whole list with a single address; use the
   config array for multi-bind.
 
@@ -127,14 +137,15 @@ for development.
   tap the ✎ edit handle in the margin); a per-line insert handle adds a
   line below; Escape or click-away to cancel
 - Configurable poll interval (default 3s) for external changes
-- Edit button per note (launches neovim via server)
+- Edit button per note (configured or auto-detected external editor;
+  browser editor on touch or when no external editor is available)
+- Full-body browser editing — Shift-click the pencil on desktop,
+  or tap it on touch; the toolbar becomes Save/Cancel
 - New note and Journal buttons
 - Gear icon to edit config.yaml in your editor
 - Live theme reloading — edit config.yaml, save, see changes
 
 **Non-features (by design):**
-- No full browser-based editing — line edits for list items only;
-  everything else via neovim
 - No TiddlyWiki wikitext rendering — markdown only
 - No plugin system, no syncer, no complex widget tree
 
@@ -201,9 +212,9 @@ attachment listing with `attachment_exclude: [".pdf.md"]`.
 
 ```yaml
 # These settings require a server restart:
-wiki_path: .
+wiki_path: ~/TibbitWiki
 listen: 127.0.0.1:8080             # or array: ["addr1:port", "addr2:port"]
-editor_cmd: "open /Applications/Neovide.app --args %s"
+editor_cmd: ""                    # auto-detect system file opener
 poll_interval: 3s
 cache_size: 200
 max_diffs: 10
@@ -212,10 +223,11 @@ pdf_convert_cmd: ""         # template: %s=path %n=wiki %d=dir
 
 # Theme applies live on save:
 theme:
-  bg:           "#1a1a2e"       # Page background
-  fg:           "#e0e0e0"       # Main text color
-  accent:       "#6cacee"       # Links, active tabs, focus rings
-  # ... 17 more keys (colors, typography, layout)
+  shared:
+    bg:           "#1a1a2e"     # Page background
+    fg:           "#e0e0e0"     # Main text color
+    accent:       "#6cacee"     # Links, active tabs, focus rings
+    # ... see config.yaml for all keys
 ```
 
 CLI flags override config file values.
@@ -266,12 +278,17 @@ field. The client currently recognises one custom header:
 
 ## Editing notes
 
-Two ways:
+Three ways:
 
 1. **Direct file edit** — open any `.md` file in your editor, save,
    the server picks up changes via fsnotify within 3 seconds.
-2. **Browser button** — click "edit" in a note's toolbar to launch
-   neovim via the server's edit-external endpoint.
+2. **Toolbar pencil** — opens the configured or auto-detected external
+   editor. Shift-click it on desktop, or tap it on touch, to edit the
+   entire body in the browser. The pencil becomes Save and X becomes
+   Cancel while editing.
+3. **Quick line edit** — Shift-click a body line on desktop, or tap
+   its margin pencil on touch. Ordinary taps and clicks still follow
+   links and toggle checkboxes.
 
 ## RCS version control
 
@@ -335,17 +352,19 @@ No database. All state is in-memory + filesystem.
 ## Development
 
 ```bash
-mk build      # go build ./...
-mk test       # go test with inlining disabled
-mk lint       # go vet + gofmt check
-mk coverage   # statement coverage report
-mk complexity # gocyclo top 20
-mk check      # all of the above
+go tool mk build      # go build ./...
+go tool mk test       # go test with inlining disabled
+go tool mk lint       # go vet + gofmt check
+go tool mk coverage   # statement coverage report
+go tool mk complexity # gocyclo top 20
+go tool mk check      # lint + test + complexity
 ```
 
 Build tool: [mk](https://github.com/sgrankin/mk) (Plan 9 mk in Go).
 Pinned as a tool dependency in `go.mod` — use `go tool mk` or
 install to PATH with `go install github.com/sgrankin/mk@latest`.
+The `complexity` and `check` targets also need `gocyclo` on PATH
+(`go install github.com/fzipp/gocyclo/cmd/gocyclo@latest`).
 
 See [TESTING.md](TESTING.md) for browser automation and integration
 testing techniques.
@@ -388,8 +407,11 @@ with attachments. See [SETUP.md](SETUP.md) for details.
 ## How this was built
 
 TibbitWiki was designed and directed by a human; all code, tests, and
-documentation were written by GitHub Copilot (Claude) through
-interactive conversation. Every commit carries a `Co-authored-by:
-Copilot` trailer. The human contribution was architecture, design
-decisions, domain knowledge, and relentless quality standards. The
+documentation were written using GitHub Copilot with multiple AI models
+through interactive conversation. AI-assisted commits carry a
+`Co-authored-by: Copilot` trailer. The human contribution was architecture,
+design decisions, domain knowledge, and relentless quality standards. The
 AI's contribution was typing really fast and getting told to try again.
+
+The historical experiments include Marked.js under its
+[upstream license](exp/marked.LICENSE.md); it is not part of the embedded client.
